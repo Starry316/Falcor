@@ -114,14 +114,13 @@ private:
     ref<ComputePass> mpVisualizeMapsPass;
     ref<ComputePass> mpCreateMaxMipPass;
     ref<ComputePass> mpInferPass ;
-
     // Texture inputs
-    std::string mTexturePath = "D:/textures/synthetic/";
+    std::string mTexturePath =getProjectDirectory().string();
     // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
     std::string mHFFileName = "castle_brick_02_red_cut_disp_4k";
     // std::string mHFFileName = "dirty_carpet_cut_disp_4k";
     // std::string mColorFileName = "ganges_river_pebbles_diff_4k.jpg";
-    std::string mColorFileName = "castle_brick_02_red_cut_diff_4k.jpg";
+    std::string mColorFileName = "castle_brick_02_red_cut_diff_4k";
     // std::string mColorFileName = "dirty_carpet_cut_diff_4k.jpg";
     ref<Texture> mpHF;
     ref<Texture> mpHFMaxMip;

@@ -632,8 +632,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         mTracer.pProgram = Program::create(mpDevice, desc, mpScene->getSceneDefines());
     }
     // Read in textures, we use a constant texture now
-    mpHF    = Texture::createFromFile(mpDevice, mTexturePath+mHFFileName+".png", true, false, ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget);
-    mpColor = Texture::createFromFile(mpDevice, mTexturePath+mColorFileName, true, true, ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget);
+    mpHF    = Texture::createFromFile(mpDevice, fmt::format("{}/media/BTF/scene/textures/{}.png", mTexturePath,mHFFileName).c_str(), true, false, ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget);
+    mpColor = Texture::createFromFile(mpDevice, fmt::format("{}/media/BTF/scene/textures/{}.jpg", mTexturePath,mColorFileName).c_str(), true, true, ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget);
 
 
 
