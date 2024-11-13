@@ -748,6 +748,20 @@ target_sources(Falcor PRIVATE
     Utils/UI/TextRenderer.3d.slang
     Utils/UI/TextRenderer.cpp
     Utils/UI/TextRenderer.h
+
+    Utils/Neural/ActivationFunc.slang
+    Utils/Neural/MLP.slang
+    Utils/Neural/MLP.h
+    Utils/Neural/MLP.cpp
+    Utils/Neural/NBTF.slang
+    Utils/Neural/NBTF.h
+    Utils/Neural/NBTF.cpp
+
+    Utils/Texture/Synthesis.slang
+    Utils/Texture/SynthesisUtils.slang
+    Utils/Texture/HexTiling.slang
+    Utils/Texture/Synthesis.h
+    Utils/Texture/Synthesis.cpp
 )
 
 

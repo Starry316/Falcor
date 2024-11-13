@@ -769,3 +769,88 @@ float3 normalizeSafe(float3 v)
     float len = length(v);
     return len > 0.f ? v / len : float3(0.f);
 }
+
+float3 rotateAxis(float3 vec, float3 axis, float angle) {
+    float cosAngle = cos(angle);
+    float sinAngle = sin(angle);
+    float3 out = vec * cosAngle;
+    out += axis * (dot(axis, vec)) * (1 - cosAngle);
+    out += sinAngle * cross(axis, vec);
+    return out;
+}
+
+void RusinkiewiczToDir(float2 h, float2 d, out float3 wi, out float3 wo) {
+    float3 n = float3(0, 0, 1);
+    float3 b = float3(0, 1, 0);
+
+    float3 vd = spherical_to_cartesian_rad(d);
+    vd = rotateAxis(vd, b, h.x);
+    wi = rotateAxis(vd, n, h.y);
+    float3 vh = spherical_to_cartesian_rad(h);
+    wo = normalize(2 * dot(wi, vh) * vh - wi);
+}
+
+
+void dirToRusinkiewicz(float3 wi, float3 wo, out float2 h, out float2 d) {
+    float3 vh = (wi + wo) / 2;
+    vh = normalize(vh);
+    h = cartesian_to_spherical_rad(vh);
+
+    float3 n = float3(0, 0, 1);
+    float3 b = float3(0, 1, 0);
+    float3 vd = rotateAxis(rotateAxis(wi, n, -h.y), b, -h.x);
+    d = cartesian_to_spherical_rad(vd);
+}
+
+float2 squareToDiskShirley(float2 uv) {
+    uv = 2 * uv - 1;
+    float u = uv.x;
+    float v = uv.y;
+    float r, phi;
+    if (u * u > v * v) {
+        r = u;
+        phi = (M_PI_4)*v / u;
+    } else {
+        r = v;
+        if (abs(v) > 0.0) {
+            phi = (M_PI_2) - (M_PI_4)*u / v;
+        } else {
+            phi = 0.0;
+        }
+    }
+    return r * float2(cos(phi), sin(phi));
+}
+
+float3 squareToDiskHemisphereShirley(float2 uv) {
+    float2 d = squareToDiskShirley(uv);
+    float z = sqrt(max(0.f, 1.f - dot(d, d)));
+    return float3(d, z);
+}
+float2 diskToSquareShirley(float2 uv) {
+    float r = length(uv);
+    float phi = atan2(uv.y, uv.x);
+    if (phi < -M_PI_4) {
+        phi += 2 * M_PI;
+    }
+    if (phi < M_PI_4) {
+        float x = r;
+        float y = phi * x / (M_PI_4);
+        return 0.5 * (float2(x, y) + 1);
+    } else if (phi < 3 * M_PI_4) {
+        float y = r;
+        float x = -(phi - (M_PI_2)) * y / (M_PI_4);
+        return 0.5 * (float2(x, y) + 1);
+    } else if (phi < 5 * M_PI_4) {
+        float x = -r;
+        float y = (phi - M_PI) * x / (M_PI_4);
+        return 0.5 * (float2(x, y) + 1);
+    } else {
+        float y = -r;
+        float x = -(phi - (3 * M_PI_2)) * y / (M_PI_4);
+        return 0.5 * (float2(x, y) + 1);
+    }
+}
+
+float2 hemisphereDirToDiskSquare(float3 d) {
+    return diskToSquareShirley(d.xy);
+}
