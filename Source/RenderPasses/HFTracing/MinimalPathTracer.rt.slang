@@ -669,7 +669,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
             float envPdf;
             if (generateEnvMapSample(sg, envLi, envDir, envPdf))
             {
-                let lod = ExplicitLodTextureSampler(0.f);
+                let lod = ExplicitGradientTextureSampler(dfdx, dfdy);
                 outColor = envLi * gScene.materials.getMaterialInstance(curSD, lod).eval(curSD, envDir, sg);
             }
             else

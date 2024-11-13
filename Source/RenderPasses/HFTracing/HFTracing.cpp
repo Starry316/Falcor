@@ -499,7 +499,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 10.0f);
     widget.tooltip("Increse = less marching steps", true);
-    dirty |= widget.slider("LoD Scale", mControlParas.y, 1.0f, 10.0f);
+    dirty |= widget.slider("LoD Scale", mControlParas.y, 1.0f, 100.0f);
     dirty |= widget.slider("HF Offset", mControlParas.z, 0.0f, 1.0f);
     widget.tooltip("height = Scale * h + Offset", true);
     dirty |= widget.slider("HF Scale", mControlParas.w, 0.0f, 1.0f);
@@ -667,8 +667,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
                 ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
               );
     // mpTextureSynthesis = std::make_unique<TextureSynthesis>(mpDevice);
-    mpMLP = std::make_unique<MLP>(mpDevice, "block_io_L1");
-    mpNBTF = std::make_unique<NBTF>(mpDevice, "block_io_L1");
+    mpMLP = std::make_unique<MLP>(mpDevice, "block_io");
+    mpNBTF = std::make_unique<NBTF>(mpDevice, "block_io");
     // Create a precompute pass.
 
     DefineList defines = mpScene->getSceneDefines();
