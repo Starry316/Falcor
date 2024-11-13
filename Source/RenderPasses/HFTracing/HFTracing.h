@@ -110,8 +110,8 @@ private:
         ref<RtProgramVars> pVars;
     } mTracer;
 
-    ref<ComputePass> mpPrecomputePass;
-    ref<ComputePass> mpPostProcessPass;
+    ref<ComputePass> mpGenerateGeometryMapPass;
+    ref<ComputePass> mpVisualizeMapsPass;
     ref<ComputePass> mpCreateMaxMipPass;
     ref<ComputePass> mpInferPass ;
 

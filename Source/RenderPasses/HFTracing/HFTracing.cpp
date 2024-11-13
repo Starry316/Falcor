@@ -130,7 +130,7 @@ void HFTracing::generateGeometryMap(RenderContext* pRenderContext, const RenderD
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
 
 
-    auto precomputeVar = mpPrecomputePass->getRootVar();
+    auto precomputeVar = mpGenerateGeometryMapPass->getRootVar();
 
     // set mesh data
     const auto& meshDesc = mpScene->getMesh(MeshID{ 0 });
@@ -154,7 +154,7 @@ void HFTracing::generateGeometryMap(RenderContext* pRenderContext, const RenderD
     precomputeVar["gOutputColor"] = renderData.getTexture("color");
     mpScene->bindShaderData(precomputeVar["scene"]);
 
-    mpPrecomputePass->execute(pRenderContext, targetDim.x, targetDim.y);
+    mpGenerateGeometryMapPass->execute(pRenderContext, targetDim.x, targetDim.y);
     mTriID++;
 
 
@@ -176,14 +176,14 @@ void HFTracing::visualizeMaps(RenderContext* pRenderContext, const RenderData& r
     // Get dimensions of ray dispatch.
     uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-    auto var = mpPostProcessPass->getRootVar();
+    auto var = mpVisualizeMapsPass->getRootVar();
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
     var["PerFrameCB"]["gDisplayMipLevel"] = mCurvatureParas.w;
     var["gOutputNormalMap"].setSrv(mpNormalMap->getSRV());
     var["gOutputTangentMap"].setSrv(mpTangentMap->getSRV());
     var["gOutputColor"] = renderData.getTexture("color");
 
-    mpPostProcessPass->execute(pRenderContext, targetDim.x, targetDim.y);
+    mpVisualizeMapsPass->execute(pRenderContext, targetDim.x, targetDim.y);
     // refresh the frame
     mOptionsChanged = true;
 }
@@ -229,10 +229,14 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
     auto var = mpInferPass->getRootVar();
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
+    var["PerFrameCB"]["gApplySyn"] = mApplySyn;
+    mpNBTF->bindShaderData(var["PerFrameCB"]["nbtf"]);
+
     var["gOutputColor"] = renderData.getTexture("color");
     var["wiWox"] = mpWiWox;
     var["uvWoyz"]= mpUVWoyz;
     var["dfDxy"] = mpDfDxy;
+
 
     mpInferPass->execute(pRenderContext, targetDim.x, targetDim.y);
 
@@ -249,6 +253,20 @@ void createTex(ref<Texture> &tex, ref<Device> device, uint2 targetDim){
             nullptr,
             ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
         );
+    }
+    else{
+        if (tex.get()->getWidth() != targetDim.x || tex.get()->getHeight() != targetDim.y)
+        {
+            tex = device->createTexture2D(
+                targetDim.x,
+                targetDim.y,
+                ResourceFormat::RGBA32Float,
+                1,
+                1,
+                nullptr,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
+            );
+        }
     }
 }
 
@@ -373,12 +391,8 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gPRNGDimension"] = dict.keyExists(kRenderPassPRNGDimension) ? dict[kRenderPassPRNGDimension] : 0u;
     var["CB"]["gControlParas"] = mControlParas;
     var["CB"]["gCurvatureParas"] = mCurvatureParas;
-    var["CB"]["gMaxSteps"] = mMaxSteps;
     var["CB"]["gApplySyn"] = mApplySyn;
     var["CB"]["gLocalFrame"] = mLocalFrame;
-    // mpTextureSynthesis->bindShaderData(var["CB"]["ts"]);
-    mpMLP->bindShaderData(var["CB"]["mlp"]);
-    mpNBTF->bindShaderData(var["CB"]["nbtf"]);
 
     if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(var["CB"]["envMapSampler"]);
 
@@ -456,8 +470,11 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
             mMipGenerated = true;
         }
 
-        if (mRenderType == RenderType::HF)
-            renderHF(pRenderContext, renderData);
+        if (mRenderType == RenderType::HF){
+               renderHF(pRenderContext, renderData);
+            if(mNNInfer)
+            nnInferPass(pRenderContext, renderData);
+        }
         else
             visualizeMaps(pRenderContext, renderData);
     }
@@ -655,10 +672,10 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     // Create a precompute pass.
 
     DefineList defines = mpScene->getSceneDefines();
-    mpPrecomputePass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/Precompute.cs.slang", "csMain", defines);
-    mpPostProcessPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/PostProcess.cs.slang", "csMain", defines);
+    mpGenerateGeometryMapPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/GenerateGeometryMap.cs.slang", "csMain", defines);
+    mpVisualizeMapsPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/VisualizeMaps.cs.slang", "csMain", defines);
     mpCreateMaxMipPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/CreateMaxMip.cs.slang", "csMain", defines);
-    mpInferPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/CountValidPixels.cs.slang", "csMain", defines);
+    mpInferPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/Inference.cs.slang", "csMain", defines);
 
 }
 

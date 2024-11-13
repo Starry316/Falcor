@@ -5,10 +5,10 @@ target_sources(HFTracing PRIVATE
     HFTracing.h
     MinimalPathTracer.rt.slang
     BTFSynthesis.slang
-    Precompute.cs.slang
-    PostProcess.cs.slang
+    GenerateGeometryMap.cs.slang
+    VisualizeMaps.cs.slang
     CreateMaxMip.cs.slang
-    CountValidPixels.cs.slang
+    Inference.cs.slang
 )
 
 target_copy_shaders(HFTracing RenderPasses/HFTracing)

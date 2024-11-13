@@ -2,7 +2,8 @@ import Utils.Neural.NBTF;
 cbuffer PerFrameCB
 {
     uint2 gRenderTargetDim;
-    float gDisplayMipLevel;
+    bool gApplySyn;
+
     NBTF nbtf;
 }
 SamplerState gSampler;
@@ -17,9 +18,9 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 {
     if (any(dispatchThreadId.xy >= gRenderTargetDim))
         return;
-    uint2 pixel = dispatchThreadId.xy.xy;
+    uint2 pixel = dispatchThreadId.xy;
     float4 color = gOutputColor[pixel];
-    if (color.w > 0.0f)
+    if (color.w > 0.5f)
     {
         float4 angle1 = wiWox[pixel];
         float4 uvAngle2 = uvWoyz[pixel];
@@ -27,7 +28,9 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
         float3 wi = angle1.xyz;
         float3 wo = float3(angle1.w, uvAngle2.zw);
         float2 uv = uvAngle2.xy;
-        gOutputColor[pixel].xyz *= nbtf.evalDebug(wi, wo, uv, 0.4, 1, dfdxy.xy, dfdxy.zw);
+        gOutputColor[pixel].xyz *= nbtf.evalDebug(wi, wo, uv, 1, 0.35, dfdxy.xy, dfdxy.zw, gApplySyn);
+        // gOutputColor[pixel].xyz += 1.0f;
+        // gOutputColor[pixel].xyz += 1.0f;
     }
 
 

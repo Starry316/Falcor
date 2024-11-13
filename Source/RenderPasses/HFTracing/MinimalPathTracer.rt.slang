@@ -64,8 +64,6 @@ import Utils.Geometry.IntersectionHelpers;
 import Utils.Geometry.GeometryHelpers;
 import Utils.Sampling.SampleGenerator;
 import Utils.Texture.HexTiling;
-import Utils.Neural.MLP;
-import Utils.Neural.NBTF;
 import Rendering.Lights.LightHelpers;
 import BTFSynthesis;
 import Utils.Debug.PixelDebug;
@@ -76,12 +74,8 @@ cbuffer CB
     uint gPRNGDimension; // First available PRNG dimension.
     float4 gControlParas;
     float4 gCurvatureParas; // d, r
-    uint gMaxSteps = 1000;
     bool gApplySyn;
     bool gLocalFrame;
-    // TextureSynthesis ts;
-    MLP mlp;
-    NBTF nbtf;
     EnvMapSampler envMapSampler;
 }
 
@@ -293,26 +287,7 @@ bool generateEnvMapSample(inout SampleGenerator sg, inout float3 Li, inout float
 
     return any(Li > 0.f);
 }
-{
-    ls = {}; // Default initialization to avoid divergence at returns.
 
-    if (!kUseEnvLight)
-        return false;
-
-    // Sample environment map.
-    EnvMapSample lightSample;
-    if (!envMapSampler.sample(sampleNext2D(sg), lightSample))
-        return false;
-
-    // Setup returned sample.
-    ls.Li = lightSample.pdf > 0.f ? lightSample.Le / lightSample.pdf : float3(0);
-    ls.pdf = lightSample.pdf;
-    ls.origin = vertex.getRayOrigin(lightSample.dir);
-    ls.distance = kRayTMax;
-    ls.dir = lightSample.dir;
-
-    return any(ls.Li > 0.f);
-}
 /**
  * Evaluates the direct illumination from analytic lights.
  * This function samples Falcor's light list uniformly with one shadow ray.
@@ -510,7 +485,7 @@ float3 rayDirToLocal(float3 v, float2 uv, float3 N)
     return float3(dot(v, T), dot(v, B), dot(v, N));
 }
 
-bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, float2 invFrameDim, out float3 exitPosW, out float3 outColor)
+bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, float2 invFrameDim, uint2 pixel, out float3 exitPosW, out float3 outColor)
 {
     // ==========================================
     // HF Tracing prism free
@@ -565,7 +540,8 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
                     break;
                 }
 #ifdef HF_BOUND
-                else if (curFinePos.z >= d + FLT_EPSILON || any(curFinePos.xy < 0) || any(curFinePos.xy > 1))
+                // else if (curFinePos.z >= d + FLT_EPSILON || any(curFinePos.xy < 0) || any(curFinePos.xy > 1))
+                else if (curFinePos.z >= d + FLT_EPSILON || any(curFinePos.y < 0) || any(curFinePos.y > 1))
                 {
                     // out of bounds
                     break;
@@ -588,7 +564,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
                 break;
         }
 #ifdef HF_BOUND
-        else if (curPos.z >= d + FLT_EPSILON || any(curPos.xy < 0) || any(curPos.xy > 1))
+        else if (curPos.z >= d + FLT_EPSILON || any(curPos.y < 0) || any(curPos.y > 1))
         {
             // out of bounds
             break;
@@ -622,7 +598,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
             break;
         }
 #ifdef HF_BOUND
-        else if (curPos.z >= d + FLT_EPSILON || any(curPos.xy < 0) || any(curPos.xy > 1))
+        else if (curPos.z >= d + FLT_EPSILON || any(curPos.y < 0) || any(curPos.y > 1))
         {
             // out of bounds
             break;
@@ -668,12 +644,12 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
             float3 wi = sf.toLocal(envDir);
             // if (!gLocalFrame) sf = sd.frame;
             float NdotL = wi.z > 0 ? 1 : 0;
-            outColor = envLi * NdotL *
-                       nbtf.evalDebug(wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn);
-        }
-        else
-        {
-            outColor = float3(0.0);
+            // outColor = envLi * NdotL *
+            //            nbtf.evalDebug(wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn);
+            outColor = envLi * NdotL;
+            wiWox[pixel] = float4(wi, wo.x);
+            uvWoyz[pixel] = float4((curPos.yx) * UV_SCALING, wo.yz);
+            dfDxy[pixel] = float4(dfdy, dfdx);
         }
 #else
         if (gApplySyn)
@@ -703,8 +679,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
         }
 
 #endif
-
-        exitPosW = gPosMap.Sample(gSampler, curPos.xy).xyz + gNormalMap.Sample(gSampler, curPos.xy).xyz * 0.0001f;
+        // exitPosW = gPosMap.Sample(gSampler, curPos.xy).xyz + gNormalMap.Sample(gSampler, curPos.xy).xyz * 0.0001f;
     }
     return flagFound;
 }
@@ -722,9 +697,9 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
  * @param[in] frameDim Dimension of the frame in pixels.
  * @return Returns the estimated color (radiance).
  */
-float3 tracePath(const uint2 pixel, const uint2 frameDim)
+float4 tracePath(const uint2 pixel, const uint2 frameDim)
 {
-    float3 outColor = float3(0.f);
+    float4 outColor = float4(0.f);
 
     const float3 primaryRayOrigin = gScene.camera.getPosition();
     const float3 primaryRayDir = getPrimaryRayDir(pixel, frameDim, gScene.camera);
@@ -759,17 +734,15 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
         float3 exitPosW;
         float3 HFColor;
         outColor = 0.1;
-        bool hitHF = raySurfaceMarching(sd, hit, sg, 1.f / frameDim, exitPosW, HFColor);
+        bool hitHF = raySurfaceMarching(sd, hit, sg, 1.f / frameDim, pixel, exitPosW, HFColor);
         if (hitHF)
         {
-            outColor = HFColor;
-
-            // outColor = mlp.eval(x).zyx;
+            outColor.xyz = HFColor;
+            outColor.w = 1;
         }
         else
         {
-            outColor = kUseEnvBackground ? gScene.envMap.eval(primaryRayDir) : kDefaultBackgroundColor;
-            // outColor = 0.8 * outColor + float3(0.1);
+            outColor.xyz = kUseEnvBackground ? gScene.envMap.eval(primaryRayDir) : kDefaultBackgroundColor;
         }
         // ScatterRayData rayData = ScatterRayData(sg);
         // rayData.origin = exitPosW;
@@ -813,7 +786,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
     else
     {
         // Background pixel.
-        outColor = kUseEnvBackground ? gScene.envMap.eval(primaryRayDir) : kDefaultBackgroundColor;
+        outColor.xyz = kUseEnvBackground ? gScene.envMap.eval(primaryRayDir) : kDefaultBackgroundColor;
     }
 
     return outColor;
@@ -890,7 +863,8 @@ void rayGen()
     uint2 pixel = DispatchRaysIndex().xy;
     uint2 frameDim = DispatchRaysDimensions().xy;
     printSetPixel(pixel);
-    float3 color = tracePath(pixel, frameDim);
+    // float3 color = tracePath(pixel, frameDim);
+    gOutputColor[pixel]  = tracePath(pixel, frameDim);
 
-    gOutputColor[pixel] = float4(color, 1.f);
+    // gOutputColor[pixel] = float4(color, 1.f);
 }
