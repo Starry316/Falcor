@@ -9,7 +9,9 @@ target_sources(HFTracing PRIVATE
     VisualizeMaps.cs.slang
     CreateMaxMip.cs.slang
     Inference.cs.slang
+    cuda/MLPInference.cu
+    cuda/MLPInference.h
 )
-
+set_target_properties(HFTracing PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 target_copy_shaders(HFTracing RenderPasses/HFTracing)
 target_source_group(HFTracing "RenderPasses")

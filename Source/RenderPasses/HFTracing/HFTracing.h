@@ -34,6 +34,7 @@
 #include "Utils/Neural/MLP.h"
 #include "Utils/Neural/NBTF.h"
 #include "Rendering/Lights/EnvMapSampler.h"
+#include "cuda/MLPInference.h"
 
 using namespace Falcor;
 enum class RenderType {
@@ -135,9 +136,9 @@ private:
 
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
-    float4 mControlParas = float4(1, 0.6, 0, 0.045);
-    float4 mCurvatureParas = float4(0.056, 1, 0.65, 0.6);
-    float4 mLightZPR = float4(0.056, 1, 0.15, 0.1);
+    Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.045);
+    Falcor::float4 mCurvatureParas = Falcor::float4(0.056, 1, 0.65, 0.6);
+    Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
     uint mTriID = 0;
     uint mMaxSteps = 1000;
     uint mMaxTriCount = 1000;

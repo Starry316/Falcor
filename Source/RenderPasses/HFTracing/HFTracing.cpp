@@ -125,8 +125,8 @@ void HFTracing::generateGeometryMap(RenderContext* pRenderContext, const RenderD
 
 
     // Get dimensions of ray dispatch.
-    uint2 targetDim = renderData.getDefaultTextureDims();
-    targetDim = uint2(2048);
+    Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
+    targetDim = Falcor::uint2(2048);
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
 
 
@@ -174,7 +174,7 @@ void HFTracing::visualizeMaps(RenderContext* pRenderContext, const RenderData& r
         return;
     }
     // Get dimensions of ray dispatch.
-    uint2 targetDim = renderData.getDefaultTextureDims();
+    Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
     auto var = mpVisualizeMapsPass->getRootVar();
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
@@ -210,7 +210,7 @@ void HFTracing::createMaxMip(RenderContext* pRenderContext, const RenderData& re
                 ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
               );
     // Get dimensions of ray dispatch.
-    uint2 targetDim = uint2(mipWidth, mipHeight);
+    Falcor::uint2 targetDim = Falcor::uint2(mipWidth, mipHeight);
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
     auto var = mpCreateMaxMipPass->getRootVar();
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
@@ -225,7 +225,7 @@ void HFTracing::createMaxMip(RenderContext* pRenderContext, const RenderData& re
 
 void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& renderData){
 
-    uint2 targetDim = renderData.getDefaultTextureDims();
+    Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
     auto var = mpInferPass->getRootVar();
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
@@ -242,7 +242,7 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
 
 }
 
-void createTex(ref<Texture> &tex, ref<Device> device, uint2 targetDim){
+void createTex(ref<Texture> &tex, ref<Device> device, Falcor::uint2 targetDim){
     if(tex.get() == nullptr){
         tex = device->createTexture2D(
             targetDim.x,
@@ -284,7 +284,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         return;
     }
     // Get dimensions of ray dispatch.
-    const uint2 targetDim = renderData.getDefaultTextureDims();
+    const Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
 
     if (mpScene->useEnvLight())
@@ -314,9 +314,9 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         if (light->getType() == LightType::Sphere)
         {
             ref<SphereLight> sl = static_ref_cast<SphereLight>(light);
-            sl->setScaling(float3(1.0f * mLightZPR.w));
+            sl->setScaling(Falcor::float3(1.0f * mLightZPR.w));
             float phi = M_2PI * mLightZPR.y;
-            float3 pos = float3(0, mLightZPR.x, 0);
+            Falcor::float3 pos = Falcor::float3(0, mLightZPR.x, 0);
             float r = mLightZPR.z;
             pos.x = r * cos(phi);
             pos.z = r * sin(phi);
@@ -429,7 +429,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     mpPixelDebug->prepareProgram(mTracer.pProgram, mTracer.pVars->getRootVar());
 
 
-    mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, uint3(targetDim, 1));
+    mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
 
    // Copy pixel data to staging buffer for readback.
     // This is to avoid a full flush and the associated perf warning.
