@@ -72,6 +72,7 @@ public:
     void visualizeMaps(RenderContext* pRenderContext, const RenderData& renderData);
     void createMaxMip(RenderContext* pRenderContext, const RenderData& renderData);
     void nnInferPass(RenderContext* pRenderContext, const RenderData& renderData);
+    void cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData);
     virtual void renderUI(Gui::Widgets& widget) override;
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) override {   return mpPixelDebug->onMouseEvent(mouseEvent); }
@@ -115,6 +116,7 @@ private:
     ref<ComputePass> mpVisualizeMapsPass;
     ref<ComputePass> mpCreateMaxMipPass;
     ref<ComputePass> mpInferPass ;
+    ref<ComputePass> mpDisplayPass ;
     // Texture inputs
     std::string mTexturePath =getProjectDirectory().string();
     // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
@@ -134,10 +136,13 @@ private:
     ref<Texture> mpUVWoyz;
     ref<Texture> mpDfDxy;
 
+
+
+
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
     Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.045);
-    Falcor::float4 mCurvatureParas = Falcor::float4(0.056, 1, 0.65, 0.6);
+    Falcor::float4 mCurvatureParas = Falcor::float4(0.056, 1, 0.65, 0.3);
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
     uint mTriID = 0;
     uint mMaxSteps = 1000;
@@ -150,7 +155,7 @@ private:
     bool mNNInfer = true;
     bool mHFBound = true;
     bool mLocalFrame = true;
-
+    bool mCudaInfer = true;
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
     /// Buffer for data for the selected pixel.
@@ -163,10 +168,22 @@ private:
     bool mPixelDataAvailable = false;
 
 
+
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
     std::unique_ptr<MLP> mpMLP;
     std::unique_ptr<NBTF> mpNBTF;
 
 
     std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;
+
+    // cuda
+    float mCudaTime = 0.0;
+    double mCudaAvgTime = 0.0;
+    cudaEvent_t mCudaStart, mCudaStop;
+    ref<Buffer> mpOutputBuffer;
+    ref<Texture> mpOutputTex;
+    ref<Buffer> mpInputBuffer;
+
+    ref<Buffer> mpWeightBuffer;
+    ref<Buffer> mpBiasBuffer;
 };

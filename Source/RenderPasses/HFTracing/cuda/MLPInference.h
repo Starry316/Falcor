@@ -7,3 +7,5 @@ extern void launchCopySurface(
     unsigned int height,
     unsigned int format
 );
+
+extern void launchNNInference(float* weight, float* bias,  float* input,float* output, unsigned int width, unsigned int height);

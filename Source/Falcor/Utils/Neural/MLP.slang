@@ -71,11 +71,11 @@ struct MLP
         // final layer
         if (layerNum % 2 == 1)
         {
-            return y[0];
+            return relu(y[0]);
         }
         else
         {
-            return x[0];
+            return relu(x[0]);
         }
     }
 }

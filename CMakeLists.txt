@@ -122,8 +122,8 @@ endif()
 # -----------------------------------------------------------------------------
 # CUDA
 # -----------------------------------------------------------------------------
-
-
+set(CMAKE_CUDA_ARCHITECTURES 89)
+set(CMAKE_CUDA_COMPILER TRUE)
 # Set default CUDA architecture to 75 (Turing).
 # This can be overwritten for individual targets using the CUDA_ARCHITECTURE property.
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)

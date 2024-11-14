@@ -11,6 +11,8 @@ namespace Falcor
 struct FeatureTex{
     int2 texDim;
     ref<Texture> featureTex;
+    // for cuda
+    ref<Buffer> featureBuffer;
 };
 
 
@@ -19,14 +21,12 @@ class FALCOR_API NBTF
 {
 public:
 
-    NBTF(ref<Device> pDevice, std::string networkPath);
+    NBTF(ref<Device> pDevice, std::string networkPath, bool buildCuda = false);
 
     void loadFeature(ref<Device> pDevice, std::string featurePath);
 
     void bindShaderData(const ShaderVar& var) const;
 
-
-private:
     FeatureTex mHP;
     FeatureTex mDP;
     FeatureTex mUP;
@@ -35,9 +35,10 @@ private:
 
     std::unique_ptr<MLP> mpMLP;
     std::string mNetworkName;
+
     int mLayerNum;
     int mMaxDim;
-
+    bool mBuildCuda;
     // Synthesis parameters
 
 };

@@ -9,6 +9,7 @@ target_sources(HFTracing PRIVATE
     VisualizeMaps.cs.slang
     CreateMaxMip.cs.slang
     Inference.cs.slang
+    Display.cs.slang
     cuda/MLPInference.cu
     cuda/MLPInference.h
 )

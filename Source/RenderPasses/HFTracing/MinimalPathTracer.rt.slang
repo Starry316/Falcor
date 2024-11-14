@@ -56,7 +56,6 @@
 
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"
-
 import Scene.Raytracing;
 import Scene.Intersection;
 import Utils.Math.MathHelpers;
@@ -68,6 +67,8 @@ import Rendering.Lights.LightHelpers;
 import BTFSynthesis;
 import Utils.Debug.PixelDebug;
 import Rendering.Lights.EnvMapSampler;
+import Rendering.Lights.EnvMapSampler;
+import Utils.Neural.NBTF;
 cbuffer CB
 {
     uint gFrameCount;    // Frame count since scene was loaded.
@@ -77,6 +78,7 @@ cbuffer CB
     bool gApplySyn;
     bool gLocalFrame;
     EnvMapSampler envMapSampler;
+    NBTF nbtf;
 }
 
 // Inputs
@@ -96,6 +98,7 @@ Texture2D<float> gHFMaxMip;
 RWTexture2D<float4> wiWox;
 RWTexture2D<float4> uvWoyz;
 RWTexture2D<float4> dfDxy;
+RWBuffer<float> cudaInputBuffer;
 
 
 SamplerState gSampler;
@@ -485,7 +488,9 @@ float3 rayDirToLocal(float3 v, float2 uv, float3 N)
     return float3(dot(v, T), dot(v, B), dot(v, N));
 }
 
-bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, float2 invFrameDim, uint2 pixel, out float3 exitPosW, out float3 outColor)
+
+
+bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, uint2 frameDim, uint2 pixel, out float3 exitPosW, out float3 outColor)
 {
     // ==========================================
     // HF Tracing prism free
@@ -497,7 +502,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
     // Compute LoD
     float2 dfdx, dfdy;
     float hitT = length(sd.posW - gScene.camera.getPosition());
-    computeRayDifferentials(hit.getTriangleHit(), -sd.V, hitT, gScene.camera, invFrameDim, dfdx, dfdy);
+    computeRayDifferentials(hit.getTriangleHit(), -sd.V, hitT, gScene.camera, 1.0f / frameDim, dfdx, dfdy);
     dfdx *= gControlParas.y;
     dfdy *= gControlParas.y;
     float footprint = max(length(dfdx), length(dfdy)) * gControlParas.x;
@@ -618,18 +623,29 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
 #endif
     if (flagFound)
     {
-#ifdef NN_INFER
-        // sample light
-        // const uint lightCount = gScene.getLightCount();
-        // // Pick one of the analytic light sources randomly with equal probability.
-        // const uint lightIndex = min(uint(sampleNext1D(sg) * lightCount), lightCount - 1);
-        // float invPdf = lightCount; // Light selection pdf = 1.0 / lightCount.
-        // let light = gScene.getLight(0);
-        // // print("3", light.transMat._11);
-        // // print("",lightCount);
-        // // Sample local light source.
-        // AnalyticLightSample ls;
-        // sampleLight(sd.posW, gScene.getLight(lightIndex), sg, ls);
+#ifdef CUDA_INFER
+        float3 envLi;
+        float3 envDir;
+        float envPdf;
+
+        if (generateEnvMapSample(sg, envLi, envDir, envPdf))
+        {
+            bool dummyB;
+            float4 tangentW = gTangentMap.SampleLevel(gSampler, curPos.xy, 0);
+            float3 N = gNormalMap.SampleLevel(gSampler, curPos.xy, 0).xyz;
+            ShadingFrame sf = ShadingFrame.createSafe(N, tangentW, dummyB);
+
+            float3 wi = sf.toLocal(envDir);
+            // if (!gLocalFrame) sf = sd.frame;
+            float NdotL = wi.z > 0 ? 1 : 0;
+            // outColor = envLi * NdotL *
+            //            nbtf.evalDebug(wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn);
+            outColor = envLi * NdotL;
+            uint cudaInputIndex = 32 * (pixel.y * frameDim.x + pixel.x) + frameDim.x * frameDim.y;
+            cudaInputBuffer[pixel.y * frameDim.x + pixel.x] = 1;
+            nbtf.bindInput( cudaInputBuffer, cudaInputIndex, wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn );
+        }
+#elif defined NN_INFER
         float3 envLi;
         float3 envDir;
         float envPdf;
@@ -679,8 +695,13 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
         }
 
 #endif
-        // exitPosW = gPosMap.Sample(gSampler, curPos.xy).xyz + gNormalMap.Sample(gSampler, curPos.xy).xyz * 0.0001f;
     }
+#ifdef CUDA_INFER
+    else
+    {
+        cudaInputBuffer[pixel.y * frameDim.x + pixel.x] = 0;
+    }
+#endif
     return flagFound;
 }
 /**
@@ -734,7 +755,7 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
         float3 exitPosW;
         float3 HFColor;
         outColor = 0.1;
-        bool hitHF = raySurfaceMarching(sd, hit, sg, 1.f / frameDim, pixel, exitPosW, HFColor);
+        bool hitHF = raySurfaceMarching(sd, hit, sg, frameDim, pixel, exitPosW, HFColor);
         if (hitHF)
         {
             outColor.xyz = HFColor;
