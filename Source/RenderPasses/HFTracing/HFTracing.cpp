@@ -30,11 +30,23 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "Utils/CudaUtils.h"
+
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
     registry.registerClass<RenderPass, HFTracing>();
 }
-
+class Logger : public ILogger
+{
+    void log(Severity severity, const char* msg) noexcept override
+    {
+        // suppress info-level messages
+        if (severity <= Severity::kWARNING)
+            std::cout << msg << std::endl;
+    }
+} logger;
 namespace
 {
 std::vector<float> readBinaryFile(const char* filename)
@@ -321,16 +333,32 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
 
     createBuffer(mpOutputBuffer, mpDevice, targetDim);
 
-    auto input = (float*)mpInputBuffer->getGpuAddress();
-    auto output = (float*)mpOutputBuffer->getGpuAddress();
+    // auto input = (float*)mpInputBuffer->getGpuAddress();
+    // auto output = (float*)mpOutputBuffer->getGpuAddress();
 
-    auto weight = (float*)mpWeightBuffer->getGpuAddress();
-    auto bias = (float*)mpBiasBuffer->getGpuAddress();
+    // void* weight;
+    // void* bias;
+
+    // if(mUseFP16){
+        // weight = (void*)mpWeightFP16Buffer->getGpuAddress();
+        // bias = (void*)mpBiasFP16Buffer->getGpuAddress();
+    // }
+    // else{
+    //     weight = (void*)mpWeightBuffer->getGpuAddress();
+    //     bias = (void*)mpBiasBuffer->getGpuAddress();
+    // }
 
     // timer start
     cudaEventRecord(mCudaStart, NULL);
+
+    void* bindings[] = {(void*)(mpInputBuffer->getGpuAddress()), (void*)mpOutputBuffer->getGpuAddress()};
+    bool status = mpContext->executeV2(bindings);
+
     // cuda
-    launchNNInference(weight, bias, input, output, targetDim.x, targetDim.y);
+    // if(mUseFP16)
+        // launchNNInferenceFP16((__half*)weight, (__half*)bias, input, output, targetDim.x, targetDim.y);
+    // else
+        // launchNNInference((float*)weight, (float*)bias, input, output, targetDim.x, targetDim.y);
     // timer end
     cudaDeviceSynchronize();
     cudaEventRecord(mCudaStop, NULL);
@@ -474,6 +502,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gCurvatureParas"] = mCurvatureParas;
     var["CB"]["gApplySyn"] = mApplySyn;
     var["CB"]["gLocalFrame"] = mLocalFrame;
+    var["CB"]["gUseFP16"] = mUseFP16;
     mpNBTF->bindShaderData(var["CB"]["nbtf"]);
 
     if (mpEnvMapSampler)
@@ -557,9 +586,9 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
             renderHF(pRenderContext, renderData);
             if (mCudaInfer) cudaInferPass(pRenderContext, renderData);
 
-            else if (mNNInfer)
+            else if (mNNInfer){
                 nnInferPass(pRenderContext, renderData);
-
+            }
         }
         else
             visualizeMaps(pRenderContext, renderData);
@@ -604,6 +633,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("NN Infer", mNNInfer);
     dirty |= widget.checkbox("HF Bound", mHFBound);
     dirty |= widget.checkbox("Local Frame", mLocalFrame);
+    dirty |= widget.checkbox("FP16", mUseFP16);
 
     // dirty |= widget.var("Light-Phi", mLightZPR.y);
     dirty |= widget.slider("Light Z", mLightZPR.x, 0.0f, 10.0f);
@@ -780,14 +810,42 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         MemoryType::DeviceLocal,
         cudaBias.data()
     );
+
+    std::vector<__half>cudaWeightFP16(cudaWeight.size());
+    for (size_t i = 0; i < cudaWeight.size(); i++)
+    {
+        cudaWeightFP16[i] = __float2half(cudaWeight[i]);
+    }
+    std::vector<__half>cudaBiasFP16(cudaBias.size());
+    for (size_t i = 0; i < cudaBias.size(); i++)
+    {
+        cudaBiasFP16[i] = __float2half(cudaBias[i]);
+    }
+
+
+    mpWeightFP16Buffer = mpDevice->createBuffer(
+        cudaWeightFP16.size() * sizeof(__half),
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess|ResourceBindFlags::Shared,
+        MemoryType::DeviceLocal,
+        cudaWeightFP16.data()
+    );
+
+    mpBiasFP16Buffer = mpDevice->createBuffer(
+        cudaBiasFP16.size() * sizeof(__half),
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess|ResourceBindFlags::Shared,
+        MemoryType::DeviceLocal,
+        cudaBiasFP16.data()
+    );
+
+
     std::vector<float>().swap(cudaWeight);
     std::vector<float>().swap(cudaBias);
-    // mpBiasBuffer = mpDevice->createBuffer(
-    //     2048 * 2048 * 4 * sizeof(float),
-    //     ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-    //     Buffer::CpuAccess::None,
-    //     nullptr
-    // );
+
+    std::vector<__half>().swap(cudaWeightFP16);
+    std::vector<__half>().swap(cudaBiasFP16);
+
+    setupTRT();
+
 
 
     // mpTextureSynthesis = std::make_unique<TextureSynthesis>(mpDevice);
@@ -804,8 +862,28 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
-
 }
+
+void HFTracing::setupTRT(){
+    IRuntime* runtime = createInferRuntime(logger);
+
+    std::ifstream planFile("block_io.trt", std::ios::binary);
+    std::stringstream planBuffer;
+    planBuffer << planFile.rdbuf();
+    std::string plan = planBuffer.str();
+    mpEngine = runtime->deserializeCudaEngine((void*)plan.data(), plan.size());
+
+    mpContext = mpEngine->createExecutionContext();
+    createBuffer(mpInputBuffer, mpDevice, Falcor::uint2(1080,1920), 33);
+    createBuffer(mpOutputBuffer, mpDevice, Falcor::uint2(1080,1920));
+    auto input = (void*)(mpInputBuffer->getGpuAddress());
+    auto output = (void*)mpOutputBuffer->getGpuAddress();
+
+    mpContext->setTensorAddress(mpEngine->getIOTensorName(0), input);
+    mpContext->setTensorAddress(mpEngine->getIOTensorName(1), output);
+}
+
+
 
 void HFTracing::prepareVars()
 {

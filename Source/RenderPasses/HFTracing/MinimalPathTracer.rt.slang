@@ -77,6 +77,7 @@ cbuffer CB
     float4 gCurvatureParas; // d, r
     bool gApplySyn;
     bool gLocalFrame;
+    bool gUseFP16;
     EnvMapSampler envMapSampler;
     NBTF nbtf;
 }
@@ -641,11 +642,14 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, u
             // outColor = envLi * NdotL *
             //            nbtf.evalDebug(wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn);
             outColor = envLi * NdotL;
-            uint cudaInputIndex = 32 * (pixel.y * frameDim.x + pixel.x) + frameDim.x * frameDim.y;
-            cudaInputBuffer[pixel.y * frameDim.x + pixel.x] = 1;
+            uint cudaInputIndex = 32 * (pixel.y * frameDim.x + pixel.x);
+            cudaInputBuffer[pixel.y * frameDim.x + pixel.x + 32 * frameDim.x * frameDim.y] = 1;
+            // if (gUseFP16)
+                // nbtf.bindInputFP16( cudaInputBuffer, cudaInputIndex, wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn );
+            // else
             nbtf.bindInput( cudaInputBuffer, cudaInputIndex, wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn );
         }
-#elif defined NN_INFER
+#elif defined(NN_INFER)
         float3 envLi;
         float3 envDir;
         float envPdf;
@@ -656,12 +660,8 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, u
             float4 tangentW = gTangentMap.SampleLevel(gSampler, curPos.xy, 0);
             float3 N = gNormalMap.SampleLevel(gSampler, curPos.xy, 0).xyz;
             ShadingFrame sf = ShadingFrame.createSafe(N, tangentW, dummyB);
-
             float3 wi = sf.toLocal(envDir);
-            // if (!gLocalFrame) sf = sd.frame;
             float NdotL = wi.z > 0 ? 1 : 0;
-            // outColor = envLi * NdotL *
-            //            nbtf.evalDebug(wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn);
             outColor = envLi * NdotL;
             wiWox[pixel] = float4(wi, wo.x);
             uvWoyz[pixel] = float4((curPos.yx) * UV_SCALING, wo.yz);

@@ -1,5 +1,16 @@
 add_plugin(HFTracing)
 
+set(TensorRT_INCLUDE_DIRS D:/TensorRT/include/)
+set(TensorRT_LIBRARIES
+    D:/TensorRT/lib/nvinfer_10.lib
+    D:/TensorRT/lib/nvinfer_plugin_10.lib
+    D:/TensorRT/lib/nvonnxparser_10.lib
+)
+
+target_link_libraries(HFTracing PUBLIC ${TensorRT_LIBRARIES})
+target_include_directories(HFTracing PUBLIC ${TensorRT_INCLUDE_DIRS})
+
+
 target_sources(HFTracing PRIVATE
     HFTracing.cpp
     HFTracing.h

@@ -36,6 +36,10 @@
 #include "Rendering/Lights/EnvMapSampler.h"
 #include "cuda/MLPInference.h"
 
+#include "NvInfer.h"
+#include "NvOnnxParser.h"
+using namespace nvinfer1;
+using namespace nvonnxparser;
 using namespace Falcor;
 enum class RenderType {
     HF,
@@ -73,6 +77,7 @@ public:
     void createMaxMip(RenderContext* pRenderContext, const RenderData& renderData);
     void nnInferPass(RenderContext* pRenderContext, const RenderData& renderData);
     void cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData);
+    void setupTRT();
     virtual void renderUI(Gui::Widgets& widget) override;
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) override {   return mpPixelDebug->onMouseEvent(mouseEvent); }
@@ -156,6 +161,7 @@ private:
     bool mHFBound = true;
     bool mLocalFrame = true;
     bool mCudaInfer = true;
+    bool mUseFP16 = true;
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
     /// Buffer for data for the selected pixel.
@@ -176,6 +182,13 @@ private:
 
     std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;
 
+    // trt
+    IBuilder* mpBuilder;
+    INetworkDefinition* mpNetwork;
+    ICudaEngine* mpEngine;
+    IExecutionContext* mpContext;
+
+
     // cuda
     float mCudaTime = 0.0;
     double mCudaAvgTime = 0.0;
@@ -186,4 +199,7 @@ private:
 
     ref<Buffer> mpWeightBuffer;
     ref<Buffer> mpBiasBuffer;
+
+    ref<Buffer> mpWeightFP16Buffer;
+    ref<Buffer> mpBiasFP16Buffer;
 };
