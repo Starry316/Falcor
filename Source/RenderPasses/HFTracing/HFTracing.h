@@ -38,13 +38,38 @@
 
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
+
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <nvrtc.h>
+
 using namespace nvinfer1;
 using namespace nvonnxparser;
 using namespace Falcor;
-enum class RenderType {
-    HF,
-    MAP
+
+
+
+enum class RenderType : uint32_t
+{
+    RT,
+    MAP,
+    SHADER_NN,
+    CUDA,
+    TRT
 };
+
+FALCOR_ENUM_INFO(
+    RenderType,
+    {
+        { RenderType::RT, "RT" },
+        { RenderType::MAP, "Visualize N,T Maps" },
+        { RenderType::SHADER_NN, "Shader Inference" },
+        { RenderType::CUDA, "CUDA Inference" },
+        { RenderType::TRT, "TensorRT Inference" }
+    }
+);
+FALCOR_ENUM_REGISTER(RenderType);
+
 
 /**
  * Minimal path tracer.
@@ -77,6 +102,8 @@ public:
     void createMaxMip(RenderContext* pRenderContext, const RenderData& renderData);
     void nnInferPass(RenderContext* pRenderContext, const RenderData& renderData);
     void cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData);
+    void trtInferPass(RenderContext* pRenderContext, const RenderData& renderData);
+    void displayPass(RenderContext* pRenderContext, const RenderData& renderData);
     void setupTRT();
     virtual void renderUI(Gui::Widgets& widget) override;
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
@@ -123,7 +150,7 @@ private:
     ref<ComputePass> mpInferPass ;
     ref<ComputePass> mpDisplayPass ;
     // Texture inputs
-    std::string mTexturePath =getProjectDirectory().string();
+    std::string mMediaPath =getProjectDirectory().string();
     // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
     std::string mHFFileName = "castle_brick_02_red_cut_disp_4k";
     // std::string mHFFileName = "dirty_carpet_cut_disp_4k";
@@ -152,7 +179,7 @@ private:
     uint mTriID = 0;
     uint mMaxSteps = 1000;
     uint mMaxTriCount = 1000;
-    RenderType mRenderType = RenderType::HF;
+    RenderType mRenderType = RenderType::CUDA;
 
     bool mContactRefinement = true;
     bool mMipGenerated = false;
@@ -161,7 +188,7 @@ private:
     bool mHFBound = true;
     bool mLocalFrame = true;
     bool mCudaInfer = true;
-    bool mUseFP16 = true;
+    bool mUseFP16 = false;
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
     /// Buffer for data for the selected pixel.
@@ -202,4 +229,7 @@ private:
 
     ref<Buffer> mpWeightFP16Buffer;
     ref<Buffer> mpBiasFP16Buffer;
+
+
+
 };

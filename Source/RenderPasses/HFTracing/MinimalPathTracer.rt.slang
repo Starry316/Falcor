@@ -642,12 +642,17 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, u
             // outColor = envLi * NdotL *
             //            nbtf.evalDebug(wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn);
             outColor = envLi * NdotL;
-            uint cudaInputIndex = 32 * (pixel.y * frameDim.x + pixel.x);
             cudaInputBuffer[pixel.y * frameDim.x + pixel.x + 32 * frameDim.x * frameDim.y] = 1;
-            // if (gUseFP16)
-                // nbtf.bindInputFP16( cudaInputBuffer, cudaInputIndex, wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn );
-            // else
-            nbtf.bindInput( cudaInputBuffer, cudaInputIndex, wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn );
+            if (gUseFP16) {
+                uint cudaInputIndex = 16 * (pixel.y * frameDim.x + pixel.x);
+                nbtf.bindInputFP16( cudaInputBuffer, cudaInputIndex, wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn );
+            }
+
+            else {
+                uint cudaInputIndex = 32 * (pixel.y * frameDim.x + pixel.x);
+                nbtf.bindInput( cudaInputBuffer, cudaInputIndex, wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn );
+            }
+
         }
 #elif defined(NN_INFER)
         float3 envLi;
