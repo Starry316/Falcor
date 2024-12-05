@@ -1,7 +1,11 @@
 // #include <cublasdx.hpp>
 // using namespace cublasdx;
 #include "cublasdxTest.h"
+#include <cuda_runtime.h>
 
+extern "C" __global__ void helloFromGPU() {
+    printf("Hello World from GPU!\n");
+}
 
 
 // The CUDA kernel. This sample simply copies the input surface.

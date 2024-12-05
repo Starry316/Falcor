@@ -75,9 +75,11 @@ void NBTF::bindShaderData(const ShaderVar& var) const
     var["hDims"] = mHP.texDim;
     var["dDims"] = mDP.texDim;
 
+
     var["uP"].setSrv(mUP.featureTex->getSRV());
     var["hP"].setSrv(mHP.featureTex->getSRV());
     var["dP"].setSrv(mDP.featureTex->getSRV());
+   var["inputSize"] = (mDP.texDim.y + mHP.texDim.y + mUP.texDim.y)*4;
 }
 
 } // namespace Falcor

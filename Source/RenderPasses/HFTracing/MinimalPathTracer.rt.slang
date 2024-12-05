@@ -644,12 +644,12 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, u
             outColor = envLi * NdotL;
             cudaInputBuffer[pixel.y * frameDim.x + pixel.x + 32 * frameDim.x * frameDim.y] = 1;
             if (gUseFP16) {
-                uint cudaInputIndex = 16 * (pixel.y * frameDim.x + pixel.x);
+                uint cudaInputIndex = (nbtf.inputSize / 2) * (pixel.y * frameDim.x + pixel.x);
                 nbtf.bindInputFP16( cudaInputBuffer, cudaInputIndex, wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn );
             }
 
             else {
-                uint cudaInputIndex = 32 * (pixel.y * frameDim.x + pixel.x);
+                uint cudaInputIndex = nbtf.inputSize * (pixel.y * frameDim.x + pixel.x);
                 nbtf.bindInput( cudaInputBuffer, cudaInputIndex, wi, wo, (curPos.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, dfdy, dfdx, gApplySyn );
             }
 

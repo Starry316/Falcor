@@ -156,6 +156,7 @@ private:
     // std::string mHFFileName = "dirty_carpet_cut_disp_4k";
     // std::string mColorFileName = "ganges_river_pebbles_diff_4k.jpg";
     std::string mColorFileName = "castle_brick_02_red_cut_diff_4k";
+    std::string mNetName = "block_io_dim8_24";
     // std::string mColorFileName = "dirty_carpet_cut_diff_4k.jpg";
     ref<Texture> mpHF;
     ref<Texture> mpHFMaxMip;

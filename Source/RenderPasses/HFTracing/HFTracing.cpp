@@ -34,7 +34,7 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <nvrtc.h>
-#include "NvrtcUtils/CommonNvrtc.hpp"
+#include "Tools/CommonNvrtc.hpp"
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
     registry.registerClass<RenderPass, HFTracing>();
@@ -215,7 +215,7 @@ CUfunction createNVRTCProgram()
 
 
     void* args[] = {NULL};
-    cuLaunchKernel(kernel, 1, 1, 1, 1, 1, 1, 0, 0, args, nullptr);
+    cuLaunchKernel(kernel, 2, 2, 1, 1, 1, 1, 0, 0, nullptr, nullptr);
     cudaDeviceSynchronize();
 
 
@@ -896,9 +896,9 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
     );
     std::vector<float> cudaWeight =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_flatten_{}.bin", mMediaPath, "block_io").c_str());
+        readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_flatten_{}.bin", mMediaPath, mNetName).c_str());
     std::vector<float> cudaBias =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", mMediaPath, "block_io").c_str());
+        readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", mMediaPath, mNetName).c_str());
 
     mpWeightBuffer = mpDevice->createBuffer(
         cudaWeight.size() * sizeof(float),
@@ -947,8 +947,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     setupTRT();
 
     // mpTextureSynthesis = std::make_unique<TextureSynthesis>(mpDevice);
-    mpMLP = std::make_unique<MLP>(mpDevice, "block_io");
-    mpNBTF = std::make_unique<NBTF>(mpDevice, "block_io", true);
+    mpMLP = std::make_unique<MLP>(mpDevice, mNetName);
+    mpNBTF = std::make_unique<NBTF>(mpDevice,mNetName, true);
     // Create a precompute pass.
 
     DefineList defines = mpScene->getSceneDefines();
@@ -970,7 +970,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 void HFTracing::setupTRT()
 {
     IRuntime* runtime = createInferRuntime(logger);
-    std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath, "block_io").c_str(), std::ios::binary);
+    std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath,mNetName).c_str(), std::ios::binary);
+    // std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath,"block_io").c_str(), std::ios::binary);
     std::stringstream planBuffer;
     planBuffer << planFile.rdbuf();
     std::string plan = planBuffer.str();

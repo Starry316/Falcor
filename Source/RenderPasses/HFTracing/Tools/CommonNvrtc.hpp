@@ -8,19 +8,11 @@
 #define CUBLASDX_DIR "D:/Projects/nvidia/mathdx/24.08/"
 #define CUBLASDX_INCLUDE_DIRS "D:/Projects/nvidia/mathdx/24.08/include/"
 #define CUDA_INCLUDE_DIR "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.1/include"
-const char* cudaProgram = R"(
-#include <cublasdx.hpp>
-using namespace cublasdx;
-extern "C" __global__ void helloFromGPU(float* a) {
-    unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
-    unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= 32 || y >= 32) return;
-
+const char *cudaProgram = R"(
+extern "C" __global__ void helloFromGPU() {
     printf("Hello World from GPU!\n");
-    // printf("%f \n", a[x]);
 }
 )";
-
 void checkNVRTCError(nvrtcResult result, const char* msg)
 {
     if (result != NVRTC_SUCCESS)

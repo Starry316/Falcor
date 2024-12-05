@@ -47,6 +47,7 @@ struct NBTF
     int2 hDims;
     int2 dDims;
 
+    int inputSize;
     MLP mlp;
 
     SamplerState gSampler;

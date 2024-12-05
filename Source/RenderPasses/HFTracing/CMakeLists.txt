@@ -27,7 +27,9 @@ target_sources(HFTracing PRIVATE
     Display.cs.slang
     cuda/MLPInference.cu
     cuda/MLPInference.h
-    NvrtcUtils/CommonNvrtc.hpp
+    Tools/Utils.cpp
+    Tools/Utils.h
+    Tools/CommonNvrtc.hpp
     # cuda/cublasdxTest.cu
     # cuda/cublasdxTest.h
 

@@ -1,9 +1,10 @@
 #include "MLPInference.h"
 
 
-#define IN_NUM 32
-#define HIDDEN_NUM 32
-#define OUT_NUM 3
+#define IN_NUM 24
+#define IN_1ST_NUM 24
+#define HIDDEN_NUM 24
+#define OUT_NUM 24
 
 float __device__ __forceinline__ relu(float x)
 {
@@ -57,39 +58,45 @@ __global__ void inference(float* weight, float* bias, float* input, float* outpu
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height) return;
     if (input[y*width + x + 32 * width*height] == 0) return;
+    // float* inputVal = input + 24 * (y * width + x);
 
+    // output[4 * (y * width + x) + 0] = inputVal[8];
+    // output[4 * (y * width + x) + 1] = inputVal[9];
+    // output[4 * (y * width + x) + 2] = inputVal[10];
     int offset = 0;
     int biasOffset = 0;
-    int inNum = 32;
-    int outNum = 32;
-    float* inputVal = input + 32 * (y * width + x);
-    float val1[32];
+    int inNumFirst = IN_1ST_NUM;
+    int inNum = IN_NUM;
+    int outNum = OUT_NUM;
+    // float* inputVal = input + 32 * (y * width + x);
+    float* inputVal = input + inNumFirst * (y * width + x);
+    float val1[IN_NUM];
 
-    float val2[32];
+    float val2[IN_NUM];
     for (int k = 0; k < outNum; ++k)
     {
         float sum = 0;
-        for (int j = 0; j < inNum; ++j)
+        for (int j = 0; j < inNumFirst; ++j)
         {
-            sum += weight[outNum * j + k + offset] * inputVal[j];
+            sum += weight[inNumFirst * j + k + offset] * inputVal[j];
 
         }
         val2[k] = leakyrelu(sum + bias[k+biasOffset]);
     }
-    offset += 32 * 32;
-    biasOffset += 32;
+    offset += outNum * inNumFirst;
+    biasOffset += outNum;
     for (int k = 0; k < outNum; ++k)
     {
         float sum = 0;
         for (int j = 0; j < inNum; ++j)
         {
-            sum += weight[outNum * j + k + offset] * val2[j];
+            sum += weight[inNum * j + k + offset] * val2[j];
 
         }
         val1[k] = leakyrelu(sum+ bias[k+biasOffset]);
     }
-   biasOffset += 32;
-    offset += 32 * 32;
+    offset += outNum * inNum;
+    biasOffset += outNum;
 
     for (int k = 0; k < outNum; ++k)
     {
@@ -100,8 +107,8 @@ __global__ void inference(float* weight, float* bias, float* input, float* outpu
         }
         val2[k] = leakyrelu(sum+ bias[k+biasOffset]);
     }
-    offset += 32 * 32;
-    biasOffset += 32;
+    offset += outNum * inNum;
+    biasOffset += outNum;
     for (int k = 0; k < 3; ++k)
     {
         float sum = 0;
@@ -138,11 +145,12 @@ __global__ void inferenceFP16(__half* weight, __half* bias, float* input, float*
     if (x >= width || y >= height) return;
     if (input[y*width + x + 32 * width*height] == 0) return;
 
-    int offset = 0;
+     int offset = 0;
     int biasOffset = 0;
-    int inNum = 32;
-    int outNum = 32;
-    float* inputVal = input + 16 * (y * width + x);
+    int inNumFirst = IN_1ST_NUM;
+    int inNum = IN_NUM;
+    int outNum = OUT_NUM;
+    float* inputVal = input + 12 * (y * width + x);
     __half val1[32];
 
     __half val2[32];
@@ -152,50 +160,59 @@ __global__ void inferenceFP16(__half* weight, __half* bias, float* input, float*
     }
 
 
+    output[4 * (y * width + x) + 0] = val1[8];
+    output[4 * (y * width + x) + 1] = val1[9];
+    output[4 * (y * width + x) + 2] = val1[10];
+
+    return;
     for (int k = 0; k < outNum; ++k)
     {
         __half sum = 0;
         for (int j = 0; j < inNum; ++j)
         {
-            sum += weight[outNum * j + k + offset] * val1[j];
+
+
+            sum = __hadd(sum, __hmul(weight[outNum * j + k + offset], val1[j]));
+            // sum += weight[outNum * j + k + offset] * val1[j];
 
         }
-        val2[k] = leakyrelu(sum + bias[k+biasOffset]);
+        val2[k] = leakyrelu(__hadd(sum, bias[k+biasOffset]));
     }
-    offset += 32 * 32;
-    biasOffset += 32;
+     offset += outNum * inNum;
+    biasOffset += outNum;
     for (int k = 0; k < outNum; ++k)
     {
         __half sum = 0;
         for (int j = 0; j < inNum; ++j)
         {
-            sum += weight[outNum * j + k + offset] * val2[j];
-
+            // sum += weight[outNum * j + k + offset] * val2[j];
+            sum = __hadd(sum, __hmul(weight[outNum * j + k + offset], val2[j]));
         }
-        val1[k] = leakyrelu(sum+ bias[k+biasOffset]);
+        val1[k] = leakyrelu(__hadd(sum, bias[k+biasOffset]));
     }
-   biasOffset += 32;
-    offset += 32 * 32;
-
+    offset += outNum * inNum;
+    biasOffset += outNum;
     for (int k = 0; k < outNum; ++k)
     {
         __half sum = 0;
         for (int j = 0; j < inNum; ++j)
         {
-            sum += weight[outNum * j + k + offset] * val1[j];
+            sum = __hadd(sum, __hmul(weight[outNum * j + k + offset], val1[j]));
+            // sum += weight[outNum * j + k + offset] * val1[j];
         }
-        val2[k] = leakyrelu(sum+ bias[k+biasOffset]);
+        val2[k] = leakyrelu(__hadd(sum, bias[k+biasOffset]));
     }
-    offset += 32 * 32;
-    biasOffset += 32;
+    offset += outNum * inNum;
+    biasOffset += outNum;
     for (int k = 0; k < 3; ++k)
     {
         __half sum = 0;
         for (int j = 0; j < inNum; ++j)
         {
-            sum += weight[4 * j + k + offset] * val2[j];
+            // sum += weight[4 * j + k + offset] * val2[j];
+            sum = __hadd(sum, __hmul(weight[outNum * j + k + offset], val2[j]));
         }
-        val1[k] = relu(sum+ bias[k+biasOffset]);
+        val1[k] = relu(__hadd(sum, bias[k+biasOffset]));
     }
 
 
