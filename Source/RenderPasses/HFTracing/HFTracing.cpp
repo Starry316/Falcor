@@ -657,6 +657,7 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
         dict[Falcor::kRenderPassRefreshFlags] = flags | Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         mOptionsChanged = false;
     }
+    mMaxTriCount = 32;
     // Preparation 1: precompute geometry maps (normal, tangent, position)
     if (mTriID < mMaxTriCount)
     {
@@ -823,23 +824,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
             );
         }
 
-        if (mpScene->hasGeometryType(Scene::GeometryType::Curve))
-        {
-            sbt->setHitGroup(
-                0, mpScene->getGeometryIDs(Scene::GeometryType::Curve), desc.addHitGroup("scatterCurveClosestHit", "", "curveIntersection")
-            );
-            sbt->setHitGroup(1, mpScene->getGeometryIDs(Scene::GeometryType::Curve), desc.addHitGroup("", "", "curveIntersection"));
-        }
 
-        if (mpScene->hasGeometryType(Scene::GeometryType::SDFGrid))
-        {
-            sbt->setHitGroup(
-                0,
-                mpScene->getGeometryIDs(Scene::GeometryType::SDFGrid),
-                desc.addHitGroup("scatterSdfGridClosestHit", "", "sdfGridIntersection")
-            );
-            sbt->setHitGroup(1, mpScene->getGeometryIDs(Scene::GeometryType::SDFGrid), desc.addHitGroup("", "", "sdfGridIntersection"));
-        }
 
         logInfo("[HF Tracing] Total mesh num: {} ", mpScene->getMeshCount());
         for (uint i = 0; i < mpScene->getMeshCount(); i++)

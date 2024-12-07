@@ -180,7 +180,7 @@ private:
     uint mTriID = 0;
     uint mMaxSteps = 1000;
     uint mMaxTriCount = 1000;
-    RenderType mRenderType = RenderType::CUDA;
+    RenderType mRenderType = RenderType::RT;
 
     bool mContactRefinement = true;
     bool mMipGenerated = false;

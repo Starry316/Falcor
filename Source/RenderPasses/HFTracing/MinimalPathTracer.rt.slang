@@ -64,11 +64,12 @@ import Utils.Geometry.GeometryHelpers;
 import Utils.Sampling.SampleGenerator;
 import Utils.Texture.HexTiling;
 import Rendering.Lights.LightHelpers;
-import BTFSynthesis;
+
 import Utils.Debug.PixelDebug;
 import Rendering.Lights.EnvMapSampler;
 import Rendering.Lights.EnvMapSampler;
 import Utils.Neural.NBTF;
+import Tracing.MyIntersection;
 cbuffer CB
 {
     uint gFrameCount;    // Frame count since scene was loaded.
@@ -188,23 +189,6 @@ ShadingData loadShadingData(const HitInfo hit, const float3 rayOrigin, const flo
         materialID = gScene.getMaterialID(displacedTriangleHit.instanceID);
     }
 #endif
-#if SCENE_HAS_GEOMETRY_TYPE(GEOMETRY_TYPE_CURVE)
-    if (hit.getType() == HitType::Curve)
-    {
-        const CurveHit curveHit = hit.getCurveHit();
-        v = gScene.getVertexDataFromCurve(curveHit);
-        materialID = gScene.getMaterialID(curveHit.instanceID);
-    }
-#endif
-#if SCENE_HAS_GEOMETRY_TYPE(GEOMETRY_TYPE_SDF_GRID)
-    if (hit.getType() == HitType::SDFGrid)
-    {
-        const SDFGridHit sdfGridHit = hit.getSDFGridHit();
-        v = gScene.getVertexDataFromSDFGrid(sdfGridHit, rayOrigin, rayDir);
-        materialID = gScene.getMaterialID(sdfGridHit.instanceID);
-    }
-#endif
-
     ShadingData sd = gScene.materials.prepareShadingData(v, materialID, -rayDir);
 
     return sd;
@@ -372,12 +356,12 @@ bool generateScatterRay(const ShadingData sd, const IMaterialInstance mi, float3
  */
 void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
-    rayData.radiance = 0.1;
 
-    // let lod = ExplicitLodTextureSampler(0.f);
 
-    // // Load shading data.
-    // ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction, lod);
+    let lod = ExplicitLodTextureSampler(0.f);
+
+    // Load shading data.
+    ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction, lod);
 
     // float3 exitPosW;
     // float3 HFColor = 0.0;
@@ -391,7 +375,12 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // rayData.direction = sd.V;
 
     // // Create material instance.
-    // let mi = gScene.materials.getMaterialInstance(sd, lod);
+    let mi = gScene.materials.getMaterialInstance(sd, lod);
+    // rayData.radiance = HexTiling(gColor, gSampler, float2(0.0001), float2(0.0001), (sd.uv) );
+
+    // rayData.radiance = mi.getProperties(sd).diffuseReflectionAlbedo;
+    rayData.radiance = hit.getDisplacedTriangleHit().displacement;
+    rayData.terminated = true;
 
     // // Add emitted light.
     // if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
@@ -817,7 +806,29 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
 
     return outColor;
 }
+float4 traceDispPath(const uint2 pixel, const uint2 frameDim)
+{
+    float4 outColor = float4(0.f);
 
+    const float3 primaryRayOrigin = gScene.camera.getPosition();
+    const float3 primaryRayDir = getPrimaryRayDir(pixel, frameDim, gScene.camera);
+    ScatterRayData rayData;
+    rayData.origin = primaryRayOrigin;
+    rayData.direction = primaryRayDir;
+    rayData.terminated = false;
+    rayData.radiance = float3(0.0f);
+    rayData.thp = float3(1);
+    rayData.pathLength = 1;
+    traceScatterRay(rayData);
+    // for (uint depth = 0; depth < kMaxBounces && !rayData.terminated; depth++)
+    // {
+    //     // Trace scatter ray. If it hits geometry, the closest hit shader samples
+    //     // direct illumination and generates the next scatter ray.
+
+    // }
+
+    return float4(rayData.radiance, 1.0f);
+}
 //
 // Shader entry points for miss shaders.
 //
@@ -880,6 +891,33 @@ void shadowTriangleMeshAnyHit(inout ShadowRayData rayData, BuiltInTriangleInters
 }
 
 //
+// Shader entry points for DisplacedTriangleMesh hit groups.
+//
+
+[shader("intersection")]
+void displacedTriangleMeshIntersection()
+{
+    const Ray ray = Ray(WorldRayOrigin(), WorldRayDirection(), RayTMin(), RayTCurrent());
+    SynthesizedDisplacedTriangleMeshIntersector::Attribs attribs;
+    float t;
+    if (SynthesizedDisplacedTriangleMeshIntersector::intersect(ray, getGeometryInstanceID(), PrimitiveIndex(), attribs, t))
+    {
+        ReportHit(t, 0, attribs);
+    }
+}
+
+[shader("closesthit")]
+void scatterDisplacedTriangleMeshClosestHit(inout ScatterRayData rayData, SynthesizedDisplacedTriangleMeshIntersector::Attribs attribs)
+{
+    DisplacedTriangleHit displacedTriangleHit;
+    displacedTriangleHit.instanceID = getGeometryInstanceID();
+    displacedTriangleHit.primitiveIndex = PrimitiveIndex();
+    displacedTriangleHit.barycentrics = attribs.barycentrics;
+    displacedTriangleHit.displacement = attribs.displacement;
+    handleHit(HitInfo(displacedTriangleHit), rayData);
+}
+
+//
 // Shader entry point for ray generation shader.
 //
 
@@ -890,7 +928,7 @@ void rayGen()
     uint2 frameDim = DispatchRaysDimensions().xy;
     printSetPixel(pixel);
     // float3 color = tracePath(pixel, frameDim);
-    gOutputColor[pixel]  = tracePath(pixel, frameDim);
-
+    // gOutputColor[pixel]  = tracePath(pixel, frameDim);
+    gOutputColor[pixel] = traceDispPath(pixel, frameDim);
     // gOutputColor[pixel] = float4(color, 1.f);
 }

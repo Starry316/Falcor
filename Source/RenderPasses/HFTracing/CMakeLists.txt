@@ -30,6 +30,7 @@ target_sources(HFTracing PRIVATE
     Tools/Utils.cpp
     Tools/Utils.h
     Tools/CommonNvrtc.hpp
+    Tracing/MyIntersection.slang
     # cuda/cublasdxTest.cu
     # cuda/cublasdxTest.h
 

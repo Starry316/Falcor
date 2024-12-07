@@ -11,6 +11,7 @@ float3 HexTiling(
     float exp = 7
 )
 {
+    uv *= 1;
     // Get triangle info.
     float w1, w2, w3;
     int2 vertex1, vertex2, vertex3;
@@ -113,5 +114,43 @@ float4 HexTiling(
     if (r != 0.5)
         W = Gain3(W, r);
     return W.x * c1 + W.y * c2 + W.z * c3;
-
+}
+float HexTilingHeight(
+    Texture2D<float4> tex,
+    SamplerState samp,
+    float2 dfdx,
+    float2 dfdy,
+    float2 uv,
+    float rotStrength = 0,
+    float r = 0.5,
+    float fallOffContrast = 0.6,
+    float exp = 7
+)
+{
+    uv *= 1;
+    // return tex.SampleGrad(samp, frac(uv), dfdx, dfdy).x;
+    // Get triangle info.
+    float w1, w2, w3;
+    int2 vertex1, vertex2, vertex3;
+    TriangleGrid(w1, w2, w3, vertex1, vertex2, vertex3, uv);
+    float2x2 rot1 = LoadRot2x2(vertex1, rotStrength);
+    float2x2 rot2 = LoadRot2x2(vertex2, rotStrength);
+    float2x2 rot3 = LoadRot2x2(vertex3, rotStrength);
+    float2 cen1 = MakeCenST(vertex1);
+    float2 cen2 = MakeCenST(vertex2);
+    float2 cen3 = MakeCenST(vertex3);
+    float2 st1 = mul(uv - cen1, rot1) + cen1 + hash(vertex1);
+    float2 st2 = mul(uv - cen2, rot2) + cen2 + hash(vertex2);
+    float2 st3 = mul(uv - cen3, rot3) + cen3 + hash(vertex3);
+    // Fetch input.
+    float c1 = tex.SampleGrad(samp, frac(st1), mul(dfdx, rot1), mul(dfdy, rot1)).x;
+    float c2 = tex.SampleGrad(samp, frac(st2), mul(dfdx, rot2), mul(dfdy, rot2)).x;
+    float c3 = tex.SampleGrad(samp, frac(st3), mul(dfdx, rot3), mul(dfdy, rot3)).x;
+    float3 Dw = float3(c1, c2, c3);
+    Dw = lerp(1.0, Dw, fallOffContrast);          // 0.6
+    float3 W = Dw * pow(float3(w1, w2, w3), exp); // 7
+    W /= (W.x + W.y + W.z);
+    if (r != 0.5)
+        W = Gain3(W, r);
+    return W.x * c1 + W.y * c2 + W.z * c3;
 }
