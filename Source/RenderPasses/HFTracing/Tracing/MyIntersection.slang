@@ -7,14 +7,14 @@ import Utils.Math.MatrixUtils;
 import Utils.Texture.HexTiling;
 import Utils.Debug.PixelDebug;
 import Utils.Math.MathHelpers;
-SamplerState mySampler;
+
 bool traceSynthesizedHeightMapEstimated( const DisplacementData displacementData, float3 startPoint, float3 endPoint, out float intersectedT, out float intersectedHeight )
 {
     intersectedT = {};
     intersectedHeight = {};
 
-    // const float entryHeightData = displacementData.readValue(startPoint.xy);
-    const float entryHeightData = displacementData.texture.SampleLevel(mySampler, 1.5f * (startPoint.xy / displacementData.size), 0).x;
+    const float entryHeightData = displacementData.readValue(startPoint.xy);
+    // const float entryHeightData = displacementData.texture.SampleLevel(mySampler, 1.5f * (startPoint.xy / displacementData.size), 0).x;
     // float entryHeightData = HexTilingHeight( displacementData.texture, displacementData.samplerState, float2(0.0001), float2(0.0001), (startPoint.xy / displacementData.size) * 1 );
     // entryHeightData = displacementData.mapValue(entryHeightData);
 #if DISPLACEMENT_TWO_SIDED == 0
@@ -36,8 +36,8 @@ bool traceSynthesizedHeightMapEstimated( const DisplacementData displacementData
 
     for (uint step = 0; step < maxFinestStep; step++)
     {
-        // float height = displacementData.readValue(curPos.xy);
-        float height = displacementData.texture.SampleLevel(mySampler, 1.5f * (curPos.xy / displacementData.size), 0).x;
+        float height = displacementData.readValue(curPos.xy);
+        // float height = displacementData.texture.SampleLevel(mySampler, 1.5f * (curPos.xy / displacementData.size), 0).x;
         if ((height + FLT_EPSILON >= curPos.z || curPos.z <= 0))
         {
             intersectedT = tMax * (float(step) / maxFinestStep);

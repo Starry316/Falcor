@@ -597,6 +597,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gApplySyn"] = mApplySyn;
     var["CB"]["gLocalFrame"] = mLocalFrame;
     var["CB"]["gUseFP16"] = mUseFP16;
+    var["CB"]["gInvFrameDim"] = 1.0f/Falcor::float2(targetDim);
     mpNBTF->bindShaderData(var["CB"]["nbtf"]);
 
     if (mpEnvMapSampler)
@@ -625,7 +626,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
 
     var["wiWox"].setUav(mpWiWox->getUAV());
     var["uvWoyz"].setUav(mpUVWoyz->getUAV());
-    var["dfDxy"].setUav(mpDfDxy->getUAV());
+    var["ddxy"].setUav(mpDfDxy->getUAV());
 
     var["cudaInputBuffer"].setUav(mpInputBuffer->getUAV());
 
