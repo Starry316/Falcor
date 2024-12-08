@@ -380,8 +380,8 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // rayData.radiance = HexTiling(gColor, gSampler, float2(0.0001), float2(0.0001), UV_SCALING * (sd.uv) );
 
     // rayData.radiance = mi.getProperties(sd).diffuseReflectionAlbedo;
-    // rayData.radiance = hit.getDisplacedTriangleHit().displacement;
-    rayData.radiance = gColor.SampleLevel(gSampler, sd.uv * UV_SCALING, 0) ;
+    rayData.radiance = pow(hit.getDisplacedTriangleHit().displacement, 1/1.4);
+    // rayData.radiance = gColor.SampleLevel(gSampler, sd.uv * UV_SCALING, 0) ;
     rayData.terminated = false;
 
     // // Add emitted light.
@@ -462,7 +462,52 @@ void computeRayDifferentials(
     ddx = float2(dsdx, dtdx);
     ddy = float2(dsdy, dtdy);
 }
+void computeRayDifferentials(
+    const GeometryInstanceID instanceID,
+    const uint primitiveIndex,
+    float3 rayDir,
+    float hitT,
+    const Camera camera,
+    float2 invFrameDim,
+    out float2 ddx,
+    out float2 ddy
+)
+{
+    // TODO: Is this code correct for instance transforms that flip the handedness of the coordinate system?
 
+    // Ray differentials
+    float3 P[3];
+    gScene.getVertexPositionsW(instanceID, primitiveIndex, P);
+    float3 e1 = P[1] - P[0];
+    float3 e2 = P[2] - P[0];
+    float3 d = rayDir;
+    float k = dot(cross(e1, e2), d);
+    k = abs(k) > 1e-20f ? rcp(k) : 0.0f;
+    float3 cu = cross(e2, d);
+    float3 cv = cross(d, e1);
+    // Assumes a normalized ray direction
+    // dDdx in ray gen
+    float3 dx = camera.data.cameraU * 2.f * invFrameDim.x / camera.data.focalDistance;
+    // dDdy in ray gen
+    float3 dy = camera.data.cameraV * 2.f * invFrameDim.y / camera.data.focalDistance;
+    // Transfer to primary hit
+    float3 q = dx * hitT;
+    float3 r = dy * hitT;
+    float dudx = k * dot(cu, q);
+    float dudy = k * dot(cu, r);
+    float dvdx = k * dot(cv, q);
+    float dvdy = k * dot(cv, r);
+    float2 T[3];
+    gScene.getVertexTexCoords(instanceID, primitiveIndex, T);
+    float2 g1 = T[1] - T[0];
+    float2 g2 = T[2] - T[0];
+    float dsdx = (dudx * g1.x + dvdx * g2.x);
+    float dsdy = (dudy * g1.x + dvdy * g2.x);
+    float dtdx = (dudx * g1.y + dvdx * g2.y);
+    float dtdy = (dudy * g1.y + dvdy * g2.y);
+    ddx = float2(dsdx, dtdx);
+    ddy = float2(dsdy, dtdy);
+}
 float3 rayDirToLocal(float3 v, float2 uv)
 {
     float4 tangentW = gTangentMap.SampleLevel(gSampler, uv, 0);
@@ -896,8 +941,8 @@ bool traceSynthesizedHeightMapEstimated( const DisplacementData displacementData
     intersectedT = {};
     intersectedHeight = {};
 
-    // const float entryHeightData = displacementData.texture.SampleLevel(displacementData.samplerState, startPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
-    const float entryHeightData = gHF.SampleLevel(displacementData.samplerState, startPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
+    const float entryHeightData = displacementData.texture.SampleLevel(displacementData.samplerState, startPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
+    // const float entryHeightData = gHF.SampleLevel(displacementData.samplerState, startPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
 
     if (startPoint.z < entryHeightData)
     {
@@ -923,8 +968,8 @@ bool traceSynthesizedHeightMapEstimated( const DisplacementData displacementData
         lastTestPoint = currentTestPoint;
         currentTestPoint += incrementUnit;
 
-        // const float heightData = displacementData.texture.SampleLevel(displacementData.samplerState, currentTestPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
-        const float heightData = gHF.SampleLevel(displacementData.samplerState, currentTestPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
+        const float heightData = displacementData.texture.SampleLevel(displacementData.samplerState, currentTestPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
+        // const float heightData = gHF.SampleLevel(displacementData.samplerState, currentTestPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
 
         if (currentHeightDelta < 0.f)
@@ -1237,7 +1282,7 @@ struct SynthesizedDisplacedTriangleMeshIntersector
         \param[out] t Intersection t.
         \return True if the ray intersects the displaced triangle.
     */
-    static bool intersect( const Ray ray, const GeometryInstanceID instanceID, const uint primitiveIndex, const float2 ddx, const float2 ddy, out Attribs attribs, out float t)
+    static bool intersect( const Ray ray, const GeometryInstanceID instanceID, const uint primitiveIndex, out Attribs attribs, out float t)
     {
         attribs = {};
         t = {};
@@ -1251,6 +1296,10 @@ struct SynthesizedDisplacedTriangleMeshIntersector
         gScene.materials.loadDisplacementData(materialID, displacementData);
 
         DisplacementIntersection result;
+
+        float2 ddx, ddy;
+        computeRayDifferentials(instanceID, primitiveIndex, ray.dir, ray.tMax, gScene.camera, gInvFrameDim, ddx, ddy);
+
         if (intersectSynthesizedDisplacedTriangle(ray, vertices, worldMat, displacementData, ddx, ddy, result))
         {
             attribs.barycentrics = result.barycentrics;
@@ -1271,15 +1320,10 @@ struct SynthesizedDisplacedTriangleMeshIntersector
 void displacedTriangleMeshIntersection()
 {
     const Ray ray = Ray(WorldRayOrigin(), WorldRayDirection(), RayTMin(), RayTCurrent());
-    float2 ddx, ddy;
-    TriangleHit triangleHit;
-    triangleHit.instanceID = getGeometryInstanceID();
-    triangleHit.primitiveIndex = PrimitiveIndex();
-    computeRayDifferentials(triangleHit, WorldRayDirection(), RayTCurrent(), gScene.camera, gInvFrameDim, ddx, ddy);
     float t;
 
     SynthesizedDisplacedTriangleMeshIntersector::Attribs attribs;
-    if (SynthesizedDisplacedTriangleMeshIntersector::intersect(ray, getGeometryInstanceID(), PrimitiveIndex(), ddx, ddy, attribs, t))
+    if (SynthesizedDisplacedTriangleMeshIntersector::intersect(ray, getGeometryInstanceID(), PrimitiveIndex(), attribs, t))
     {
         ReportHit(t, 0, attribs);
     }
