@@ -35,7 +35,7 @@ import Scene.Displacement.DisplacementData;
 #define DISPLACEMENT_TWO_SIDED                              0           // Displaced surface is two sided. This can create some cracks.
 #define DISPLACEMENT_DEBUG_DISPLAY_SHELL                    0           // Display the shell instead of displaced surface.
 
-static const bool kShellForceMaxThickness = false;
+static const bool kShellForceMaxThickness = true;
 static const bool kShellBoundsCalcUseSampleGrad = true;
 static const bool kHitFaceNormalUseCentralGrad = true;
 static const bool kDisplacementScalingUsePreciseLength = false;

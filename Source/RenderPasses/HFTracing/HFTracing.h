@@ -153,12 +153,15 @@ private:
     std::string mMediaPath =getProjectDirectory().string();
     // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
     std::string mHFFileName = "castle_brick_02_red_cut_disp_4k";
+    std::string mShellHFFileName = "metal_plate_disp_4k";
     // std::string mHFFileName = "dirty_carpet_cut_disp_4k";
     // std::string mColorFileName = "ganges_river_pebbles_diff_4k.jpg";
-    std::string mColorFileName = "castle_brick_02_red_cut_diff_4k";
+    // std::string mColorFileName = "castle_brick_02_red_cut_diff_4k";
+    std::string mColorFileName = "metal_plate_diff_4k";
     std::string mNetName = "block_io_dim8_24";
     // std::string mColorFileName = "dirty_carpet_cut_diff_4k.jpg";
     ref<Texture> mpHF;
+    ref<Texture> mpShellHF;
     ref<Texture> mpHFMaxMip;
     ref<Texture> mpColor;
     ref<Texture> mpNormalMap;
@@ -175,7 +178,8 @@ private:
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
     Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.045);
-    Falcor::float4 mCurvatureParas = Falcor::float4(0.056, 1, 0.65, 0.3);
+    // Falcor::float4 mCurvatureParas = Falcor::float4(0.056, 1, 0.65, 0.3);
+    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 1, 0.65, 0.3);
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
     uint mTriID = 0;
     uint mMaxSteps = 1000;
@@ -231,6 +235,7 @@ private:
     ref<Buffer> mpWeightFP16Buffer;
     ref<Buffer> mpBiasFP16Buffer;
 
-
+    uint mDebugPrism = 0;
+    bool mTraceShell = true;
 
 };

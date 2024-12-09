@@ -598,6 +598,8 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gLocalFrame"] = mLocalFrame;
     var["CB"]["gUseFP16"] = mUseFP16;
     var["CB"]["gInvFrameDim"] = 1.0f/Falcor::float2(targetDim);
+    var["CB"]["gDebugPrism"] =mDebugPrism;
+    var["CB"]["gTraceShell"] =mTraceShell;
     mpNBTF->bindShaderData(var["CB"]["nbtf"]);
 
     if (mpEnvMapSampler)
@@ -619,6 +621,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     // Bind textures
     var["gColor"].setSrv(mpColor->getSRV());
     var["gHF"].setSrv(mpHF->getSRV());
+    var["gShellHF"].setSrv(mpShellHF->getSRV());
     var["gHFMaxMip"].setSrv(mpHFMaxMip->getSRV());
     var["gNormalMap"].setSrv(mpNormalMap->getSRV());
     var["gTangentMap"].setSrv(mpTangentMap->getSRV());
@@ -738,7 +741,10 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("HF Bound", mHFBound);
     // dirty |= widget.checkbox("Local Frame", mLocalFrame);
     dirty |= widget.checkbox("FP16", mUseFP16);
+    dirty |= widget.checkbox("Trace Shell", mTraceShell);
 
+    dirty |= widget.var("debug", mDebugPrism);
+    widget.tooltip("0: top, 1 bot, 234 slab and fin", true);
     // dirty |= widget.var("Light-Phi", mLightZPR.y);
     // dirty |= widget.slider("Light Z", mLightZPR.x, 0.0f, 10.0f);
     // dirty |= widget.slider("Light Phi", mLightZPR.y, 0.0f, 1.0f);
@@ -845,9 +851,18 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         false,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
     );
+    // Read in textures, we use a constant texture now
+    mpShellHF = Texture::createFromFile(
+        mpDevice,
+        fmt::format("D:/textures/synthetic/{}.png", mShellHFFileName).c_str(),
+        true,
+        false,
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
+    );
     mpColor = Texture::createFromFile(
         mpDevice,
-        fmt::format("{}/media/BTF/scene/textures/{}.jpg", mMediaPath, mColorFileName).c_str(),
+        // fmt::format("{}/media/BTF/scene/textures/{}.jpg", mMediaPath, mColorFileName).c_str(),
+        fmt::format("D:/textures/synthetic/{}.jpg",  mColorFileName).c_str(),
         true,
         true,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget

@@ -82,6 +82,8 @@ cbuffer CB
     bool gUseFP16;
     EnvMapSampler envMapSampler;
     NBTF nbtf;
+    uint gDebugPrism;
+    bool gTraceShell;
 }
 
 // Inputs
@@ -96,6 +98,7 @@ Texture2D<float4> gNormalMap;
 Texture2D<float4> gTangentMap;
 Texture2D<float4> gPosMap;
 Texture2D<float> gHF;
+Texture2D<float> gShellHF;
 Texture2D<float> gHFMaxMip;
 
 RWTexture2D<float4> wiWox;
@@ -346,76 +349,6 @@ bool generateScatterRay(const ShadingData sd, const IMaterialInstance mi, float3
     }
 
     return false;
-}
-
-/**
- * Process a hit.
- * Loads the shading data, samples analytic lights and samples a new scatter ray.
- * Terminates the path if maximum number of bounces is reached.
- * @param[in] hit Hit info.
- * @param[in,out] rayData Ray payload.
- *
- */
-void handleHit(const HitInfo hit, inout ScatterRayData rayData)
-{
-
-    let lod = ExplicitLodTextureSampler(0.f);
-
-    // Load shading data.
-    ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction, lod);
-
-    // float3 exitPosW;
-    // float3 HFColor = 0.0;
-    // bool hitHF = true;
-    // // bool hitHF = raySurfaceMarching(sd, hit, 1.f / float2(1920, 1080), exitPosW, HFColor);
-    // if (hitHF) {
-    //     rayData.radiance = HFColor;
-    //     rayData.terminated = true;
-    // }
-    // rayData.radiance = 0;
-    // rayData.direction = sd.V;
-
-    // // Create material instance.
-    // let mi = gScene.materials.getMaterialInstance(sd, lod);
-    // rayData.radiance = HexTiling(gColor, gSampler, float2(0.0001), float2(0.0001), UV_SCALING * (sd.uv) );
-
-    // rayData.radiance = mi.getProperties(sd).diffuseReflectionAlbedo;
-    rayData.radiance = pow(hit.getDisplacedTriangleHit().displacement, 1/1.4);
-    // rayData.radiance = gColor.SampleLevel(gSampler, sd.uv * UV_SCALING, 0) ;
-    rayData.terminated = false;
-
-    // // Add emitted light.
-    // if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
-    // {
-    //     rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
-    // }
-
-    // // Check whether to terminate based on max depth.
-    // if (rayData.pathLength >= kMaxBounces)
-    // {
-    //     rayData.terminated = true;
-    //     return;
-    // }
-
-    // // Compute ray origin for new rays spawned from the hit.
-    // float3 rayOrigin;
-    // rayOrigin = sd.computeRayOrigin();
-    // // Add contribution of direct light from analytic lights.
-    // if (kUseAnalyticLights)
-    // {
-    //     float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
-    //     rayData.radiance += rayData.thp * Lr;
-    // }
-
-    // // Generate scatter ray for the next path segment.
-    // // The raygen shader will continue the path based on the returned payload.
-    // if (!generateScatterRay(sd, mi, rayOrigin, rayData))
-    // {
-    //     rayData.terminated = true;
-    //     return;
-    // }
-
-    // rayData.pathLength++;
 }
 void computeRayDifferentials(
     const TriangleHit hit,
@@ -940,9 +873,15 @@ bool traceSynthesizedHeightMapEstimated( const DisplacementData displacementData
 {
     intersectedT = {};
     intersectedHeight = {};
-
-    const float entryHeightData = displacementData.texture.SampleLevel(displacementData.samplerState, startPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
-    // const float entryHeightData = gHF.SampleLevel(displacementData.samplerState, startPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
+    ddx = 0.0001;
+    ddy = 0.0001;
+    // const float entryHeightData = displacementData.texture.SampleLevel(displacementData.samplerState, startPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
+    //  const float
+    float entryHeightData;
+    if (gApplySyn)
+        entryHeightData = HexTiling(gShellHF, displacementData.samplerState, ddx, ddy, startPoint.xy * UV_SCALING).x * HF_SCALING + HF_OFFSET;
+    else
+        entryHeightData = gShellHF.SampleLevel(displacementData.samplerState, startPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
 
     if (startPoint.z < entryHeightData)
     {
@@ -954,7 +893,7 @@ bool traceSynthesizedHeightMapEstimated( const DisplacementData displacementData
     float3 viewDirection = endPoint - startPoint;
     int maxCount = ceil(abs(viewDirection.x)) + ceil(abs(viewDirection.y)) + 2;
     maxCount = min(maxCount * kRaymarchingSampleCountFactor, kRaymarchingMaxSampleCount); // Prevent freeze due to corner cases. Todo: Investigate why this happens.
-
+    // maxCount = 200;
     float3 incrementUnit = viewDirection / maxCount;
     viewDirection = normalize(viewDirection);
     const float tMax = solveT(startPoint, viewDirection, endPoint);
@@ -968,18 +907,23 @@ bool traceSynthesizedHeightMapEstimated( const DisplacementData displacementData
         lastTestPoint = currentTestPoint;
         currentTestPoint += incrementUnit;
 
-        const float heightData = displacementData.texture.SampleLevel(displacementData.samplerState, currentTestPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
-        // const float heightData = gHF.SampleLevel(displacementData.samplerState, currentTestPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
+        // const float heightData = displacementData.texture.SampleLevel(displacementData.samplerState, currentTestPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
+        float heightData;
+
+        if (gApplySyn)
+            heightData = HexTiling(gShellHF, displacementData.samplerState, ddx, ddy, currentTestPoint.xy * UV_SCALING).x * HF_SCALING + HF_OFFSET;
+        else
+            heightData = gShellHF.SampleLevel(displacementData.samplerState, currentTestPoint.xy * UV_SCALING, 0).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
 
         if (currentHeightDelta < 0.f)
+        // if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) || (sign(lastHeightDelta) != sign(currentHeightDelta)))
         {
             float heightDeltaRatio = abs(currentHeightDelta) / (abs(currentHeightDelta) + abs(lastHeightDelta));
             float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
 
             intersectedT = tMax * (estimatedT / maxCount);
             intersectedHeight = lerp(currentTestPoint.z, lastTestPoint.z, heightDeltaRatio);
-
             return true;
         }
         lastHeightDelta = currentHeightDelta;
@@ -987,118 +931,7 @@ bool traceSynthesizedHeightMapEstimated( const DisplacementData displacementData
 
     return false;
 }
-// bool traceSynthesizedHeightMapEstimated( const DisplacementData displacementData, float3 startPoint, float3 endPoint,  float2 ddx,  float2 ddy, out float intersectedT, out float intersectedHeight )
-// {
-//     intersectedT = {};
-//     intersectedHeight = {};
-//     float entryHeightData = HexTilingHeight(displacementData.texture, displacementData.samplerState, ddx, ddy, UV_SCALING * (startPoint.xy)) * HF_SCALING + HF_OFFSET;
 
-//     //  entryHeightData = displacementData.mapValue(entryHeightData);
-// // #if DISPLACEMENT_TWO_SIDED == 0
-//     if (startPoint.z < entryHeightData)
-//     {
-//         intersectedT = 0.00001f; // This seems to make the intersection ignored. TODO: experiment with eg. 0.000001
-//         intersectedHeight = startPoint.z;
-//         return true;
-//     }
-// // #endif
-
-//     // ddx *= gControlParas.y;
-//     // ddy *= gControlParas.y;
-//     ddx = 0.005;
-//     ddy = 0.005;
-//     float footprint = max(length(ddx), length(ddy)) * gControlParas.x;
-//     float finestStepLength = footprint;
-//     float coarseStepLength = 32 * finestStepLength;
-//     float maxFinestStep = 1.0f / finestStepLength;
-//     float maxCoarseStep = maxFinestStep / 32;
-
-//     // maxFinestStep = 64;
-//     float3 tracingPath = endPoint - startPoint;
-//     float3 deltaPos = tracingPath / maxFinestStep;
-
-//     float3 curPos = startPoint;
-//     bool flagFound = false;
-//     const float tMax = solveT(startPoint, tracingPath, endPoint);
-
-// // // #ifdef CONTACT_REFINEMENT
-//     // float3 previousPos = curPos;
-//     // for (uint coarseStep = 0; coarseStep < maxCoarseStep; coarseStep++)
-//     // {
-//     //     float coarseHeight;
-//     //     if (gApplySyn)
-//     //         coarseHeight = HexTiling(gHFMaxMip, gSampler, ddx, ddy, (curPos.xy) * UV_SCALING) * HF_SCALING + HF_OFFSET;
-//     //     else
-//     //         coarseHeight = gHFMaxMip.SampleGrad(gSampler, (curPos.xy) * UV_SCALING, ddx, ddy) * HF_SCALING + HF_OFFSET;
-//     //     if ((coarseHeight + FLT_EPSILON >= curPos.z || curPos.z <= 0))
-//     //     {
-//     //         // find intersection in coarse level
-//     //         float3 curFinePos = previousPos;
-//     //         for (uint step = 0; step < 32; step++)
-//     //         {
-//     //             // fine level ray marching
-//     //             float height;
-//     //             if (gApplySyn)
-//     //                 height = HexTiling(gHF, gSampler, ddx, ddy, (curFinePos.xy) * UV_SCALING) * HF_SCALING + HF_OFFSET;
-//     //             else
-//     //                 height = gHF.SampleGrad(gSampler, (curFinePos.xy) * UV_SCALING, ddx, ddy) * HF_SCALING + HF_OFFSET;
-//     //             if ((height + FLT_EPSILON >= curFinePos.z || curFinePos.z <= 0))
-//     //             {
-//     //                 // find intersection
-//     //                 intersectedT = tMax * ((float(step) / maxFinestStep) / 32.0f + float(coarseStep) / maxCoarseStep);
-//     //                 intersectedHeight = curFinePos.z;
-
-//     //                 flagFound = true;
-//     //                 break;
-//     //             }
-//     //             else
-//     //             {
-//     //                 // keep marching
-//     //                 // bool dummyB;
-//     //                 // float4 tangentW = gTangentMap.SampleLevel(gSampler, curFinePos.xy, 0);
-//     //                 // float3 N = gNormalMap.SampleLevel(gSampler, curFinePos.xy, 0).xyz;
-//     //                 // ShadingFrame sf = ShadingFrame.createSafe(N, tangentW, dummyB);
-//     //                 // float3 deltaPos = sf.toLocal(deltaPosW) * finestStepLength;
-//     //                 curFinePos += deltaPos * finestStepLength;
-//     //             }
-//     //             curPos = curFinePos;
-//     //             previousPos = curPos;
-//     //         }
-//     //         if (flagFound)
-//     //             break;
-//     //     }
-//     //     else
-//     //     {
-//     //         // keep marching
-//     //         // bool dummyB;
-//     //         // float4 tangentW = gTangentMap.SampleLevel(gSampler, curPos.xy, 0);
-//     //         // float3 N = gNormalMap.SampleLevel(gSampler, curPos.xy, 0).xyz;
-//     //         // ShadingFrame sf = ShadingFrame.createSafe(N, tangentW, dummyB);
-//     //         // float3 deltaPos = sf.toLocal(deltaPosW) * coarseStepLength;
-//     //         previousPos = curPos;
-//     //         curPos += deltaPos * coarseStepLength;
-//     //     }
-//     // }
-// // #endif
-
-//     for (uint step = 0; step < maxFinestStep; step++)
-//     {
-//         // float height = displacementData.readValue(curPos.xy);
-//         // float height = displacementData.texture.SampleLevel(gSampler, UV_SCALING * (curPos.xy), 0).x;
-//         float height = HexTilingHeight(displacementData.texture, displacementData.samplerState, ddx, ddy, UV_SCALING * (curPos.xy)) * HF_SCALING + HF_OFFSET;
-//         // float height = HexTiling(gHF, gSampler, 0.001, 0.001, (curPos.xy) * UV_SCALING) * HF_SCALING + HF_OFFSET;
-//         if ((height + FLT_EPSILON >= curPos.z || curPos.z <= 0))
-//         {
-//             intersectedT = tMax * (float(step) / maxFinestStep);
-//             intersectedHeight = curPos.z;
-//             flagFound = true;
-//             break;
-//         }
-//         curPos += deltaPos;
-//     }
-//     return flagFound;
-
-// }
 bool calcSynthesizedDisplacementIntersection( const Ray ray, const StaticVertexData vertices[3], const DisplacementData displacementData, const float2 ddx, const float2 ddy, out DisplacementIntersection result )
 {
     result = {};
@@ -1135,19 +968,38 @@ bool calcSynthesizedDisplacementIntersection( const Ray ray, const StaticVertexD
     maxIntersection.max(slabIntersectAttri0);
     maxIntersection.max(slabIntersectAttri1);
 
-    // second slab/fin
+    // // second slab/fin
     rayBilinearPatchIntersectionTest( intrudedP1, extrudedP1, intrudedP2, extrudedP2, float3(0, 1, 0), float3(0, 0, 1),
         ray.origin, ray.dir, ray.tMax, minHeight, maxHeight, slabIntersectAttri0, slabIntersectAttri1 );
     minIntersection.min(slabIntersectAttri0);
     maxIntersection.max(slabIntersectAttri0);
     maxIntersection.max(slabIntersectAttri1);
 
-    // third slab/fin
+    // // third slab/fin
     rayBilinearPatchIntersectionTest( intrudedP2, extrudedP2, intrudedP0, extrudedP0, float3(0, 0, 1), float3(1, 0, 0),
         ray.origin, ray.dir, ray.tMax, minHeight, maxHeight, slabIntersectAttri0, slabIntersectAttri1 );
     minIntersection.min(slabIntersectAttri0);
     maxIntersection.max(slabIntersectAttri0);
     maxIntersection.max(slabIntersectAttri1);
+
+    // IntersectAttribute slabIntersectAttri2;
+    // IntersectAttribute slabIntersectAttri3;
+    // // // second slab/fin
+    // rayBilinearPatchIntersectionTest( intrudedP1, extrudedP1, intrudedP2, extrudedP2, float3(0, 1, 0), float3(0, 0, 1),
+    //     ray.origin, ray.dir, ray.tMax, minHeight, maxHeight, slabIntersectAttri2, slabIntersectAttri3 );
+    // minIntersection.min(slabIntersectAttri2);
+    // maxIntersection.max(slabIntersectAttri2);
+    // maxIntersection.max(slabIntersectAttri3);
+
+    // IntersectAttribute slabIntersectAttri4;
+    // IntersectAttribute slabIntersectAttri5;
+    // // // third slab/fin
+    // rayBilinearPatchIntersectionTest( intrudedP2, extrudedP2, intrudedP0, extrudedP0, float3(0, 0, 1), float3(1, 0, 0),
+    //     ray.origin, ray.dir, ray.tMax, minHeight, maxHeight, slabIntersectAttri4, slabIntersectAttri5 );
+    // minIntersection.min(slabIntersectAttri4);
+    // maxIntersection.max(slabIntersectAttri4);
+    // maxIntersection.max(slabIntersectAttri5);
+
 
     // test base triangle lastly
     IntersectAttribute baseTriangleIntersectAttri;
@@ -1161,6 +1013,31 @@ bool calcSynthesizedDisplacementIntersection( const Ray ray, const StaticVertexD
     {
         return false;
     }
+
+    // IntersectAttribute debugIntersection = extrudedTriangleIntersectAttri;
+    // if (gDebugPrism == 1) debugIntersection = baseTriangleIntersectAttri;
+    // else if (gDebugPrism == 2) debugIntersection = slabIntersectAttri0;
+    // else if (gDebugPrism == 3) debugIntersection = slabIntersectAttri2;
+    // else if (gDebugPrism == 4) debugIntersection = slabIntersectAttri4;
+    // else if (gDebugPrism == 5) debugIntersection = minIntersection;
+    // else if (gDebugPrism == 6) debugIntersection = maxIntersection;
+    // bool borderlineIntersection = false;
+    // if (debugIntersection.intersected && gDebugPrism <7)
+    // {
+    //     // print("debugIntersection.intersected", debugIntersection.t);
+    //     result.t = debugIntersection.t;
+    //     result.barycentrics = float2(debugIntersection.barycentric.y, 1.f - debugIntersection.barycentric.x - debugIntersection.barycentric.y);
+
+    //     float minBary = min(min(debugIntersection.barycentric.x, debugIntersection.barycentric.y), debugIntersection.barycentric.z);
+    //     float intensity = 3 * minBary;
+
+    //     result.displacement = intensity;
+    //     // return result.t > ray.tMin && result.t < ray.tMax;
+    //     // return true;
+    //     borderlineIntersection = true;
+    // }
+
+
 
     // 2. convert intersection data from object space to trace space
     float2 minIntersectionUV = minIntersection.barycentric[0] * vertices[0].texCrd.xy + minIntersection.barycentric[1] * vertices[1].texCrd.xy + minIntersection.barycentric[2] * vertices[2].texCrd.xy;
@@ -1184,39 +1061,24 @@ bool calcSynthesizedDisplacementIntersection( const Ray ray, const StaticVertexD
     float3 minUV = float3(minIntersectionUV, minIntersection.textureSpaceHeight);
     float3 maxUV = float3(maxIntersectionUV, maxIntersection.textureSpaceHeight);
     minUV = lerp(minUV, maxUV, (validStartT - minIntersection.t) / (maxIntersection.t - minIntersection.t));
+    ret = traceSynthesizedHeightMapEstimated(displacementData, minUV, maxUV, ddx, ddy, intersectedT, intersectedHeight);
 
-    ret = traceSynthesizedHeightMapEstimated(displacementData, minUV, maxUV, ddx, ddy, intersectedT, intersectedHeight );
-    // ret = traceSynthesizedHeightMapEstimated( displacementData, minIntersectionTexSpaceCoord, maxIntersectionTexSpaceCoord, intersectedT, intersectedHeight );
-    // print("minIntersectionTexSpaceCoord", minIntersectionTexSpaceCoord);
-    // print("maxIntersectionTexSpaceCoord", maxIntersectionTexSpaceCoord);
-    // print("size", displacementData.size);
-    if (ret)
+    if (ret && gTraceShell)
     {
         const float3 traceSpaceViewDirection = normalize(maxIntersectionTexSpaceCoord - minIntersectionTexSpaceCoord);
         // get t max in trace space.
-        const float tMax = solveT(minIntersectionTexSpaceCoord, traceSpaceViewDirection, maxIntersectionTexSpaceCoord);
+        // const float tMax = solveT(minIntersectionTexSpaceCoord, traceSpaceViewDirection, maxIntersectionTexSpaceCoord);
+        const float tMax = solveT(minUV, normalize(maxUV - minUV) , maxUV);
         // intersectedT is in trace space, interpolate barycentric in there.
         float3 intersectionProjectedBarycentric = lerp(startBarycentric, endBarycentric, intersectedT / tMax);
         result.barycentrics = float2( intersectionProjectedBarycentric.y, 1.f - intersectionProjectedBarycentric.x - intersectionProjectedBarycentric.y ); // intersectionProjectedBarycentric;
         result.displacement = intersectedHeight;
         result.t = lerp(validStartT, validEndT, intersectedT / tMax);
-
+        // result.barycentrics = float2(hitUV.y, 1.f - hitUV.x - hitUV.y);;
         return result.t > ray.tMin && result.t < ray.tMax;
         // return ret;
     }
-    // #else
 
-    // IntersectAttribute debugIntersection = minIntersection;
-    // if (debugIntersection.intersected)
-    // {
-    //     // print("debugIntersection.intersected", debugIntersection.t);
-    //     result.t = debugIntersection.t;
-    //     result.barycentrics = float2(debugIntersection.barycentric.y, 1.f - debugIntersection.barycentric.x - debugIntersection.barycentric.y);
-    //  result.displacement = 0.f;
-    //     // return result.t > ray.tMin && result.t < ray.tMax;
-    //     return true;
-    // }
-    // #endif
     return false;
 }
 /** Intersect a displaced triangle.
@@ -1299,7 +1161,8 @@ struct SynthesizedDisplacedTriangleMeshIntersector
 
         float2 ddx, ddy;
         computeRayDifferentials(instanceID, primitiveIndex, ray.dir, ray.tMax, gScene.camera, gInvFrameDim, ddx, ddy);
-
+        print("ddx", ddx);
+        print("ddy", ddy);
         if (intersectSynthesizedDisplacedTriangle(ray, vertices, worldMat, displacementData, ddx, ddy, result))
         {
             attribs.barycentrics = result.barycentrics;
@@ -1327,13 +1190,6 @@ void displacedTriangleMeshIntersection()
     {
         ReportHit(t, 0, attribs);
     }
-
-    // DisplacedTriangleMeshIntersector::Attribs attribs;
-    // if (DisplacedTriangleMeshIntersector::intersect(ray, getGeometryInstanceID(), PrimitiveIndex(),attribs, t))
-    // {
-    //     ReportHit(t, 0, attribs);
-    // }
-
 }
 
 [shader("closesthit")]
@@ -1362,3 +1218,80 @@ void rayGen()
     gOutputColor[pixel] = traceDispPath(pixel, frameDim);
     // gOutputColor[pixel] = float4(color, 1.f);
 }
+/**
+ * Process a hit.
+ * Loads the shading data, samples analytic lights and samples a new scatter ray.
+ * Terminates the path if maximum number of bounces is reached.
+ * @param[in] hit Hit info.
+ * @param[in,out] rayData Ray payload.
+ *
+ */
+void handleHit(const HitInfo hit, inout ScatterRayData rayData)
+{
+    let lod = ExplicitLodTextureSampler(0.f);
+
+    // Load shading data.
+    ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction, lod);
+
+    // float3 exitPosW;
+    // float3 HFColor = 0.0;
+    // bool hitHF = true;
+    // // bool hitHF = raySurfaceMarching(sd, hit, 1.f / float2(1920, 1080), exitPosW, HFColor);
+    // if (hitHF) {
+    //     rayData.radiance = HFColor;
+    //     rayData.terminated = true;
+    // }
+    // rayData.radiance = 0;
+    // rayData.direction = sd.V;
+
+    // // Create material instance.
+    // let mi = gScene.materials.getMaterialInstance(sd, lod);
+    // rayData.radiance = HexTiling(gColor, gSampler, float2(0.0001), float2(0.0001), UV_SCALING * (sd.uv) );
+
+    // rayData.radiance = mi.getProperties(sd).diffuseReflectionAlbedo;
+    rayData.radiance = pow(hit.getDisplacedTriangleHit().displacement, 1 / 1.4);
+    if (gUseFP16) {
+
+        if (gApplySyn)
+            rayData.radiance = HexTiling(gColor, gSampler, float2(0.0001), float2(0.0001), UV_SCALING * (sd.uv));
+        else
+            rayData.radiance = gColor.SampleLevel(gSampler, sd.uv * UV_SCALING, 0);
+    }
+
+        // rayData.radiance = float3(sd.uv, 0) ;
+    rayData.terminated = false;
+
+    // // Add emitted light.
+    // if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
+    // {
+    //     rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
+    // }
+
+    // // Check whether to terminate based on max depth.
+    // if (rayData.pathLength >= kMaxBounces)
+    // {
+    //     rayData.terminated = true;
+    //     return;
+    // }
+
+    // // Compute ray origin for new rays spawned from the hit.
+    // float3 rayOrigin;
+    // rayOrigin = sd.computeRayOrigin();
+    // // Add contribution of direct light from analytic lights.
+    // if (kUseAnalyticLights)
+    // {
+    //     float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
+    //     rayData.radiance += rayData.thp * Lr;
+    // }
+
+    // // Generate scatter ray for the next path segment.
+    // // The raygen shader will continue the path based on the returned payload.
+    // if (!generateScatterRay(sd, mi, rayOrigin, rayData))
+    // {
+    //     rayData.terminated = true;
+    //     return;
+    // }
+
+    // rayData.pathLength++;
+}
+
