@@ -11,8 +11,8 @@ def render_graph_HFTracing():
     VBufferRT = createPass("VBufferRT", {'samplePattern': 'Stratified', 'sampleCount': 16})
     g.addPass(VBufferRT, "VBufferRT")
     g.addEdge("AccumulatePass.output", "ToneMapper.src")
-    g.addEdge("VBufferRT.vbuffer", "HFTracing.vbuffer")
-    g.addEdge("VBufferRT.viewW", "HFTracing.viewW")
+    # g.addEdge("VBufferRT.vbuffer", "HFTracing.vbuffer")
+    # g.addEdge("VBufferRT.viewW", "HFTracing.viewW")
     g.addEdge("HFTracing.color", "AccumulatePass.input")
     g.markOutput("ToneMapper.dst")
     return g

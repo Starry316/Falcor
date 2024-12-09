@@ -96,7 +96,6 @@ public:
     virtual Properties getProperties() const override;
     virtual RenderPassReflection reflect(const CompileData& compileData) override;
     virtual void execute(RenderContext* pRenderContext, const RenderData& renderData) override;
-    void generateGeometryMap(RenderContext* pRenderContext, const RenderData& renderData);
     void renderHF(RenderContext* pRenderContext, const RenderData& renderData);
     void visualizeMaps(RenderContext* pRenderContext, const RenderData& renderData);
     void createMaxMip(RenderContext* pRenderContext, const RenderData& renderData);
@@ -144,7 +143,6 @@ private:
         ref<RtProgramVars> pVars;
     } mTracer;
 
-    ref<ComputePass> mpGenerateGeometryMapPass;
     ref<ComputePass> mpVisualizeMapsPass;
     ref<ComputePass> mpCreateMaxMipPass;
     ref<ComputePass> mpInferPass ;
@@ -153,20 +151,20 @@ private:
     std::string mMediaPath =getProjectDirectory().string();
     // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
     std::string mHFFileName = "castle_brick_02_red_cut_disp_4k";
-    std::string mShellHFFileName = "metal_plate_disp_4k";
+    // std::string mShellHFFileName = "metal_plate_disp_4k.png";
+    std::string mShellHFFileName = "castle_brick_02_red_cut_disp_4k.png";
     // std::string mHFFileName = "dirty_carpet_cut_disp_4k";
     // std::string mColorFileName = "ganges_river_pebbles_diff_4k.jpg";
     // std::string mColorFileName = "castle_brick_02_red_cut_diff_4k";
-    std::string mColorFileName = "metal_plate_diff_4k";
-    std::string mNetName = "block_io_dim8_24";
+    // std::string mColorFileName = "metal_plate_diff_4k";
+    std::string mColorFileName = "RoofTilesTerracotta005_COL_6K";
+    std::string mNetName = "block_io";
     // std::string mColorFileName = "dirty_carpet_cut_diff_4k.jpg";
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;
     ref<Texture> mpHFMaxMip;
     ref<Texture> mpColor;
-    ref<Texture> mpNormalMap;
-    ref<Texture> mpTangentMap;
-    ref<Texture> mpPosMap;
+
 
     ref<Texture> mpWiWox;
     ref<Texture> mpUVWoyz;
@@ -174,12 +172,11 @@ private:
 
 
 
-
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
-    Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.045);
+    Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.3);
     // Falcor::float4 mCurvatureParas = Falcor::float4(0.056, 1, 0.65, 0.3);
-    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 1, 0.65, 0.3);
+    Falcor::float4 mCurvatureParas = Falcor::float4(0.3, 1, 0.65, 0.3);
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
     uint mTriID = 0;
     uint mMaxSteps = 1000;
