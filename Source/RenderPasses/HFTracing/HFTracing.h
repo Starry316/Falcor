@@ -52,20 +52,22 @@ using namespace Falcor;
 enum class RenderType : uint32_t
 {
     RT,
-    MAP,
+    WAVEFRONT_SHADER_NN,
     SHADER_NN,
     CUDA,
-    TRT
+    TRT,
+    DEBUG_MIP
 };
 
 FALCOR_ENUM_INFO(
     RenderType,
     {
         { RenderType::RT, "RT" },
-        { RenderType::MAP, "Visualize N,T Maps" },
+        { RenderType::WAVEFRONT_SHADER_NN, "Wavefront Inference" },
         { RenderType::SHADER_NN, "Shader Inference" },
         { RenderType::CUDA, "CUDA Inference" },
-        { RenderType::TRT, "TensorRT Inference" }
+        { RenderType::TRT, "TensorRT Inference" },
+        { RenderType::DEBUG_MIP, "DEBUG MIP" }
     }
 );
 FALCOR_ENUM_REGISTER(RenderType);
@@ -170,7 +172,7 @@ private:
     ref<Texture> mpUVWoyz;
     ref<Texture> mpDfDxy;
 
-
+    ref<Sampler> mpMaxSampler;
 
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
@@ -178,10 +180,10 @@ private:
     // Falcor::float4 mCurvatureParas = Falcor::float4(0.056, 1, 0.65, 0.3);
     Falcor::float4 mCurvatureParas = Falcor::float4(0.3, 1, 0.65, 0.3);
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
-    uint mTriID = 0;
-    uint mMaxSteps = 1000;
-    uint mMaxTriCount = 1000;
-    RenderType mRenderType = RenderType::RT;
+
+
+
+    RenderType mRenderType = RenderType::SHADER_NN;
 
     bool mContactRefinement = true;
     bool mMipGenerated = false;
@@ -233,6 +235,7 @@ private:
     ref<Buffer> mpBiasFP16Buffer;
 
     uint mDebugPrism = 0;
-    bool mTraceShell = true;
+    bool mShowTracedHF = false;
+    bool mTracedShadowRay = false;
 
 };
