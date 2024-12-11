@@ -779,7 +779,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpHF = Texture::createFromFile(
         mpDevice,
         // fmt::format("{}/media/BTF/scene/textures/{}.png", mMediaPath, mHFFileName).c_str(),
-        fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
+            // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
+        fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
         true,
         false,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
@@ -787,7 +788,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     // Read in textures, we use a constant texture now
     mpShellHF = Texture::createFromFile(
         mpDevice,
-        fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
+        // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
+        fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
         true,
         false,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
@@ -881,8 +883,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 void HFTracing::setupTRT()
 {
     IRuntime* runtime = createInferRuntime(logger);
-    std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath, mNetName).c_str(), std::ios::binary);
-    // std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath,"block_io").c_str(), std::ios::binary);
+    // std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath, mNetName).c_str(), std::ios::binary);
+    std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath,"block_io").c_str(), std::ios::binary);
     std::stringstream planBuffer;
     planBuffer << planFile.rdbuf();
     std::string plan = planBuffer.str();

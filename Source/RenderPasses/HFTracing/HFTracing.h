@@ -153,14 +153,12 @@ private:
     std::string mMediaPath =getProjectDirectory().string();
     // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
     std::string mHFFileName = "castle_brick_02_red_cut_disp_4k";
-    // std::string mShellHFFileName = "metal_plate_disp_4k.png";
-    std::string mShellHFFileName = "castle_brick_02_red_cut_disp_4k.png";
-    // std::string mHFFileName = "dirty_carpet_cut_disp_4k";
-    // std::string mColorFileName = "ganges_river_pebbles_diff_4k.jpg";
-    // std::string mColorFileName = "castle_brick_02_red_cut_diff_4k";
-    // std::string mColorFileName = "metal_plate_diff_4k";
+    // std::string mShellHFFileName = "castle_brick_02_red_cut_disp_4k.png";
+    std::string mShellHFFileName = "leather11.png";
+
     std::string mColorFileName = "RoofTilesTerracotta005_COL_6K";
-    std::string mNetName = "block_io";
+    // std::string mNetName = "block_io";
+    std::string mNetName = "leather11_dim8_32";
     // std::string mColorFileName = "dirty_carpet_cut_diff_4k.jpg";
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;
