@@ -412,20 +412,20 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
 }
 void HFTracing::trtInferPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
-    Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
-    FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
+    // Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
+    // FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
 
-    createBuffer(mpOutputBuffer, mpDevice, targetDim);
-    // timer start
-    cudaEventRecord(mCudaStart, NULL);
-    void* bindings[] = {(void*)(mpInputBuffer->getGpuAddress()), (void*)mpOutputBuffer->getGpuAddress()};
-    bool status = mpContext->executeV2(bindings);
+    // createBuffer(mpOutputBuffer, mpDevice, targetDim);
+    // // timer start
+    // cudaEventRecord(mCudaStart, NULL);
+    // void* bindings[] = {(void*)(mpInputBuffer->getGpuAddress()), (void*)mpOutputBuffer->getGpuAddress()};
+    // bool status = mpContext->executeV2(bindings);
 
-    cudaDeviceSynchronize();
-    cudaEventRecord(mCudaStop, NULL);
-    cudaEventSynchronize(mCudaStop);
-    cudaEventElapsedTime(&mCudaTime, mCudaStart, mCudaStop);
-    mCudaAvgTime += mCudaTime;
+    // cudaDeviceSynchronize();
+    // cudaEventRecord(mCudaStop, NULL);
+    // cudaEventSynchronize(mCudaStop);
+    // cudaEventElapsedTime(&mCudaTime, mCudaStart, mCudaStop);
+    // mCudaAvgTime += mCudaTime;
 }
 void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
@@ -641,11 +641,11 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
         cudaInferPass(pRenderContext, renderData);
         displayPass(pRenderContext, renderData);
     }
-    else if (mRenderType == RenderType::TRT)
-    {
-        trtInferPass(pRenderContext, renderData);
-        displayPass(pRenderContext, renderData);
-    }
+    // else if (mRenderType == RenderType::TRT)
+    // {
+    //     trtInferPass(pRenderContext, renderData);
+    //     displayPass(pRenderContext, renderData);
+    // }
     else if (mRenderType == RenderType::DEBUG_MIP)
     {
         visualizeMaps(pRenderContext, renderData);
@@ -797,7 +797,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpColor = Texture::createFromFile(
         mpDevice,
         // fmt::format("{}/media/BTF/scene/textures/{}.jpg", mMediaPath, mColorFileName).c_str(),
-        fmt::format("D:/textures/synthetic/{}.jpg", mColorFileName).c_str(),
+        fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
+        // fmt::format("D:/textures/synthetic/{}.jpg", mColorFileName).c_str(),
         true,
         true,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
@@ -882,22 +883,22 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 
 void HFTracing::setupTRT()
 {
-    IRuntime* runtime = createInferRuntime(logger);
-    // std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath, mNetName).c_str(), std::ios::binary);
-    std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath,"block_io").c_str(), std::ios::binary);
-    std::stringstream planBuffer;
-    planBuffer << planFile.rdbuf();
-    std::string plan = planBuffer.str();
-    mpEngine = runtime->deserializeCudaEngine((void*)plan.data(), plan.size());
+    // IRuntime* runtime = createInferRuntime(logger);
+    // // std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath, mNetName).c_str(), std::ios::binary);
+    // std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath,"block_io").c_str(), std::ios::binary);
+    // std::stringstream planBuffer;
+    // planBuffer << planFile.rdbuf();
+    // std::string plan = planBuffer.str();
+    // mpEngine = runtime->deserializeCudaEngine((void*)plan.data(), plan.size());
 
-    mpContext = mpEngine->createExecutionContext();
-    createBuffer(mpInputBuffer, mpDevice, Falcor::uint2(1080, 1920), 33);
-    createBuffer(mpOutputBuffer, mpDevice, Falcor::uint2(1080, 1920));
-    auto input = (void*)(mpInputBuffer->getGpuAddress());
-    auto output = (void*)mpOutputBuffer->getGpuAddress();
+    // mpContext = mpEngine->createExecutionContext();
+    // createBuffer(mpInputBuffer, mpDevice, Falcor::uint2(1080, 1920), 33);
+    // createBuffer(mpOutputBuffer, mpDevice, Falcor::uint2(1080, 1920));
+    // auto input = (void*)(mpInputBuffer->getGpuAddress());
+    // auto output = (void*)mpOutputBuffer->getGpuAddress();
 
-    mpContext->setTensorAddress(mpEngine->getIOTensorName(0), input);
-    mpContext->setTensorAddress(mpEngine->getIOTensorName(1), output);
+    // mpContext->setTensorAddress(mpEngine->getIOTensorName(0), input);
+    // mpContext->setTensorAddress(mpEngine->getIOTensorName(1), output);
 }
 
 void HFTracing::prepareVars()

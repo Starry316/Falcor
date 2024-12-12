@@ -7,13 +7,13 @@ set(TensorRT_LIBRARIES
     D:/TensorRT/lib/nvonnxparser_10.lib
 )
 
-find_package(mathdx REQUIRED COMPONENTS cublasdx CONFIG PATHS "D:/Projects/nvidia/mathdx/24.08/")
+# find_package(mathdx REQUIRED COMPONENTS cublasdx CONFIG PATHS "D:/Projects/nvidia/mathdx/24.08/")
 
 # message(STATUS ${mathdx_cublasdx_FOUND})
 
 
 target_include_directories(HFTracing PUBLIC ${TensorRT_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
-target_link_libraries(HFTracing PUBLIC ${TensorRT_LIBRARIES} mathdx::cublasdx ${CUDA_LIBRARIES} nvrtc)
+target_link_libraries(HFTracing PUBLIC  ${CUDA_LIBRARIES} nvrtc)
 
 target_sources(HFTracing PRIVATE
     HFTracing.cpp
