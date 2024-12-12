@@ -125,9 +125,10 @@ static const float kRayTMax = FLT_MAX;
 #define UV_SCALING gCurvatureParas.z * 10
 #define MAX_HEIGHT gCurvatureParas.x
 float MISWeight(float p0, float p1) {
+    // return 0.5f;
     float q0 = p0 * p0;
     float q1 = p1 * p1;
-    return q0 / (q0 + q1);
+    return q0 / max((q0 + q1), 0.0001f);
 }
 /**
  * Payload for shadow ray.
@@ -136,6 +137,7 @@ struct ShadowRayData
 {
     bool visible;
 };
+
 
 /**
  * Payload for scatter ray (up to 72B).
@@ -507,10 +509,11 @@ void scatterMiss(inout ScatterRayData rayData)
     rayData.terminated = true;
 
     // Add contribution from distant light (env map) in this direction.
-    if (kUseEnvLight && (kComputeDirect || rayData.pathLength >= 0))
+    if (kUseEnvLight && (kComputeDirect || rayData.pathLength == 0))
     {
         float3 Le = gScene.envMap.eval(WorldRayDirection());
-        rayData.radiance += rayData.thp * Le * MISWeight(rayData.BRDFPdf, envMapSampler.evalPdf(WorldRayDirection()));
+        // rayData.radiance += rayData.thp * Le * MISWeight(rayData.BRDFPdf, envMapSampler.evalPdf(WorldRayDirection()));
+        rayData.radiance += rayData.thp * Le;
     }
 }
 
@@ -1075,7 +1078,8 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     float3 envDir;
     float envPdf;
     if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, envDir, envPdf)) {
-        rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg) * MISWeight(envPdf, mi.evalPdf(sd, envDir));
+        // rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg) * MISWeight(envPdf, mi.evalPdf(sd, envDir));
+        rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg);
     }
 
     // Generate scatter ray for the next path segment.
@@ -1126,8 +1130,10 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         float NdotL = wi.z > 0 ? 1 : 0;
 
 #ifdef SHADER_NN
-        rayData.radiance += nbtf.evalDebug(wi, wo, (sd.uv.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, ddx, ddy, gApplySyn)
-                            * rayData.thp * envLi * NdotL * MISWeight(envPdf, wi.z * M_1_PI);
+        // rayData.radiance += nbtf.evalDebug(wi, wo, (sd.uv.yx) * UV_SCALING, ddx, ddy, gApplySyn)
+        //                     * rayData.thp * envLi * NdotL * MISWeight(envPdf, wi.z * M_1_PI);
+        rayData.radiance += nbtf.evalDebug(wi, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn)
+                            * rayData.thp * envLi * NdotL ;
 #endif
 
 #ifdef WAVEFRONT_SHADER_NN
@@ -1148,7 +1154,7 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     float3 scatterDir = sample_cosine_hemisphere_concentric(sampleNext2D(rayData.sg), pdf);
     rayData.origin = sd.computeRayOrigin();
     rayData.direction = sd.frame.fromLocal(scatterDir);
-    rayData.thp *= nbtf.evalDebug(scatterDir, wo, (sd.uv.yx) * UV_SCALING, gCurvatureParas.y, gCurvatureParas.w, ddx, ddy, gApplySyn) / pdf ;
+    rayData.thp *= nbtf.evalDebug(scatterDir, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn) / pdf ;
     rayData.BRDFPdf = pdf;
     if (all(rayData.thp == 0.f))
     {

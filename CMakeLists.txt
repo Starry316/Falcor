@@ -122,7 +122,7 @@ endif()
 # -----------------------------------------------------------------------------
 # CUDA
 # -----------------------------------------------------------------------------
-set(CMAKE_CUDA_ARCHITECTURES 89)
+# set(CMAKE_CUDA_ARCHITECTURES 89)
 set(CMAKE_CUDA_COMPILER "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.1/bin/nvcc.exe")
 
 # Set default CUDA architecture to 75 (Turing).
