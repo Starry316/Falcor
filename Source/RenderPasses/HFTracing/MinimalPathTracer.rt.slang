@@ -370,57 +370,6 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
     rayData.radiance = 0.1;
 
-    // let lod = ExplicitLodTextureSampler(0.f);
-
-    // // Load shading data.
-    // ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction, lod);
-
-    // float3 exitPosW;
-    // float3 HFColor = 0.0;
-    // bool hitHF = true;
-    // // bool hitHF = raySurfaceMarching(sd, hit, 1.f / float2(1920, 1080), exitPosW, HFColor);
-    // if (hitHF) {
-    //     rayData.radiance = HFColor;
-    //     rayData.terminated = true;
-    // }
-    // rayData.radiance = 0;
-    // rayData.direction = sd.V;
-
-    // // Create material instance.
-    // let mi = gScene.materials.getMaterialInstance(sd, lod);
-
-    // // Add emitted light.
-    // if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
-    // {
-    //     rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
-    // }
-
-    // // Check whether to terminate based on max depth.
-    // if (rayData.pathLength >= kMaxBounces)
-    // {
-    //     rayData.terminated = true;
-    //     return;
-    // }
-
-    // // Compute ray origin for new rays spawned from the hit.
-    // float3 rayOrigin;
-    // rayOrigin = sd.computeRayOrigin();
-    // // Add contribution of direct light from analytic lights.
-    // if (kUseAnalyticLights)
-    // {
-    //     float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
-    //     rayData.radiance += rayData.thp * Lr;
-    // }
-
-    // // Generate scatter ray for the next path segment.
-    // // The raygen shader will continue the path based on the returned payload.
-    // if (!generateScatterRay(sd, mi, rayOrigin, rayData))
-    // {
-    //     rayData.terminated = true;
-    //     return;
-    // }
-
-    // rayData.pathLength++;
 }
 void computeRayDifferentials(
     const TriangleHit hit,
@@ -704,11 +653,6 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     const float3 primaryRayOrigin = gScene.camera.getPosition();
     const float3 primaryRayDir = getPrimaryRayDir(pixel, frameDim, gScene.camera);
 
-    // let light = gScene.getLight(0);
-    // float dummyT;
-
-    // float3 lightPos = mul(light.transMat, float4(light.posW, 1.f)).xyz;
-    // if (intersectRaySphere(primaryRayOrigin, primaryRayDir, lightPos, light.transMat._11, dummyT)) return float3(1, 1, 1);
 
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
     if (hit.isValid())
@@ -744,44 +688,7 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
         {
             outColor.xyz = kUseEnvBackground ? gScene.envMap.eval(primaryRayDir) : kDefaultBackgroundColor;
         }
-        // ScatterRayData rayData = ScatterRayData(sg);
-        // rayData.origin = exitPosW;
-        // rayData.direction = sd.V;
-        // rayData.terminated = hitHF;
-        // for (uint depth = 0; depth < 1 && !rayData.terminated; depth++)
-        // {
-        //     // Trace scatter ray. If it hits geometry, the closest hit shader samples
-        //     // direct illumination and generates the next scatter ray.
-        //     traceScatterRay(rayData);
-        // }
-        // outColor += 0.8 * rayData.radiance;
-        // if (kComputeDirect)
-        // {
-        //     // Always output directly emitted light, independent of whether emissive materials are treated as light sources or not.
-        //     outColor += mi.getProperties(sd).emission;
 
-        //     // Add contribution of direct light from analytic lights.
-        //     // Light probe and mesh lights are handled by the scatter ray hit/miss shaders.
-        //     outColor += kUseAnalyticLights ? evalDirectAnalytic(sd, mi, sg) : float3(0.f);
-        // }
-
-        // // Prepare ray payload.
-        // ScatterRayData rayData = ScatterRayData(sg);
-
-        // // Generate scatter ray.
-        // if (!generateScatterRay(sd, mi, isCurveHit, rayOrigin, rayData))
-        //     rayData.terminated = true;
-
-        // // Follow path into the scene and compute its total contribution.
-        // for (uint depth = 0; depth <= kMaxBounces && !rayData.terminated; depth++)
-        // {
-        //     // Trace scatter ray. If it hits geometry, the closest hit shader samples
-        //     // direct illumination and generates the next scatter ray.
-        //     traceScatterRay(rayData);
-        // }
-
-        // Store contribution from scatter ray.
-        // outColor += rayData.radiance;
     }
     else
     {
