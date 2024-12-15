@@ -5,7 +5,7 @@
 #include <memory>
 #include <random>
 #include "MLP.h"
-
+#include "Utils/Texture/Synthesis.h"
 namespace Falcor
 {
 struct FeatureTex{
@@ -34,13 +34,17 @@ public:
     FeatureTex mTPInv;
 
     std::unique_ptr<MLP> mpMLP;
+
+    std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
     std::string mNetworkName;
 
     int mLayerNum;
     int mMaxDim;
-    bool mBuildCuda;
+    bool mBuildCuda = false;
+    bool mHistogram = true;
     // Synthesis parameters
-
+    /// GPU fence for synchronizing readback.
+    ref<Fence> mpFence;
 };
 
 }

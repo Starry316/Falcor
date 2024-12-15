@@ -20,14 +20,24 @@ public:
      * @param[in] weights The weights we'd like to sample each entry proportional to.
      * @param[in] rng The random number generator to use when creating the table.
      */
-    TextureSynthesis(ref<Device> pDevice);
+    TextureSynthesis();
 
     void bindShaderData(const ShaderVar& var) const;
 
+    void readHFData(std::string hfPath, ref<Device> pDevice) ;
+    void bindHFData(const ShaderVar& var);
+    void precomputeFeatureData(std::vector<float> data, uint2 dataDim, ref<Device> pDevice);
+    void bindFeatureData(const ShaderVar& var);
 
+    ref<Texture> mpHFT;
 private:
     float HTRotStength = 0.5f;
     ref<Texture> mpColor;
+    ref<Texture> mpHFInvT;
+    ref<Texture> mpFeatureT;
+    ref<Texture> mpFeatureInvT;
+    ref<Texture> mpACF;
+
 };
 
 }

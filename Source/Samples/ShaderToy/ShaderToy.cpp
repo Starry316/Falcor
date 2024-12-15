@@ -26,7 +26,7 @@
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
 #include "ShaderToy.h"
-
+#include <fstream>
 FALCOR_EXPORT_D3D12_AGILITY_SDK
 
 ShaderToy::ShaderToy(const SampleAppConfig& config) : SampleApp(config) {}
@@ -55,6 +55,16 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     // Load shaders
     mpMainPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/Toy.ps.slang");
+
+    mpTextureSynthesis = std::make_unique<TextureSynthesis>();
+
+    // mpTextureSynthesis->readHFData("D:/textures/ubo/leather11.png", getDevice());
+    mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
+    mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, true);
+
+
+
+
 }
 
 void ShaderToy::onResize(uint32_t width, uint32_t height)
@@ -70,11 +80,28 @@ void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
     auto var = mpMainPass->getRootVar()["ToyCB"];
     var["iResolution"] = float2(width, height);
     var["iGlobalTime"] = (float)getGlobalClock().getTime();
+    var["gUVScaling"] = mUVScale;
+    var["gSynthesis"] = mSynthesis;
+    mpTextureSynthesis->bindHFData(mpMainPass->getRootVar()["ToyCB"]["hfData"]);
+    mpNBTF->bindShaderData(mpMainPass->getRootVar()["ToyCB"]["nbtf"]);
+
+
 
     // run final pass
     mpMainPass->execute(pRenderContext, pTargetFbo);
 }
-
+void ShaderToy::onGuiRender(Gui* pGui)
+{
+    Gui::Window w(pGui, "Falcor", {250, 200});
+    renderGlobalUI(pGui);
+    w.text("Hello from SampleAppTemplate");
+    w.slider("UV Scale", mUVScale, 0.0f, 10.0f);
+    w.checkbox("Enable Synthesis", mSynthesis);
+    if (w.button("Click Here"))
+    {
+        msgBox("Info", "Now why would you do that?");
+    }
+}
 int runMain(int argc, char** argv)
 {
     SampleAppConfig config;

@@ -28,31 +28,23 @@
 #pragma once
 #include "Falcor.h"
 #include "Core/SampleApp.h"
-#include "Core/Pass/FullScreenPass.h"
-#include "Utils/Texture/Synthesis.h"
-#include "Utils/Neural/NBTF.h"
+
 using namespace Falcor;
 
-class ShaderToy : public SampleApp
+class SynthesisSample : public SampleApp
 {
 public:
-    ShaderToy(const SampleAppConfig& config);
-    ~ShaderToy();
+    SynthesisSample(const SampleAppConfig& config);
+    ~SynthesisSample();
 
     void onLoad(RenderContext* pRenderContext) override;
+    void onShutdown() override;
     void onResize(uint32_t width, uint32_t height) override;
     void onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo) override;
     void onGuiRender(Gui* pGui) override;
+    bool onKeyEvent(const KeyboardEvent& keyEvent) override;
+    bool onMouseEvent(const MouseEvent& mouseEvent) override;
+    void onHotReload(HotReloadFlags reloaded) override;
+
 private:
-    ref<Sampler> mpLinearSampler;
-    float mAspectRatio = 0;
-    ref<RasterizerState> mpNoCullRastState;
-    ref<DepthStencilState> mpNoDepthDS;
-    ref<BlendState> mpOpaqueBS;
-    ref<FullScreenPass> mpMainPass;
-    float mUVScale = 1.0f;
-    std::unique_ptr<NBTF> mpNBTF;
-    std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
-     std::string mNetName = "leather11_dim16_32_cos300";
-     bool mSynthesis = false;
 };

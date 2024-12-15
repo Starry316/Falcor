@@ -25,11 +25,20 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
-cbuffer ToyCB
+import Utils.Texture.HistogramBlending;
+import Utils.Neural.NBTF;
+ cbuffer ToyCB
 {
     float2 iResolution;
     float iGlobalTime;
+    HistogramBlendingHFData hfData;
+    float gUVScaling;
+    NBTF nbtf;
+    bool gSynthesis;
 };
+
+
+SamplerState gSampler;
 
 float rand(float n)
 {
@@ -59,32 +68,45 @@ float4 getRBCColor(float x)
 float4 mainImage(float2 fragCoord)
 {
     float2 uv = fragCoord / iResolution.y;
+    float2 ddx = 0.0001;
+    float2 ddy = 0.0001;
+    float hf = HistorgramBlending(
+        hfData,
+        gSampler,
+        ddx,
+        ddy,
+        uv * gUVScaling
+    );
+    float3 wi = normalize(float3(0.2, 0.2, 1.0));
+    float3 wo = normalize(float3(0.3, 0.2, 0.8));
+    return float4(nbtf.evalDebug(wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis), 1.0);
 
-    float freq = 7.0;
-    float gap = 1. / freq;
-    float2 param_pos = (uv + float2(iGlobalTime / 5.0, 0.0));
+    // return hf;
+    // float freq = 7.0;
+    // float gap = 1. / freq;
+    // float2 param_pos = (uv + float2(iGlobalTime / 5.0, 0.0));
 
-    float2 closest_center = floor(param_pos * freq + float2(0.5, 0.5)) / freq;
+    // float2 closest_center = floor(param_pos * freq + float2(0.5, 0.5)) / freq;
 
-    float ballrad = (0.25 + 0.1 * rand(closest_center.x + 37.0 + closest_center.y)) * gap;
-    float jitterrad = 0.5 * gap - ballrad;
-    float far = (0.35 * gap - ballrad) / 0.1;
+    // float ballrad = (0.25 + 0.1 * rand(closest_center.x + 37.0 + closest_center.y)) * gap;
+    // float jitterrad = 0.5 * gap - ballrad;
+    // float far = (0.35 * gap - ballrad) / 0.1;
 
-    float black_or_white =
-        0.5 + 0.5 * sin(2.0 * 3.14159 * (rand((closest_center.x + 347.0) * (closest_center.y + 129.0)) + iGlobalTime * 1.0));
+    // float black_or_white =
+    //     0.5 + 0.5 * sin(2.0 * 3.14159 * (rand((closest_center.x + 347.0) * (closest_center.y + 129.0)) + iGlobalTime * 1.0));
 
-    closest_center = closest_center + jitterrad * 1.0 *
-                                          sin((iGlobalTime * 0.1 + rand2(closest_center)) * 6.28 +
-                                              sin((iGlobalTime * 0.2 + rand2(closest_center.yx)) * 6.28) +
-                                              sin((iGlobalTime * 0.5 + rand2(closest_center.xy * 93.0 + 127.0)) * 6.28));
+    // closest_center = closest_center + jitterrad * 1.0 *
+    //                                       sin((iGlobalTime * 0.1 + rand2(closest_center)) * 6.28 +
+    //                                           sin((iGlobalTime * 0.2 + rand2(closest_center.yx)) * 6.28) +
+    //                                           sin((iGlobalTime * 0.5 + rand2(closest_center.xy * 93.0 + 127.0)) * 6.28));
 
-    float dist = length(param_pos - closest_center);
+    // float dist = length(param_pos - closest_center);
 
-    float s = (dist * dist) / (ballrad * ballrad);
+    // float s = (dist * dist) / (ballrad * ballrad);
 
-    float4 color = lerp(lerp(getRBCColor(dist / ballrad), v4DarkRed, far), v4DarkRed, smoothstep(ballrad * 0.95, ballrad * 1.05, dist));
+    // float4 color = lerp(lerp(getRBCColor(dist / ballrad), v4DarkRed, far), v4DarkRed, smoothstep(ballrad * 0.95, ballrad * 1.05, dist));
 
-    return color;
+    // return color;
 }
 
 float4 main(float2 texC: TEXCOORD) : SV_TARGET

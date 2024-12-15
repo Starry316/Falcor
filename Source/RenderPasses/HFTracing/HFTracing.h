@@ -158,7 +158,7 @@ private:
 
     std::string mColorFileName = "RoofTilesTerracotta005_COL_6K";
     // std::string mNetName = "block_io";
-    std::string mNetName = "leather11_dim16_32_cos";
+    std::string mNetName = "leather11_dim16_32_cos300";
     // std::string mColorFileName = "dirty_carpet_cut_diff_4k.jpg";
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;

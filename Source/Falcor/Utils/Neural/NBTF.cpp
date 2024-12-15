@@ -28,21 +28,21 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
 
     ResourceBindFlags bindFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
 
+    if (mHistogram)
+    {
+        mpTextureSynthesis->precomputeFeatureData(UPlaneBuffer, mUP.texDim, pDevice);
+    }
+
     if (mBuildCuda)
     {
         bindFlags |= ResourceBindFlags::Shared;
-        mUP.featureBuffer = pDevice->createBuffer(
-            UPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, UPlaneBuffer.data()
-        );
-        mHP.featureBuffer = pDevice->createBuffer(
-            HPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, HPlaneBuffer.data()
-        );
-        mDP.featureBuffer = pDevice->createBuffer(
-            DPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, DPlaneBuffer.data()
-        );
-
+        mUP.featureBuffer =
+            pDevice->createBuffer(UPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, UPlaneBuffer.data());
+        mHP.featureBuffer =
+            pDevice->createBuffer(HPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, HPlaneBuffer.data());
+        mDP.featureBuffer =
+            pDevice->createBuffer(DPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, DPlaneBuffer.data());
     }
-
 
     mUP.featureTex = pDevice->createTexture2D(
         mUP.texDim.x, mUP.texDim.x, ResourceFormat::RGBA32Float, mUP.texDim.y, Resource::kMaxPossible, UPlaneBuffer.data(), bindFlags
@@ -54,7 +54,6 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
     mHP.featureTex =
         pDevice->createTexture2D(mHP.texDim.x, mHP.texDim.x, ResourceFormat::RGBA32Float, mHP.texDim.y, 1, HPlaneBuffer.data(), bindFlags);
 
-
     std::vector<float>().swap(DPlaneBuffer);
     std::vector<float>().swap(HPlaneBuffer);
     std::vector<float>().swap(UPlaneBuffer);
@@ -64,22 +63,26 @@ NBTF::NBTF(ref<Device> pDevice, std::string networkName, bool buildCuda)
 {
     mNetworkName = networkName;
     mBuildCuda = buildCuda;
+    mHistogram = true;
     mpMLP = std::make_unique<MLP>(pDevice, networkName);
+    mpTextureSynthesis = std::make_unique<TextureSynthesis>();
     loadFeature(pDevice, networkName);
 }
 
 void NBTF::bindShaderData(const ShaderVar& var) const
 {
     mpMLP->bindShaderData(var["mlp"]);
+    if (mHistogram)
+        mpTextureSynthesis->bindFeatureData(var["histoFeatureData"]);
+
     var["uDims"] = mUP.texDim;
     var["hDims"] = mHP.texDim;
     var["dDims"] = mDP.texDim;
 
-
     var["uP"].setSrv(mUP.featureTex->getSRV());
     var["hP"].setSrv(mHP.featureTex->getSRV());
     var["dP"].setSrv(mDP.featureTex->getSRV());
-   var["inputSize"] = (mDP.texDim.y + mHP.texDim.y + mUP.texDim.y)*4;
+    var["inputSize"] = (mDP.texDim.y + mHP.texDim.y + mUP.texDim.y) * 4;
 }
 
 } // namespace Falcor

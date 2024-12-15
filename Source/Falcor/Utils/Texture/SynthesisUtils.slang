@@ -1,6 +1,8 @@
 #include "Utils/Math/MathConstants.slangh"
 import Rendering.Materials.TexLODHelpers;
 import Scene.Material.TextureSampler;
+
+inline float inversesqrt(float x) { return 1.0 / sqrt(x); }
 float2 MakeCenST(int2 Vertex)
 {
     float2x2 invSkewMat = float2x2(1.0, 0.5, 0.0, 1.0 / 1.15470054);

@@ -69,7 +69,7 @@ import Utils.Debug.PixelDebug;
 import Rendering.Lights.EnvMapSampler;
 import Utils.Neural.NBTF;
 import Scene.Displacement.DisplacementMapping;
-// import Tracing.MyIntersection;
+import Utils.Texture.HistogramBlending;
 cbuffer CB
 {
     uint gFrameCount;    // Frame count since scene was loaded.
@@ -84,9 +84,10 @@ cbuffer CB
     uint gDebugPrism;
     bool gShowTracedHF;
     bool gTracedShadowRay;
+    HistogramBlendingHFData hfData;
 }
 #define M_1_32 0.03125 // 1/32
-#define M_1_16 0.0625  //1/16
+#define M_1_16 0.0625  // 1/16
 
 // Outputs
 RWTexture2D<float4> gOutputColor;
@@ -124,7 +125,8 @@ static const float kRayTMax = FLT_MAX;
 
 #define UV_SCALING gCurvatureParas.z * 10
 #define MAX_HEIGHT gCurvatureParas.x
-float MISWeight(float p0, float p1) {
+float MISWeight(float p0, float p1)
+{
     // return 0.5f;
     float q0 = p0 * p0;
     float q1 = p1 * p1;
@@ -137,7 +139,6 @@ struct ShadowRayData
 {
     bool visible;
 };
-
 
 /**
  * Payload for scatter ray (up to 72B).
@@ -204,7 +205,13 @@ ShadingData loadShadingData(const HitInfo hit, const float3 rayOrigin, const flo
     return sd;
 }
 
-ShadingData loadShadingData( const HitInfo hit, const float3 rayOrigin, const float3 rayDir, out GeometryInstanceID instanceID, uint primitiveIndex)
+ShadingData loadShadingData(
+    const HitInfo hit,
+    const float3 rayOrigin,
+    const float3 rayDir,
+    out GeometryInstanceID instanceID,
+    uint primitiveIndex
+)
 {
     VertexData v = {};
     uint materialID = {};
@@ -296,13 +303,12 @@ bool generateEnvMapSample(float3 origin, inout SampleGenerator sg, inout float3 
     EnvMapSample lightSample;
     if (!envMapSampler.sample(sampleNext2D(sg), lightSample))
         return false;
-    if (gTracedShadowRay) {
+    if (gTracedShadowRay)
+    {
         bool V = traceShadowRay(origin, lightSample.dir, kRayTMax);
         if (!V)
             return false;
     }
-
-
 
     Li = lightSample.pdf > 0.f ? lightSample.Le / lightSample.pdf : float3(0);
     pdf = lightSample.pdf;
@@ -473,7 +479,6 @@ void computeRayDifferentials(
     ddy = float2(dsdy, dtdy);
 }
 
-
 float4 tracePath(const uint2 pixel, const uint2 frameDim)
 {
     // Create sample generator.
@@ -497,7 +502,7 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
         traceScatterRay(rayData);
     }
 
-    return float4(rayData.radiance, rayData.terminated ? 0.0f: 1.0f);
+    return float4(rayData.radiance, rayData.terminated ? 0.0f : 1.0f);
 }
 //
 // Shader entry points for miss shaders.
@@ -574,7 +579,8 @@ bool traceSynthesizedHeightMapEstimated(
     float entryHeightData;
     if (gApplySyn)
         entryHeightData =
-            HexTilingHeight(gShellHF, gSampler, ddx, ddy, startPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+            // HexTilingHeight(gShellHF, gSampler, ddx, ddy, startPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+            HistorgramBlending(hfData, gSampler, ddx, ddy, startPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
     else
         entryHeightData = gShellHF.SampleGrad(gSampler, startPoint.xy * UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
 
@@ -603,16 +609,15 @@ bool traceSynthesizedHeightMapEstimated(
         currentTestPoint += incrementUnit;
         float heightData;
         if (gApplySyn)
-            heightData =
-                HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+            // heightData = HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+            heightData = HistorgramBlending(hfData, gSampler, ddx, ddy, currentTestPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
         else
-            heightData =
-                gShellHF.SampleGrad(gSampler, currentTestPoint.xy * UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+            heightData = gShellHF.SampleGrad(gSampler, currentTestPoint.xy * UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
-//
+        //
         // if (currentHeightDelta < 0.f)
-        if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) || (sign(lastHeightDelta) !=
-        sign(currentHeightDelta)))
+        if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
+            (sign(lastHeightDelta) != sign(currentHeightDelta)))
         {
             float heightDeltaRatio = abs(currentHeightDelta) / (abs(currentHeightDelta) + abs(lastHeightDelta));
             float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
@@ -644,8 +649,8 @@ bool traceSynthesizedHeightMapEstimated_CR(
 
     float entryHeightData;
     if (gApplySyn)
-        entryHeightData =
-            HexTilingHeight(gShellHF, gSampler, ddx, ddy, startPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+        // entryHeightData = HexTilingHeight(gShellHF, gSampler, ddx, ddy, startPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+        entryHeightData = HistorgramBlending(hfData, gSampler, ddx, ddy, startPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
     else
         entryHeightData = gShellHF.SampleGrad(gSampler, startPoint.xy * UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
 
@@ -662,15 +667,16 @@ bool traceSynthesizedHeightMapEstimated_CR(
     float maxDistance = length(viewDirection.xy);
     int maxCount = ceil(maxDistance / footprint) + 1;
     bool useCoarse = true;
-    if (maxCount < 16) {
+    if (maxCount < 16)
+    {
         coarseDdx = ddx;
         coarseDdy = ddy;
         useCoarse = false;
     }
-    else {
+    else
+    {
         maxCount = ceil(maxCount / 16);
     }
-
 
     // int maxCount = ceil(abs(viewDirection.x)) + ceil(abs(viewDirection.y)) + 2;
     // maxCount = min(maxCount * kRaymarchingSampleCountFactor, kRaymarchingMaxSampleCount); // Prevent freeze due to corner cases. Todo:
@@ -689,14 +695,17 @@ bool traceSynthesizedHeightMapEstimated_CR(
         currentTestPoint += incrementUnit;
         float heightData;
         if (gApplySyn)
+            // heightData =
+            //     HexTilingHeight(gShellHF, gSampler, coarseDdx, coarseDdy, currentTestPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
             heightData =
-                HexTilingHeight(gShellHF, gSampler, coarseDdx, coarseDdy, currentTestPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+                HistorgramBlending(hfData, gSampler, coarseDdx, coarseDdy, currentTestPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
         else
-            heightData =
-                gShellHF.SampleGrad(gSampler, currentTestPoint.xy * UV_SCALING, coarseDdx, coarseDdy).x * HF_SCALING + HF_OFFSET;
+            heightData = gShellHF.SampleGrad(gSampler, currentTestPoint.xy * UV_SCALING, coarseDdx, coarseDdy).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
-        if (currentHeightDelta <= 0.f) {
-            if (useCoarse) {
+        if (currentHeightDelta <= 0.f)
+        {
+            if (useCoarse)
+            {
                 float heightDeltaRatio = abs(currentHeightDelta) / (abs(currentHeightDelta) + abs(lastHeightDelta));
                 float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
 
@@ -704,7 +713,8 @@ bool traceSynthesizedHeightMapEstimated_CR(
                 intersectedHeight = lerp(currentTestPoint.z, lastTestPoint.z, heightDeltaRatio);
                 return true;
             }
-            else {
+            else
+            {
                 float3 lastTestPointFine = lastTestPoint;
                 float3 currentTestPointFine = lastTestPointFine;
                 float lastHeightDeltaFine = currentHeightDelta;
@@ -714,12 +724,16 @@ bool traceSynthesizedHeightMapEstimated_CR(
                     currentTestPointFine += incrementUnit * M_1_16;
                     float heightFine;
                     if (gApplySyn)
+                        // heightFine =
+                        // HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPointFine.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
                         heightFine =
-                            HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPointFine.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+                            HistorgramBlending(hfData, gSampler, ddx, ddy, currentTestPointFine.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
                     else
-                        heightFine = gShellHF.SampleGrad(gSampler, currentTestPointFine.xy * UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+                        heightFine =
+                            gShellHF.SampleGrad(gSampler, currentTestPointFine.xy * UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
                     const float currentFineHeightDelta = currentTestPointFine.z - heightFine;
-                    if (currentFineHeightDelta <= 0.f) {
+                    if (currentFineHeightDelta <= 0.f)
+                    {
                         float heightDeltaRatio = abs(currentFineHeightDelta) / (abs(currentFineHeightDelta) + abs(lastHeightDeltaFine));
                         float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
 
@@ -831,7 +845,6 @@ bool calcSynthesizedDisplacementIntersection(
     maxIntersection.max(slabIntersectAttri0);
     maxIntersection.max(slabIntersectAttri1);
 
-
     // test base triangle lastly
     IntersectAttribute baseTriangleIntersectAttri;
     rayTriangleIntersectionTest(intrudedP0, intrudedP1, intrudedP2, ray.origin, ray.dir, minHeight, baseTriangleIntersectAttri);
@@ -874,7 +887,9 @@ bool calcSynthesizedDisplacementIntersection(
 
     // calculate ray differentials from the extruded triangle. Would it better to use the base triangle?
     float2 ddx, ddy;
-    computeRayDifferentials( getGeometryInstanceID(), PrimitiveIndex(), ray.dir, extrudedTriangleIntersectAttri.t, gScene.camera, gInvFrameDim, ddx, ddy );
+    computeRayDifferentials(
+        getGeometryInstanceID(), PrimitiveIndex(), ray.dir, extrudedTriangleIntersectAttri.t, gScene.camera, gInvFrameDim, ddx, ddy
+    );
     ddx *= FOOTPRINT_SCALING;
     ddy *= FOOTPRINT_SCALING;
     float intersectedT = 0.f;
@@ -943,7 +958,7 @@ bool intersectSynthesizedDisplacedTriangle(
     vertices[0].position = vertPosTr[0];
     vertices[1].position = vertPosTr[1];
     vertices[2].position = vertPosTr[2];
-    bool valid = calcSynthesizedDisplacementIntersection(ray, vertices, displacementData,  result);
+    bool valid = calcSynthesizedDisplacementIntersection(ray, vertices, displacementData, result);
     // Transform displacement into WS distance.
     if (!kDisplacementScalingUsePreciseLength)
     {
@@ -993,7 +1008,6 @@ struct SynthesizedDisplacedTriangleMeshIntersector
         gScene.materials.loadDisplacementData(materialID, displacementData);
 
         DisplacementIntersection result;
-
 
         if (intersectSynthesizedDisplacedTriangle(ray, vertices, worldMat, displacementData, result))
         {
@@ -1077,7 +1091,8 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     float3 envLi;
     float3 envDir;
     float envPdf;
-    if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, envDir, envPdf)) {
+    if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, envDir, envPdf))
+    {
         // rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg) * MISWeight(envPdf, mi.evalPdf(sd, envDir));
         rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg);
     }
@@ -1116,7 +1131,6 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     ddx *= FOOTPRINT_SCALING;
     ddy *= FOOTPRINT_SCALING;
 
-
 #ifdef RT
     if (gApplySyn)
         rayData.radiance = HexTiling(gColor, gSampler, float2(0.0001), float2(0.0001), UV_SCALING * (sd.uv));
@@ -1125,15 +1139,15 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     return;
 #endif
 
-    if (generateEnvMapSample(sd.posW + sd.frame.N * gCurvatureParas.y, rayData.sg, envLi, envDir, envPdf)) {
+    if (generateEnvMapSample(sd.posW + sd.frame.N * gCurvatureParas.y, rayData.sg, envLi, envDir, envPdf))
+    {
         float3 wi = sd.frame.toLocal(envDir);
         float NdotL = wi.z > 0 ? 1 : 0;
 
 #ifdef SHADER_NN
         // rayData.radiance += nbtf.evalDebug(wi, wo, (sd.uv.yx) * UV_SCALING, ddx, ddy, gApplySyn)
         //                     * rayData.thp * envLi * NdotL * MISWeight(envPdf, wi.z * M_1_PI);
-        rayData.radiance += nbtf.evalDebug(wi, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn)
-                            * rayData.thp * envLi * NdotL ;
+        rayData.radiance += nbtf.evalDebug(wi, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn) * rayData.thp * envLi * NdotL;
 #endif
 
 #ifdef WAVEFRONT_SHADER_NN
@@ -1146,7 +1160,8 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 
     rayData.pathLength++;
-    if (rayData.pathLength == 2) {
+    if (rayData.pathLength == 2)
+    {
         rayData.terminated = true;
         return;
     }
@@ -1154,14 +1169,12 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     float3 scatterDir = sample_cosine_hemisphere_concentric(sampleNext2D(rayData.sg), pdf);
     rayData.origin = sd.computeRayOrigin();
     rayData.direction = sd.frame.fromLocal(scatterDir);
-    rayData.thp *= nbtf.evalDebug(scatterDir, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn) / pdf ;
+    rayData.thp *= nbtf.evalDebug(scatterDir, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn) / pdf;
     rayData.BRDFPdf = pdf;
     if (all(rayData.thp == 0.f))
     {
         rayData.terminated = true;
         return;
     }
-
-
 }
 

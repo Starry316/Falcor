@@ -561,7 +561,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gShowTracedHF"] = mShowTracedHF;
     var["CB"]["gTracedShadowRay"] = mTracedShadowRay;
     mpNBTF->bindShaderData(var["CB"]["nbtf"]);
-
+    mpTextureSynthesis->bindHFData(var["CB"]["hfData"]);
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["envMapSampler"]);
 
@@ -864,8 +864,10 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     std::vector<__half>().swap(cudaBiasFP16);
 
     setupTRT();
+    mpTextureSynthesis = std::make_unique<TextureSynthesis>();
+    mpTextureSynthesis->readHFData( fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(), mpDevice);
+    generateMaxMip(pRenderContext, mpTextureSynthesis->mpHFT);
 
-    // mpTextureSynthesis = std::make_unique<TextureSynthesis>(mpDevice);
     mpMLP = std::make_unique<MLP>(mpDevice, mNetName);
     mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, true);
     // Create a precompute pass.
@@ -879,6 +881,10 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
     auto kernel = createNVRTCProgram();
+
+
+
+
 }
 
 void HFTracing::setupTRT()

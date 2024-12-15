@@ -1,110 +1,114 @@
 #include "Synthesis.h"
+#include "SynthesisUtils.h"
 #include "Core/Error.h"
 #include "Core/API/Device.h"
 namespace Falcor
 {
-
-TextureSynthesis::TextureSynthesis(ref<Device> pDevice)
+TextureSynthesis::TextureSynthesis()
 {
-    mpColor = Texture::createFromFile(pDevice, "D:/Picture1.png", true, true, ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget);
-
-
-    // // Use >= since we reserve 0xFFFFFFFFu as an invalid flag marker during construction.
-    // if (weights.size() >= std::numeric_limits<uint32_t>::max())
-    //     FALCOR_THROW("Too many entries for alias table.");
-
-    // std::uniform_int_distribution<uint32_t> rngDist;
-
-    // mpWeights =
-    //     pDevice->createStructuredBuffer(sizeof(float), mCount, ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, weights.data());
-
-    // // Our working set / intermediate buffers (underweight & overweight); initialize to "invalid"
-    // std::vector<uint32_t> lowIdx(mCount, 0xFFFFFFFFu);
-    // std::vector<uint32_t> highIdx(mCount, 0xFFFFFFFFu);
-
-    // // Sum element weights, use double to minimize precision issues
-    // mWeightSum = 0.0;
-    // for (float f : weights)
-    //     mWeightSum += f;
-
-    // // Find the average weight
-    // float avgWeight = float(mWeightSum / double(mCount));
-
-    // // Initialize working set. Inset inputs into our lists of above-average or below-average weight elements.
-    // int lowCount = 0;
-    // int highCount = 0;
-    // for (uint32_t i = 0; i < mCount; ++i)
-    // {
-    //     if (weights[i] < avgWeight)
-    //         lowIdx[lowCount++] = i;
-    //     else
-    //         highIdx[highCount++] = i;
-    // }
-
-    // // Create alias table entries by merging above- and below-average samples
-    // std::vector<AliasTable::Item> items(mCount);
-    // for (uint32_t i = 0; i < mCount; ++i)
-    // {
-    //     // Usual case:  We have an above-average and below-average sample we can combine into one alias table entry
-    //     if ((lowIdx[i] != 0xFFFFFFFFu) && (highIdx[i] != 0xFFFFFFFFu))
-    //     {
-    //         // Create an alias table tuple:
-    //         items[i] = {weights[lowIdx[i]] / avgWeight, highIdx[i], lowIdx[i], 0};
-
-    //         // We've removed some weight from element highIdx[i]; update it's weight, then re-enter it
-    //         // on the end of either the above-average or below-average lists.
-    //         float updatedWeight = (weights[lowIdx[i]] + weights[highIdx[i]]) - avgWeight;
-    //         weights[highIdx[i]] = updatedWeight;
-    //         if (updatedWeight < avgWeight)
-    //             lowIdx[lowCount++] = highIdx[i];
-    //         else
-    //             highIdx[highCount++] = highIdx[i];
-    //     }
-
-    //     // The next two cases can only occur towards the end of table creation, because either:
-    //     //    (a) all the remaining possible alias table entries have weight *exactly* equal to avgWeight,
-    //     //        which means these alias table entries only have one input item that is selected
-    //     //        with 100% probability
-    //     //    (b) all the remaining alias table entires have *almost* avgWeight, but due to (compounding)
-    //     //        precision issues throughout the process, they don't have *quite* that value.  In this case
-    //     //        treating these entries as having exactly avgWeight (as in case (a)) is the only right
-    //     //        thing to do mathematically (other than re-generating the alias table using higher precision
-    //     //        or trying to reduce catasrophic numerical cancellation in the "updatedWeight" computation above).
-    //     else if (highIdx[i] != 0xFFFFFFFFu)
-    //     {
-    //         items[i] = {1.0f, highIdx[i], highIdx[i], 0};
-    //     }
-    //     else if (lowIdx[i] != 0xFFFFFFFFu)
-    //     {
-    //         items[i] = {1.0f, lowIdx[i], lowIdx[i], 0};
-    //     }
-
-    //     // If there is neither a highIdx[i] or lowIdx[i] for some array element(s).  By construction,
-    //     // this cannot occur (without some logic bug above).
-    //     else
-    //     {
-    //         FALCOR_ASSERT(false); // Should not occur
-    //     }
-    // }
-
-    // // TODO: We can simplify the alias table to implicitly store indexB (aka lowIdx[i]), so the AliasTable::Item
-    // // structure would be 1 float + 1 uint32_t, rather than 128 bits.  This, of course, would change usage in shaders
-    // // and elsewhere.  To do this, here you'd need to sort elements by indexB so that when looking up mpItems[j],
-    // // indexB==j.  This works since, by construction, only one element in the table has indexB==j (for any j
-    // // in [0...mCount-1]).  Alternatively, during the loop above, you could directly enter elements into the
-    // // correct location in the alias table.
-
-    // // Stash the alias table in our GPU buffer
-    // mpItems = pDevice->createStructuredBuffer(
-    //     sizeof(AliasTable::Item), mCount, ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, items.data()
-    // );
+    // std::string hfPath = "D:/textures/ubo/leather11.png";
 }
 void TextureSynthesis::bindShaderData(const ShaderVar& var) const
 {
     var["color"] = mpColor;
-    // var["weights"] = mpWeights;
-    // var["count"] = mCount;
-    // var["weightSum"] = (float)mWeightSum;
+}
+void TextureSynthesis::readHFData(std::string hfPath, ref<Device> pDevice)
+{
+    Bitmap::UniqueConstPtr pBitmap = Bitmap::createFromFile(hfPath, true);
+    FALCOR_ASSERT(pBitmap);
+    logInfo("[Synthesis] Input Image Path: {}", hfPath);
+    logInfo("[Synthesis] Input Image Format: {}", to_string(pBitmap->getFormat()));
+    logInfo("[Synthesis] Input Image Width:  {}", pBitmap->getWidth());
+    logInfo("[Synthesis] Input Image Height: {}", pBitmap->getHeight());
+
+    TextureDataFloat input(pBitmap->getHeight(), pBitmap->getWidth(), 1);
+    int bitMapChannels = 1;
+    if (pBitmap->getFormat() == ResourceFormat::BGRX8Unorm)
+    {
+        bitMapChannels = 4;
+        for (size_t i = 0; i < pBitmap->getWidth() * pBitmap->getHeight(); i++)
+        {
+            input.data[i] = pBitmap->getData()[i * bitMapChannels + 0] / 255.0f;
+        }
+    }
+
+    else if (pBitmap->getFormat() == ResourceFormat::R16Unorm)
+    {
+        bitMapChannels = 1;
+        auto pBitData = reinterpret_cast<const uint16_t*>(pBitmap->getData());
+        for (size_t i = 0; i < pBitmap->getWidth() * pBitmap->getHeight(); i++)
+        {
+            input.data[i] = pBitData[i * bitMapChannels + 0] / 65535.0f;
+        }
+    }
+
+    TextureDataFloat Tinput;
+    TextureDataFloat lut;
+    logInfo("[Synthesis] Precomputing Gaussian T and Inv.");
+    Precomputations(input, Tinput, lut);
+    logInfo("[Synthesis] Precomputation done!");
+    // TODO generate max mipmap
+    mpHFT = pDevice->createTexture2D(
+        Tinput.width,
+        Tinput.height,
+        ResourceFormat::R32Float,
+        1,
+        Resource::kMaxPossible,
+        Tinput.data.data(),
+        ResourceBindFlags::ShaderResource
+    );
+
+    mpHFInvT =
+        pDevice->createTexture2D(lut.width, lut.height, ResourceFormat::R32Float, 1, 1, lut.data.data(), ResourceBindFlags::ShaderResource);
 }
 
+void TextureSynthesis::precomputeFeatureData(std::vector<float> data, uint2 dataDim, ref<Device> pDevice)
+{
+    logInfo("[Synthesis] Input Feature Dim: {}", dataDim);
+    logInfo("[Synthesis] Input Feature Size:  {}", data.size());
+    std::vector<float> TData(data.size());
+    std::vector<float> invTData(LUT_WIDTH * 4 * dataDim.y);
+    TextureDataFloat acf = TextureDataFloat(dataDim.x, dataDim.x, 1);
+    logInfo("[Synthesis] Precomputing Feature Gaussian T and Inv.");
+    for(uint i = 0; i < dataDim.y; i++)
+    {
+        uint offset = i * dataDim.x * dataDim.x * 4;
+        uint singleDataSize = dataDim.x * dataDim.x * 4;
+        TextureDataFloat input(dataDim.x, dataDim.x, 4);
+        std::copy(data.begin()+ offset, data.begin()+ offset + singleDataSize, input.data.begin());
+
+        TextureDataFloat Tinput;
+        TextureDataFloat lut;
+        Precomputations(input, Tinput, lut);
+        std::copy(Tinput.data.begin(), Tinput.data.end(), TData.begin()+offset);
+        std::copy(lut.data.begin(), lut.data.end(), invTData.begin() + LUT_WIDTH * i * 4);
+
+        // if(i == 0)
+        //     calculateAutocovariance(input, acf);
+    }
+
+    logInfo("[Synthesis] Precomputation done!");
+
+    // // TODO generate max mipmap
+    mpFeatureT = pDevice->createTexture2D(
+        dataDim.x,  dataDim.x, ResourceFormat::RGBA32Float, dataDim.y, 1, TData.data(), ResourceBindFlags::ShaderResource
+    );
+    mpFeatureInvT =
+        pDevice->createTexture2D(LUT_WIDTH, 1, ResourceFormat::RGBA32Float, dataDim.y, 1, invTData.data(), ResourceBindFlags::ShaderResource);
+    mpACF =
+        pDevice->createTexture2D(dataDim.x, dataDim.x, ResourceFormat::R32Float, 1, 1, acf.data.data(), ResourceBindFlags::ShaderResource);
+
+}
+
+void TextureSynthesis::bindHFData(const ShaderVar& var)
+{
+    var["tex"] = mpHFT;
+    var["invTex"] = mpHFInvT;
+}
+void TextureSynthesis::bindFeatureData(const ShaderVar& var)
+{
+    var["tex"] = mpFeatureT;
+    var["invTex"] = mpFeatureInvT;
+    var["acf"] = mpACF;
+}
 } // namespace Falcor

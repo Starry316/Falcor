@@ -762,6 +762,10 @@ target_sources(Falcor PRIVATE
     Utils/Texture/HexTiling.slang
     Utils/Texture/Synthesis.h
     Utils/Texture/Synthesis.cpp
+    Utils/Texture/SynthesisUtils.h
+    Utils/Texture/SynthesisUtils.cpp
+    Utils/Texture/external/jacobi.h
+    Utils/Texture/HistogramBlending.slang
 )
 
 

@@ -11,7 +11,6 @@ float3 HexTiling(
     float exp = 7
 )
 {
-    uv *= 1;
     // Get triangle info.
     float w1, w2, w3;
     int2 vertex1, vertex2, vertex3;
@@ -74,15 +73,15 @@ float HexTiling(
     W /= (W.x + W.y + W.z);
     if (r != 0.5)
         W = Gain3(W, r);
-    return W.x * c1 + W.y * c2 + W.z * c3;
+    return max(max(W.x * c1, W.y * c2),  W.z * c3);
 }
 float4 HexTiling(
     Texture2DArray<float4> tex,
     SamplerState samp,
-    float2 uv,
-    uint layer,
     float2 dfdx,
     float2 dfdy,
+    float2 uv,
+    uint layer,
     float rotStrength = 0,
     float r = 0.5,
     float fallOffContrast = 0.6,
@@ -103,9 +102,9 @@ float4 HexTiling(
     float2 st2 = mul(uv - cen2, rot2) + cen2 + hash(vertex2);
     float2 st3 = mul(uv - cen3, rot3) + cen3 + hash(vertex3);
     // Fetch input.
-    float4 c1 = tex.SampleGrad(samp, float3(st1.yx, layer), mul(dfdx, rot1), mul(dfdy, rot1));
-    float4 c2 = tex.SampleGrad(samp, float3(st2.yx, layer), mul(dfdx, rot2), mul(dfdy, rot2));
-    float4 c3 = tex.SampleGrad(samp, float3(st3.yx, layer), mul(dfdx, rot3), mul(dfdy, rot3));
+    float4 c1 = tex.SampleGrad(samp, float3(st1, layer), mul(dfdx, rot1), mul(dfdy, rot1));
+    float4 c2 = tex.SampleGrad(samp, float3(st2, layer), mul(dfdx, rot2), mul(dfdy, rot2));
+    float4 c3 = tex.SampleGrad(samp, float3(st3, layer), mul(dfdx, rot3), mul(dfdy, rot3));
     float4 Lw = float4(0.25);
     float3 Dw = float3(dot(c1, Lw), dot(c2, Lw), dot(c3, Lw));
     Dw = lerp(1.0, Dw, fallOffContrast);          // 0.6
