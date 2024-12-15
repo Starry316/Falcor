@@ -33,21 +33,21 @@
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-#include <nvrtc.h>
+// #include <nvrtc.h>
 #include "Tools/CommonNvrtc.hpp"
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
     registry.registerClass<RenderPass, HFTracing>();
 }
-class Logger : public ILogger
-{
-    void log(Severity severity, const char* msg) noexcept override
-    {
-        // suppress info-level messages
-        if (severity <= Severity::kWARNING)
-            std::cout << msg << std::endl;
-    }
-} logger;
+// class Logger : public ILogger
+// {
+//     void log(Severity severity, const char* msg) noexcept override
+//     {
+//         // suppress info-level messages
+//         if (severity <= Severity::kWARNING)
+//             std::cout << msg << std::endl;
+//     }
+// } logger;
 namespace
 {
 std::vector<float> readBinaryFile(const char* filename)
@@ -141,81 +141,81 @@ float leakyrelu(float x)
 {
     return fmax(x, 0.0f) + fmin(x, 0.0f) * 0.01f;
 }
-CUfunction createNVRTCProgram()
-{
-    nvrtcProgram program;
-    NVRTC_SAFE_CALL(nvrtcCreateProgram(
-        &program,         // program
-        cudaProgram,      // buffer
-        "test_kernel.cu", // name
-        0,                // numHeaders
-        NULL,             // headers
-        NULL
-    )); // includeNames
-    // Get current device
-    int current_device;
-    CUDA_CHECK_AND_EXIT(cudaGetDevice(&current_device));
-    std::vector<const char*> opts = {
-        "--std=c++17",
-        "--device-as-default-execution-space",
-        "--include-path=" CUDA_INCLUDE_DIR, // Add path to CUDA include directory
-    };
-    // Parse cuBLASDx include dirs
-    std::vector<std::string> cublasdx_include_dirs = example::nvrtc::get_cublasdx_include_dirs();
-    // Add cuBLASDx include dirs to opts
-    for (auto& d : cublasdx_include_dirs)
-    {
-        opts.push_back(d.c_str());
-    }
-    // Add GPU_ARCHITECTURE definition to opts
-    std::string gpu_architecture_definition = "-DBLAS_SM=" + std::to_string(example::nvrtc::get_device_architecture(current_device) * 10);
-    opts.push_back(gpu_architecture_definition.c_str());
-    // Add gpu-architecture to opts
-    std::string gpu_architecture_option = example::nvrtc::get_device_architecture_option(current_device);
-    opts.push_back(gpu_architecture_option.c_str());
-    for (size_t i = 0; i < opts.size(); i++)
-    {
-        /* code */
-        std::cout << opts[i] << std::endl;
-    }
+// CUfunction createNVRTCProgram()
+// {
+    // nvrtcProgram program;
+    // NVRTC_SAFE_CALL(nvrtcCreateProgram(
+    //     &program,         // program
+    //     cudaProgram,      // buffer
+    //     "test_kernel.cu", // name
+    //     0,                // numHeaders
+    //     NULL,             // headers
+    //     NULL
+    // )); // includeNames
+    // // Get current device
+    // int current_device;
+    // CUDA_CHECK_AND_EXIT(cudaGetDevice(&current_device));
+    // std::vector<const char*> opts = {
+    //     "--std=c++17",
+    //     "--device-as-default-execution-space",
+    //     "--include-path=" CUDA_INCLUDE_DIR, // Add path to CUDA include directory
+    // };
+    // // Parse cuBLASDx include dirs
+    // std::vector<std::string> cublasdx_include_dirs = example::nvrtc::get_cublasdx_include_dirs();
+    // // Add cuBLASDx include dirs to opts
+    // for (auto& d : cublasdx_include_dirs)
+    // {
+    //     opts.push_back(d.c_str());
+    // }
+    // // Add GPU_ARCHITECTURE definition to opts
+    // std::string gpu_architecture_definition = "-DBLAS_SM=" + std::to_string(example::nvrtc::get_device_architecture(current_device) * 10);
+    // opts.push_back(gpu_architecture_definition.c_str());
+    // // Add gpu-architecture to opts
+    // std::string gpu_architecture_option = example::nvrtc::get_device_architecture_option(current_device);
+    // opts.push_back(gpu_architecture_option.c_str());
+    // for (size_t i = 0; i < opts.size(); i++)
+    // {
+    //     /* code */
+    //     std::cout << opts[i] << std::endl;
+    // }
 
-    nvrtcResult compileResult = nvrtcCompileProgram(
-        program,                       // program
-        static_cast<int>(opts.size()), // numOptions
-        opts.data()
-    ); // options
+    // nvrtcResult compileResult = nvrtcCompileProgram(
+    //     program,                       // program
+    //     static_cast<int>(opts.size()), // numOptions
+    //     opts.data()
+    // ); // options
 
-    // Obtain compilation log from the program
-    if (compileResult != NVRTC_SUCCESS)
-    {
-        for (auto o : opts)
-        {
-            std::cout << o << std::endl;
-        }
-        example::nvrtc::print_program_log(program);
-        std::exit(1);
-    }
+    // // Obtain compilation log from the program
+    // if (compileResult != NVRTC_SUCCESS)
+    // {
+    //     for (auto o : opts)
+    //     {
+    //         std::cout << o << std::endl;
+    //     }
+    //     example::nvrtc::print_program_log(program);
+    //     std::exit(1);
+    // }
 
-    // Get PTX from the program
-    size_t ptxSize;
-    nvrtcGetPTXSize(program, &ptxSize);
-    char* ptx = new char[ptxSize];
-    nvrtcGetPTX(program, ptx);
+    // // Get PTX from the program
+    // size_t ptxSize;
+    // nvrtcGetPTXSize(program, &ptxSize);
+    // char* ptx = new char[ptxSize];
+    // nvrtcGetPTX(program, ptx);
 
-    // Destroy the program
-    nvrtcDestroyProgram(&program);
+    // // Destroy the program
+    // nvrtcDestroyProgram(&program);
 
-    // Load the PTX and launch the kernel
-    CUmodule module;
-    CUfunction kernel;
-    cuModuleLoadData(&module, ptx);
-    cuModuleGetFunction(&kernel, module, "helloFromGPU");
+    // // Load the PTX and launch the kernel
+    // CUmodule module;
+    // CUfunction kernel;
+    // cuModuleLoadData(&module, ptx);
+    // cuModuleGetFunction(&kernel, module, "helloFromGPU");
 
-    void* args[] = {NULL};
-    cuLaunchKernel(kernel, 2, 2, 1, 1, 1, 1, 0, 0, nullptr, nullptr);
-    cudaDeviceSynchronize();
+    // void* args[] = {NULL};
+    // cuLaunchKernel(kernel, 2, 2, 1, 1, 1, 1, 0, 0, nullptr, nullptr);
+    // cudaDeviceSynchronize();
 
-    return kernel;
+    // return kernel;
 
     // checkCudaError(, "Failed to get kernel function");
 
@@ -226,7 +226,7 @@ CUfunction createNVRTCProgram()
     // // Clean up
     // delete[] ptx;
     // checkCudaError(cuModuleUnload(module), "Failed to unload module");
-}
+// }
 
 HFTracing::HFTracing(ref<Device> pDevice, const Properties& props) : RenderPass(pDevice)
 {
@@ -778,9 +778,9 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     // Read in textures, we use a constant texture now
     mpHF = Texture::createFromFile(
         mpDevice,
-        // fmt::format("{}/media/BTF/scene/textures/{}.png", mMediaPath, mHFFileName).c_str(),
+        fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mHFFileName).c_str(),
             // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
-        fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
+        // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
         true,
         false,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
@@ -789,7 +789,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpShellHF = Texture::createFromFile(
         mpDevice,
         // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
-        fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
+        // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
+        fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mShellHFFileName).c_str(),
         true,
         false,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
@@ -797,7 +798,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpColor = Texture::createFromFile(
         mpDevice,
         // fmt::format("{}/media/BTF/scene/textures/{}.jpg", mMediaPath, mColorFileName).c_str(),
-        fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
+        // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
+        fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mShellHFFileName).c_str(),
         // fmt::format("D:/textures/synthetic/{}.jpg", mColorFileName).c_str(),
         true,
         true,
@@ -865,7 +867,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 
     setupTRT();
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
-    mpTextureSynthesis->readHFData( fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(), mpDevice);
+
+    mpTextureSynthesis->readHFData(fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mShellHFFileName).c_str(), mpDevice);
     generateMaxMip(pRenderContext, mpTextureSynthesis->mpHFT);
 
     mpMLP = std::make_unique<MLP>(mpDevice, mNetName);
@@ -880,7 +883,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
-    auto kernel = createNVRTCProgram();
+    // auto kernel = createNVRTCProgram();
 
 
 

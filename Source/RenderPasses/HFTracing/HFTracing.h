@@ -36,15 +36,15 @@
 #include "Rendering/Lights/EnvMapSampler.h"
 #include "cuda/MLPInference.h"
 
-#include "NvInfer.h"
-#include "NvOnnxParser.h"
+// #include "NvInfer.h"
+// #include "NvOnnxParser.h"
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-#include <nvrtc.h>
+// #include <nvrtc.h>
 
-using namespace nvinfer1;
-using namespace nvonnxparser;
+// using namespace nvinfer1;
+// using namespace nvonnxparser;
 using namespace Falcor;
 
 
@@ -152,14 +152,10 @@ private:
     // Texture inputs
     std::string mMediaPath =getProjectDirectory().string();
     // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
-    std::string mHFFileName = "castle_brick_02_red_cut_disp_4k";
-    // std::string mShellHFFileName = "castle_brick_02_red_cut_disp_4k.png";
+    std::string mHFFileName = "leather11.png";
     std::string mShellHFFileName = "leather11.png";
-
     std::string mColorFileName = "RoofTilesTerracotta005_COL_6K";
-    // std::string mNetName = "block_io";
     std::string mNetName = "leather11_dim16_32_cos300";
-    // std::string mColorFileName = "dirty_carpet_cut_diff_4k.jpg";
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;
     ref<Texture> mpHFMaxMip;
@@ -174,9 +170,9 @@ private:
 
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
-    Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.3);
+    Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.085);
     // Falcor::float4 mCurvatureParas = Falcor::float4(0.056, 1, 0.65, 0.3);
-    Falcor::float4 mCurvatureParas = Falcor::float4(0.3, 1, 0.65, 0.3);
+    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 1, 0.65, 0.3);
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
 
 
@@ -212,10 +208,10 @@ private:
     std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;
 
     // trt
-    IBuilder* mpBuilder;
-    INetworkDefinition* mpNetwork;
-    ICudaEngine* mpEngine;
-    IExecutionContext* mpContext;
+    // IBuilder* mpBuilder;
+    // INetworkDefinition* mpNetwork;
+    // ICudaEngine* mpEngine;
+    // IExecutionContext* mpContext;
 
 
     // cuda

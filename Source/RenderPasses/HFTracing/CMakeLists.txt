@@ -1,18 +1,19 @@
 add_plugin(HFTracing)
 
-set(TensorRT_INCLUDE_DIRS D:/TensorRT/include/)
-set(TensorRT_LIBRARIES
-    D:/TensorRT/lib/nvinfer_10.lib
-    D:/TensorRT/lib/nvinfer_plugin_10.lib
-    D:/TensorRT/lib/nvonnxparser_10.lib
-)
+# set(TensorRT_INCLUDE_DIRS D:/TensorRT/include/)
+# set(TensorRT_LIBRARIES
+#     D:/TensorRT/lib/nvinfer_10.lib
+#     D:/TensorRT/lib/nvinfer_plugin_10.lib
+#     D:/TensorRT/lib/nvonnxparser_10.lib
+# )
 
 # find_package(mathdx REQUIRED COMPONENTS cublasdx CONFIG PATHS "D:/Projects/nvidia/mathdx/24.08/")
 
 # message(STATUS ${mathdx_cublasdx_FOUND})
 
 
-target_include_directories(HFTracing PUBLIC ${TensorRT_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
+# target_include_directories(HFTracing PUBLIC ${TensorRT_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
+target_include_directories(HFTracing PUBLIC  ${CUDA_INCLUDE_DIRS})
 target_link_libraries(HFTracing PUBLIC  ${CUDA_LIBRARIES} nvrtc)
 
 target_sources(HFTracing PRIVATE
