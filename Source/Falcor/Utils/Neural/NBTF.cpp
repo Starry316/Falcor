@@ -3,6 +3,7 @@
 #include "Core/Error.h"
 #include "Core/Platform/OS.h"
 #include "Core/API/Device.h"
+#include "Utils/Math/FormatConversion.h"
 #include <fstream>
 namespace Falcor
 {

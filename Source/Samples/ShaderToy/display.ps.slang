@@ -29,12 +29,9 @@ import Utils.Texture.HistogramBlending;
 import Utils.Neural.NBTF;
 import Utils.Debug.PixelDebug;
 import Utils.Math.FormatConversion;
-cbuffer ToyCB
+cbuffer CB
 {
     float2 iResolution;
-    float iGlobalTime;
-    HistogramBlendingHFData hfData;
-    float gUVScaling;
     NBTF nbtf;
     bool gSynthesis;
     bool gDisplay;
@@ -47,46 +44,17 @@ SamplerState gSampler;
 
 float4 mainImage(float2 fragCoord, uint2 pixel)
 {
-    float2 uv = fragCoord / iResolution.y;
-
-    float2 ddx = 0.0001;
-    float2 ddy = 0.0001;
-
-    float3 wi = normalize(float3(0.2, 0.2, 1.0));
-    float3 wo = normalize(float3(0.3, 0.2, 0.8));
-    // float a = 0.12344556;
-    // float b = 0.234556;
-    // float2 originData = float2(a, b);
-    // uint packedData = packSnorm2x8(originData);
-    // float2 unpacked = unpackSnorm2x8(packedData);
-    // print("a: ", originData);
-    // print("b: ", b);
-    // print("c: ", gInputColor[4 * (pixel.y * iResolution.x + pixel.x)]);
-
-
-    return float4(nbtf.evalDebug(wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis), 1.0);
+    return float4(
+        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
+        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],
+        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2],
+        1.0
+    );
 }
-void bindInput(float2 fragCoord, uint2 pixel)
-{
-    float2 uv = fragCoord / iResolution.y;
-    float2 ddx = 0.0001;
-    float2 ddy = 0.0001;
-    // float hf = HistorgramBlending(hfData, gSampler, ddx, ddy, uv * gUVScaling);
-    float3 wi = normalize(float3(0.2, 0.2, 1.0));
-    float3 wo = normalize(float3(0.3, 0.2, 0.8));
-    uint offset = 32 * (pixel.y * iResolution.x + pixel.x);
-    nbtf.bindInput(cudaInputBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, false);
-}
+
 float4 main(float2 texC: TEXCOORD) : SV_TARGET
 {
     uint2 pixel = uint2(floor(texC * iResolution));
     printSetPixel(pixel);
-
-    if (gDisplay)
-        return mainImage(texC * iResolution, pixel);
-    else
-    {
-        bindInput(texC * iResolution, pixel);
-        return float4(0.0, 0.0, 0.0, 1.0);
-    }
+    return mainImage(texC * iResolution, pixel);
 }

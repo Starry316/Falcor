@@ -27,8 +27,53 @@
  **************************************************************************/
 #include "ShaderToy.h"
 #include <fstream>
+#include "RenderGraph/RenderPassHelpers.h"
+#include "Utils/UI/TextRenderer.h"
+#include "Utils/CudaUtils.h"
 FALCOR_EXPORT_D3D12_AGILITY_SDK
-
+void createBuffer(ref<Buffer>& buf, ref<Device> device, Falcor::uint2 targetDim, uint itemSize = 4)
+{
+    if (buf.get() == nullptr)
+    {
+        buf = device->createBuffer(
+            targetDim.x * targetDim.y * itemSize * sizeof(float),
+            ResourceBindFlags::ShaderResource | ResourceBindFlags::Shared | ResourceBindFlags::UnorderedAccess,
+            MemoryType::DeviceLocal,
+            nullptr
+        );
+    }
+    else
+    {
+        if (buf.get()->getElementCount() != targetDim.x * targetDim.y * itemSize * sizeof(float))
+        {
+            buf = device->createBuffer(
+                targetDim.x * targetDim.y * itemSize * sizeof(float),
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::Shared | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal,
+                nullptr
+            );
+        }
+    }
+}
+std::vector<float> readBinaryFile(const char* filename)
+{
+    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+    if (!file)
+    {
+        logError("[MLP] Unable to open file {}", filename);
+        return std::vector<float>();
+    }
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<float> buffer(size / sizeof(float));
+    if (!file.read(reinterpret_cast<char*>(buffer.data()), size))
+    {
+        logError("[MLP] Error reading file {}", filename);
+        return std::vector<float>();
+    }
+    file.close();
+    return buffer;
+}
 ShaderToy::ShaderToy(const SampleAppConfig& config) : SampleApp(config) {}
 
 ShaderToy::~ShaderToy() {}
@@ -48,6 +93,8 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     BlendState::Desc blendDesc;
     mpOpaqueBS = BlendState::create(blendDesc);
 
+    mpPixelDebug = std::make_unique<PixelDebug>(getDevice());
+
     // Texture sampler
     Sampler::Desc samplerDesc;
     samplerDesc.setFilterMode(TextureFilteringMode::Linear, TextureFilteringMode::Linear, TextureFilteringMode::Linear).setMaxAnisotropy(8);
@@ -55,6 +102,7 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     // Load shaders
     mpMainPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/Toy.ps.slang");
+    mpDisplayPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/display.ps.slang");
 
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
 
@@ -62,9 +110,57 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
     mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, true);
 
+    std::vector<float> cudaWeight =
+        readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_flatten_{}.bin", getProjectDirectory(), mNetName).c_str());
+    std::vector<float> cudaBias =
+        readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", getProjectDirectory(), mNetName).c_str());
 
+    mpWeightBuffer = getDevice()->createBuffer(
+        cudaWeight.size() * sizeof(float),
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
+        MemoryType::DeviceLocal,
+        cudaWeight.data()
+    );
+    mpBiasBuffer = getDevice()->createBuffer(
+        cudaBias.size() * sizeof(float),
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
+        MemoryType::DeviceLocal,
+        cudaBias.data()
+    );
 
+    std::vector<__half> cudaWeightFP16(cudaWeight.size());
+    for (size_t i = 0; i < cudaWeight.size(); i++)
+    {
+        cudaWeightFP16[i] = __float2half(cudaWeight[i]);
+    }
+    std::vector<__half> cudaBiasFP16(cudaBias.size());
+    for (size_t i = 0; i < cudaBias.size(); i++)
+    {
+        cudaBiasFP16[i] = __float2half(cudaBias[i]);
+    }
 
+    mpWeightFP16Buffer = getDevice()->createBuffer(
+        cudaWeightFP16.size() * sizeof(__half),
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
+        MemoryType::DeviceLocal,
+        cudaWeightFP16.data()
+    );
+
+    mpBiasFP16Buffer = getDevice()->createBuffer(
+        cudaBiasFP16.size() * sizeof(__half),
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
+        MemoryType::DeviceLocal,
+        cudaBiasFP16.data()
+    );
+
+    std::vector<float>().swap(cudaWeight);
+    std::vector<float>().swap(cudaBias);
+
+    std::vector<__half>().swap(cudaWeightFP16);
+    std::vector<__half>().swap(cudaBiasFP16);
+
+    cudaEventCreate(&mCudaStart);
+    cudaEventCreate(&mCudaStop);
 }
 
 void ShaderToy::onResize(uint32_t width, uint32_t height)
@@ -72,43 +168,148 @@ void ShaderToy::onResize(uint32_t width, uint32_t height)
     mAspectRatio = (float(width) / float(height));
 }
 
-void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
+void ShaderToy::shaderInfer(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
 {
     // iResolution
     float width = (float)pTargetFbo->getWidth();
     float height = (float)pTargetFbo->getHeight();
+    Falcor::uint2 targetDim = Falcor::uint2(width, height);
+
     auto var = mpMainPass->getRootVar()["ToyCB"];
-    var["iResolution"] = float2(width, height);
+    var["iResolution"] = Falcor::float2(width, height);
     var["iGlobalTime"] = (float)getGlobalClock().getTime();
     var["gUVScaling"] = mUVScale;
     var["gSynthesis"] = mSynthesis;
+    var["gDisplay"] = true;
+    mpMainPass->getRootVar()["gInputColor"] = mpOutputBuffer;
+    mpMainPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
     mpTextureSynthesis->bindHFData(mpMainPass->getRootVar()["ToyCB"]["hfData"]);
     mpNBTF->bindShaderData(mpMainPass->getRootVar()["ToyCB"]["nbtf"]);
 
-
+    mpPixelDebug->beginFrame(pRenderContext, targetDim);
+    mpPixelDebug->prepareProgram(mpMainPass->getProgram(), mpMainPass->getRootVar());
 
     // run final pass
     mpMainPass->execute(pRenderContext, pTargetFbo);
+    mpPixelDebug->endFrame(pRenderContext);
+}
+void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
+{
+    // iResolution
+    float width = (float)pTargetFbo->getWidth();
+    float height = (float)pTargetFbo->getHeight();
+    Falcor::uint2 targetDim = Falcor::uint2(width, height);
+
+    auto input = (float*)mpInputBuffer->getGpuAddress();
+    auto output = (float*)mpOutputBuffer->getGpuAddress();
+    // timer start
+    cudaEventRecord(mCudaStart, NULL);
+    launchNNInference(
+        (float*)mpWeightBuffer->getGpuAddress(), (float*)mpBiasBuffer->getGpuAddress(), input, output, targetDim.x, targetDim.y
+    );
+    // timer end
+    cudaDeviceSynchronize();
+    cudaEventRecord(mCudaStop, NULL);
+    cudaEventSynchronize(mCudaStop);
+    cudaEventElapsedTime(&mCudaTime, mCudaStart, mCudaStop);
+    mCudaAvgTime += mCudaTime;
+    // logInfo("CUDA time: " + std::to_string(mCudaTime) + " ms");
+}
+void ShaderToy::bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
+{
+    // iResolution
+    float width = (float)pTargetFbo->getWidth();
+    float height = (float)pTargetFbo->getHeight();
+    Falcor::uint2 targetDim = Falcor::uint2(width, height);
+
+    auto var = mpMainPass->getRootVar()["ToyCB"];
+    var["iResolution"] = Falcor::float2(width, height);
+    var["iGlobalTime"] = (float)getGlobalClock().getTime();
+    var["gUVScaling"] = mUVScale;
+    var["gSynthesis"] = mSynthesis;
+    var["gDisplay"] = false;
+    mpMainPass->getRootVar()["gInputColor"] = mpOutputBuffer;
+    mpMainPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
+    mpTextureSynthesis->bindHFData(mpMainPass->getRootVar()["ToyCB"]["hfData"]);
+    mpNBTF->bindShaderData(mpMainPass->getRootVar()["ToyCB"]["nbtf"]);
+
+    mpPixelDebug->beginFrame(pRenderContext, targetDim);
+    mpPixelDebug->prepareProgram(mpMainPass->getProgram(), mpMainPass->getRootVar());
+
+    // run final pass
+    mpMainPass->execute(pRenderContext, pTargetFbo);
+    mpPixelDebug->endFrame(pRenderContext);
+}
+
+void ShaderToy::display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
+{
+    // iResolution
+    float width = (float)pTargetFbo->getWidth();
+    float height = (float)pTargetFbo->getHeight();
+    Falcor::uint2 targetDim = Falcor::uint2(width, height);
+
+    auto var = mpDisplayPass->getRootVar()["CB"];
+    var["iResolution"] = Falcor::float2(width, height);
+    var["gSynthesis"] = mSynthesis;
+    mpDisplayPass->getRootVar()["gInputColor"] = mpOutputBuffer;
+    mpDisplayPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
+
+    mpPixelDebug->beginFrame(pRenderContext, targetDim);
+    mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
+    // run final pass
+    mpDisplayPass->execute(pRenderContext, pTargetFbo);
+    mpPixelDebug->endFrame(pRenderContext);
+}
+
+void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
+{
+    float width = (float)pTargetFbo->getWidth();
+    float height = (float)pTargetFbo->getHeight();
+    Falcor::uint2 targetDim = Falcor::uint2(width, height);
+    createBuffer(mpOutputBuffer, getDevice(), targetDim);
+    createBuffer(mpInputBuffer, getDevice(), targetDim, 33);
+
+    if (mRenderType == RenderType::SHADER_NN)
+    {
+        shaderInfer(pRenderContext, pTargetFbo);
+    }
+    else if (mRenderType == RenderType::CUDA)
+    {
+        bindInput(pRenderContext, pTargetFbo);
+        cudaInfer(pRenderContext, pTargetFbo);
+        // display(pRenderContext, pTargetFbo);
+
+    }
+    // else if (mRenderType == RenderType::CUDAFP16)
+    // {
+    //     cudaInferFP16(pRenderContext, pTargetFbo);
+    // }
+    getTextRenderer().render(pRenderContext, getFrameRate().getMsg(), pTargetFbo, {20, 20});
+    mFrames++;
 }
 void ShaderToy::onGuiRender(Gui* pGui)
 {
-    Gui::Window w(pGui, "Falcor", {250, 200});
+    Gui::Window w(pGui, "Falcor", {250, 200}, {20, 100});
     renderGlobalUI(pGui);
-    w.text("Hello from SampleAppTemplate");
+    w.dropdown("Render Type", mRenderType);
+
     w.slider("UV Scale", mUVScale, 0.0f, 10.0f);
     w.checkbox("Enable Synthesis", mSynthesis);
     if (w.button("Click Here"))
     {
         msgBox("Info", "Now why would you do that?");
     }
+    w.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
+    w.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mFrames) + " ms");
+    mpPixelDebug->renderUI(w);
 }
 int runMain(int argc, char** argv)
 {
     SampleAppConfig config;
-    config.windowDesc.width = 1280;
-    config.windowDesc.height = 720;
+    config.windowDesc.width = 1920;
+    config.windowDesc.height = 1080;
     config.windowDesc.resizableWindow = true;
-    config.windowDesc.enableVSync = true;
+    config.windowDesc.enableVSync = false;
     config.windowDesc.title = "Falcor Shader Toy";
 
     ShaderToy shaderToy(config);

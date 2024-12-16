@@ -31,7 +31,37 @@
 #include "Core/Pass/FullScreenPass.h"
 #include "Utils/Texture/Synthesis.h"
 #include "Utils/Neural/NBTF.h"
+#include "Utils/Debug/PixelDebug.h"
+#include "cuda/MLPInference.h"
+
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+
 using namespace Falcor;
+enum class RenderType : uint32_t
+{
+    // RT,
+    // WAVEFRONT_SHADER_NN,
+    SHADER_NN,
+    CUDA,
+    CUDAFP16
+    // TRT,
+    // DEBUG_MIP
+};
+
+FALCOR_ENUM_INFO(
+    RenderType,
+    {
+        // { RenderType::RT, "RT" },
+        // { RenderType::WAVEFRONT_SHADER_NN, "Wavefront Inference" },
+        { RenderType::SHADER_NN, "Shader Inference" },
+        { RenderType::CUDA, "CUDA Inference" },
+        { RenderType::CUDAFP16, "CUDA FP16 Inference" }
+        // { RenderType::TRT, "TensorRT Inference" },
+        // { RenderType::DEBUG_MIP, "DEBUG MIP" }
+    }
+);
+FALCOR_ENUM_REGISTER(RenderType);
 
 class ShaderToy : public SampleApp
 {
@@ -43,16 +73,40 @@ public:
     void onResize(uint32_t width, uint32_t height) override;
     void onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo) override;
     void onGuiRender(Gui* pGui) override;
+    virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return mpPixelDebug->onMouseEvent(mouseEvent); }
+    void shaderInfer(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
+    void cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
+    void bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
+    void display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
 private:
+    std::unique_ptr<PixelDebug> mpPixelDebug;
     ref<Sampler> mpLinearSampler;
     float mAspectRatio = 0;
     ref<RasterizerState> mpNoCullRastState;
     ref<DepthStencilState> mpNoDepthDS;
     ref<BlendState> mpOpaqueBS;
     ref<FullScreenPass> mpMainPass;
+    ref<FullScreenPass> mpDisplayPass;
     float mUVScale = 1.0f;
     std::unique_ptr<NBTF> mpNBTF;
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
-     std::string mNetName = "leather11_dim16_32_cos300";
-     bool mSynthesis = false;
+    std::string mNetName = "leather11_dim16_32_cos300";
+    uint mFrames = 1;
+
+    bool mSynthesis = false;
+
+    RenderType mRenderType = RenderType::CUDA;
+
+    // cuda
+    float mCudaTime = 0.0;
+    double mCudaAvgTime = 0.0;
+    cudaEvent_t mCudaStart, mCudaStop;
+    ref<Buffer> mpInputBuffer;
+    ref<Buffer> mpOutputBuffer;
+
+    ref<Buffer> mpWeightBuffer;
+    ref<Buffer> mpBiasBuffer;
+
+    ref<Buffer> mpWeightFP16Buffer;
+    ref<Buffer> mpBiasFP16Buffer;
 };
