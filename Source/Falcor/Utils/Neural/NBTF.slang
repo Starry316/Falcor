@@ -249,8 +249,8 @@ struct NBTF
         int count = 0;
         for (uint i = 0; i < hDims.y; i++)
         {
-            // float4 val = hP.SampleLevel(gSampler, float3(h, i), 0.f);
-            float4 val = float4(0.2, 0.1, 0.3, 0.4);
+            float4 val = hP.SampleLevel(gSampler, float3(h, i), 0.f);
+            // float4 val = float4(0.2, 0.1, 0.3, 0.4);
             inputBuffer[count + offset] = packSnorm2x16(val.xy);
             inputBuffer[count + offset + 1] = packSnorm2x16(val.zw);
             count += 2;
@@ -268,8 +268,8 @@ struct NBTF
         }
         for (uint i = 0; i < dDims.y; i++)
         {
-            // float4 val = dP.SampleLevel(gSampler, float3(d, i), 0.f);
-            float4 val = float4(0.2, 0.1, 0.3, 0.4);
+            float4 val = dP.SampleLevel(gSampler, float3(d, i), 0.f);
+            // float4 val = float4(0.2, 0.1, 0.3, 0.4);
             inputBuffer[count + offset] = packSnorm2x16(val.xy);
             inputBuffer[count + offset + 1] = packSnorm2x16(val.zw);
             count += 2;

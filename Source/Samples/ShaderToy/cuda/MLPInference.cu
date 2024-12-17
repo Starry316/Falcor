@@ -134,21 +134,26 @@ inline __device__ void unpackSnorm2x16(unsigned int packed, __half& a, __half& b
     b = __hdiv(__int2half_rd((int)packed >> 16), 32767);
 }
 
-inline __device__ __half hfa_relu(const __half a, const __half b)
+// inline __device__ __half hfa_relu(const __half a, const __half b)
+// {
+//     return __hmax(__hadd(a, b), CUDART_ZERO_FP16);
+// }
+
+
+inline __device__ short2 packInt2x16(int a)
 {
-    return __hmax(__hadd(a, b), CUDART_ZERO_FP16);
+    return make_short2((short)((a << 16) >> 16), (short)(a >> 16));
 }
 
 // The CUDA kernel. This sample simply copies the input surface.
-__global__ void fp16test(float* weight, float* bias,cudaTextureObject_t texObj,  unsigned int* input, float* output, unsigned int width, unsigned int height)
+__global__ void int8test(float* weight, float* bias, unsigned int* input, float* output, unsigned int width, unsigned int height)
 {
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height)
         return;
 
-    float u = (x + 0.5f) / width;
-    float v = (y + 0.5f) / height;
+
 
     int offset = 0;
     int biasOffset = 0;
@@ -157,86 +162,57 @@ __global__ void fp16test(float* weight, float* bias,cudaTextureObject_t texObj, 
     int outNum = OUT_NUM;
     unsigned int* inputVal = input + 16 * (y * width + x);
 
-    __half val1[IN_NUM];
-    __half val2[IN_NUM];
+    int val1[IN_NUM];
+    int val2[IN_NUM];
 
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < 32; i++)
     {
-        unpackSnorm2x16(inputVal[i], val1[2 * i], val1[2 * i + 1]);
+        val1[i] = i;
     }
-    val2[0] = CUDART_ZERO_FP16;
-    val2[1] = CUDART_ZERO_FP16;
-    val2[2] = CUDART_ZERO_FP16;
-    val2[0] = __hfma(__float2half_rd(2.0f), val1[0], val2[0]);
-    val2[1] = hfa_relu(val1[0], val2[0]);
-    val2[2] = hfa_relu(val1[1], val2[0]);
-    output[4 * (y * width + x) + 0] = __half2float(val1[0]);
-    output[4 * (y * width + x) + 1] = __half2float(val2[0]);
-    output[4 * (y * width + x) + 2] = __half2float(val2[1]);
-    output[4 * (y * width + x) + 3] = __half2float(val2[2]);
+    for (int k = 0; k < outNum; ++k){
+        val2[k] = 0;
+        for (int j = 0; j < 32; ++j)
+        {
+            val2[k] += __dp2a_lo(j*k, val1[k], val2[k]);
+        }
+        val2[k] = relu(val2[k]);
+    }
 
-    // for (int k = 0; k < outNum; ++k)
-    // {
-    //     val2[k] = CUDART_ZERO_FP16;
-    //     for (int j = 0; j < inNumFirst; ++j)
-    //     {
-    //         val2[k] = __hfma(__float2half_rd(weight[inNumFirst * j + k + offset]), val1[j], val2[k]);
-    //     }
-    //     val2[k] = __hmax(__hadd(val2[k], __float2half_rd(bias[k + biasOffset])), CUDART_ZERO_FP16);
-    // }
-    // offset += outNum * inNumFirst;
-    // biasOffset += outNum;
-    // for (int k = 0; k < outNum; ++k)
-    // {
-    //     val1[k] = CUDART_ZERO_FP16;
-    //     for (int j = 0; j < inNumFirst; ++j)
-    //     {
-    //         val1[k] = __hfma(__float2half_rd(weight[inNumFirst * j + k + offset]), val2[j], val1[k]);
-    //     }
-    //     val1[k] = __hmax(__hadd(val1[k], __float2half_rd(bias[k + biasOffset])), CUDART_ZERO_FP16);
-    // }
+    for (int k = 0; k < outNum; ++k){
+        val1[k] = 0;
+        for (int j = 0; j < 32; ++j)
+        {
+            val1[k] += __dp2a_lo(j*k,  val2[k], val1[k]);
+        }
+        val1[k] = relu(val1[k]);
+    }
+    for (int k = 0; k < outNum; ++k){
+        val2[k] = 0;
+        for (int j = 0; j < 32; ++j)
+        {
+            val2[k] += __dp2a_lo(j*k, val1[k], val2[k]);
+        }
+        val2[k] = relu(val2[k]);
+    }
+    for (int k = 0; k < 3; ++k){
+        val1[k] = 0;
+        for (int j = 0; j < 32; ++j)
+        {
+            val1[k] += __dp2a_lo(j*k, val2[k], val1[k]);
+        }
+        val1[k] = relu(val1[k]);
+    }
+    output[4 * (y * width + x) + 0] = val1[0] * 0.00001;
+    output[4 * (y * width + x) + 1] = val1[1]* 0.0001;
+    output[4 * (y * width + x) + 2] = val1[2]* 0.0001;
 
-    // offset += outNum * inNumFirst;
-    // biasOffset += outNum;
-    // for (int k = 0; k < outNum; ++k)
-    // {
-    //     val2[k] = CUDART_ZERO_FP16;
-    //     for (int j = 0; j < inNumFirst; ++j)
-    //     {
-    //         val2[k] = __hfma(__float2half_rd(weight[inNumFirst * j + k + offset]), val1[j], val2[k]);
-    //     }
-    //     val2[k] = __hmax(__hadd(val2[k], __float2half_rd(bias[k + biasOffset])), CUDART_ZERO_FP16);
-    // }
-    // offset += outNum * inNumFirst;
-    // biasOffset += outNum;
-
-    // for (int k = 0; k < 3; ++k)
-    // {
-    //     val1[k] = CUDART_ZERO_FP16;
-    //     for (int j = 0; j < inNumFirst; ++j)
-    //     {
-    //         val1[k] = __hfma(__float2half_rd(weight[inNumFirst * j + k + offset]), val2[j], val1[k]);
-    //     }
-    //     // val1[k] = __hfma_relu(val1[k], bias[k+biasOffset], val1[k]);
-    //     val1[k] = __hmax(__hadd(val1[k], __float2half_rd(bias[k + biasOffset])), CUDART_ZERO_FP16);
-    // }
-
-    // output[4 * (y * width + x) + 0] = __half2float(val1[0]);
-    // output[4 * (y * width + x) + 1] = __half2float(val1[1]);
-    // output[4 * (y * width + x) + 2] = __half2float(val1[2]);
-
-    // output[4 * (y * width + x) + 2] = abs(inputVal[10]);
-
-    // output[4 * (y * width + x) + 0] = val1[0];
-    // output[4 * (y * width + x) + 1] = val1[1];
-    // output[4 * (y * width + x) + 2] = val1[2];
 }
 // A wrapper function that launches the kernel.
-void launchFP16Test(float* weight, float* bias, cudaTextureObject_t texObj, unsigned int* input, float* output, unsigned int width, unsigned int height)
+void launchInt8Test(float* weight, float* bias, unsigned int* input, float* output, unsigned int width, unsigned int height)
 {
     dim3 dimBlock(16, 16);
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-    fp16test<<<dimGrid, dimBlock>>>(weight, bias, texObj, input, output, width, height);
+    int8test<<<dimGrid, dimBlock>>>(weight, bias,  input, output, width, height);
 }
 
 // The CUDA kernel. This sample simply copies the input surface.
@@ -285,25 +261,20 @@ __global__ void validation(
     __half val1[IN_NUM];
     __half val2[IN_NUM];
 
-    // for (int i = 0; i < 16; i++)
-    // {
-    //     unpackSnorm2x16(inputVal[i], val1[2 * i], val1[2 * i + 1]);
-    // }
-    val1[0] = __float2half(u);
-    val1[1] = __float2half(v);
-    for (int i = 2; i < 32; i++)
+    for (int i = 0; i < 16; i++)
     {
-         val1[i] = __float2half((float)i / 32);
+        unpackSnorm2x16(inputVal[i], val1[2 * i], val1[2 * i + 1]);
     }
+
 
     for (int k = 0; k < outNum; ++k)
     {
         val2[k] = CUDART_ZERO_FP16;
         for (int j = 0; j < inNumFirst; ++j)
         {
-            val2[k] = __hfma(__float2half_rd(weighth[inNumFirst * j + k + offset]), val1[j], val2[k]);
+            val2[k] = __hfma(weighth[inNumFirst * j + k + offset], val1[j], val2[k]);
         }
-        val2[k] = __hmax(__hadd(val2[k], __float2half_rd(biash[k + biasOffset])), CUDART_ZERO_FP16);
+        val2[k] = __hmax(__hadd(val2[k], biash[k + biasOffset]), CUDART_ZERO_FP16);
     }
 
     offset += outNum * inNumFirst;
@@ -314,9 +285,9 @@ __global__ void validation(
         val1[k] = CUDART_ZERO_FP16;
         for (int j = 0; j < inNum; ++j)
         {
-            val1[k] = __hfma(__float2half_rd(weighth[inNum * j + k + offset]), val2[j], val1[k]);
+            val1[k] = __hfma(weighth[inNum * j + k + offset], val2[j], val1[k]);
         }
-        val1[k] = __hmax(__hadd(val1[k], __float2half_rd(biash[k + biasOffset])), CUDART_ZERO_FP16);
+        val1[k] = __hmax(__hadd(val1[k], biash[k + biasOffset]), CUDART_ZERO_FP16);
     }
 
     offset += outNum * inNum;
@@ -329,7 +300,7 @@ __global__ void validation(
         {
             val2[k] = __hfma(__float2half_rd(weighth[inNum * j + k + offset]), val1[j], val2[k]);
         }
-        val2[k] = __hmax(__hadd(val2[k], __float2half_rd(biash[k + biasOffset])), CUDART_ZERO_FP16);
+        val2[k] = __hmax(__hadd(val2[k],biash[k + biasOffset]), CUDART_ZERO_FP16);
     }
 
     offset += outNum * inNum;
@@ -340,9 +311,9 @@ __global__ void validation(
         val1[k] = CUDART_ZERO_FP16;
         for (int j = 0; j < inNum; ++j)
         {
-            val1[k] = __hfma(__float2half_rd(weighth[4 * j + k + offset]), val2[j], val1[k]);
+            val1[k] = __hfma(weighth[4 * j + k + offset], val2[j], val1[k]);
         }
-        val1[k] = __hmax(__hadd(val1[k], __float2half_rd(biash[k + biasOffset])), CUDART_ZERO_FP16);
+        val1[k] = __hmax(__hadd(val1[k],biash[k + biasOffset]), CUDART_ZERO_FP16);
     }
     __syncthreads();
     output[4 * (y * width + x) + 0] = __half2float(val1[0]);

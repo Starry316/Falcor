@@ -46,6 +46,7 @@ void createBuffer(ref<Buffer>& buf, ref<Device> device, Falcor::uint2 targetDim,
     {
         if (buf.get()->getElementCount() != targetDim.x * targetDim.y * itemSize * sizeof(float))
         {
+            logInfo("Recreating buffer");
             buf = device->createBuffer(
                 targetDim.x * targetDim.y * itemSize * sizeof(float),
                 ResourceBindFlags::ShaderResource | ResourceBindFlags::Shared | ResourceBindFlags::UnorderedAccess,
@@ -225,17 +226,25 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
         //     targetDim.x,
         //     targetDim.y
         // );
-
-        launchValidation(
+        launchInt8Test(
             (float*)mpWeightBuffer->getGpuAddress(),
             (float*)mpBiasBuffer->getGpuAddress(),
-            (__half*)mpWeightFP16Buffer->getGpuAddress(),
-            (__half*)mpBiasFP16Buffer->getGpuAddress(),
+
             (unsigned int*)mpInputBuffer->getGpuAddress(),
             output,
             targetDim.x,
             targetDim.y
         );
+        // launchValidation(
+        //     (float*)mpWeightBuffer->getGpuAddress(),
+        //     (float*)mpBiasBuffer->getGpuAddress(),
+        //     (__half*)mpWeightFP16Buffer->getGpuAddress(),
+        //     (__half*)mpBiasFP16Buffer->getGpuAddress(),
+        //     (unsigned int*)mpInputBuffer->getGpuAddress(),
+        //     output,
+        //     targetDim.x,
+        //     targetDim.y
+        // );
 
     else
         launchValidation(
@@ -315,6 +324,7 @@ void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
     Falcor::uint2 targetDim = Falcor::uint2(width, height);
     createBuffer(mpOutputBuffer, getDevice(), targetDim);
     createBuffer(mpInputBuffer, getDevice(), targetDim, 33);
+    if(mFrames<2)  bindInput(pRenderContext, pTargetFbo);
 
     if (mRenderType == RenderType::SHADER_NN)
     {
@@ -322,7 +332,7 @@ void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
     }
     else if (mRenderType == RenderType::CUDA)
     {
-        // bindInput(pRenderContext, pTargetFbo);
+
         cudaInfer(pRenderContext, pTargetFbo);
         display(pRenderContext, pTargetFbo);
     }
@@ -345,7 +355,7 @@ void ShaderToy::onGuiRender(Gui* pGui)
     if (w.button("Reset Timer"))
     {
         mFrames = 1;
-        mCudaAvgTime = 0.0;
+        mCudaAvgTime = mCudaTime;
     }
     w.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
     w.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mFrames) + " ms");
