@@ -5,6 +5,7 @@
 #define HIDDEN_NUM 32
 #define OUT_NUM 32
 #define CUDART_ZERO_FP16 __ushort_as_half((unsigned short)0x0000U)
+#define CUDART_ONE_FP16 __ushort_as_half((unsigned short)0x3C00U)
 float __device__ __forceinline__ relu(float x)
 {
     return max(x, 0.0f);
@@ -29,31 +30,30 @@ __half __device__ __forceinline__ leakyrelu(__half x)
 }
 
 // The CUDA kernel. This sample simply copies the input surface.
-__global__ void inference(float* weight2, float* bias, float* input, float* output, unsigned int width, unsigned int height)
+__global__ void inference(float* weight2, float* bias2, float* input, float* output, unsigned int width, unsigned int height)
 {
-    __shared__ float weight[3072];
+    __shared__ float weight[3328];
+    __shared__ float bias[100];
 
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= width || y >= height)
-        return;
 
     unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
-    if (localIdx < 1024)
+    if (localIdx < 256)
     {
-        weight[3 * localIdx]     = weight2[3 * localIdx];
-        weight[3 * localIdx + 1] = weight2[3 * localIdx + 1];
-        weight[3 * localIdx + 2] = weight2[3 * localIdx + 2];
+        if (localIdx < 100)
+        {
+            bias[localIdx] = bias2[localIdx];
+        }
+        for (int i = 0; i < 13; i++)
+        {
+            weight[localIdx * 13 + i] = weight2[localIdx * 13 + i];
+        }
     }
     __syncthreads();
-    // if (input[y*width + x + 32 * width*height] == 0) return;
 
-    float u = (x + 0.5f) / width;
-    float v = (y + 0.5f) / height;
-    // float* inputVal = input + 32 * (y * width + x);
-    // output[4 * (y * width + x) + 0] = abs(inputVal[8]);
-    // output[4 * (y * width + x) + 1] = abs(inputVal[9]);
-    // output[4 * (y * width + x) + 2] = abs(inputVal[10]);
+    if (x >= width || y >= height)
+        return;
 
     int offset = 0;
     int biasOffset = 0;
@@ -99,18 +99,17 @@ __global__ void inference(float* weight2, float* bias, float* input, float* outp
     }
     offset += outNum * inNum;
     biasOffset += outNum;
-    __syncthreads();
 
     for (int k = 0; k < 3; ++k)
     {
         float sum = 0;
         for (int j = 0; j < inNum; ++j)
         {
-            sum += weight2[4 * j + k + offset] * val2[j];
+            sum += weight[4 * j + k + offset] * val2[j];
         }
         val1[k] = relu(sum + bias[k + biasOffset]);
     }
-
+    __syncthreads();
     output[4 * (y * width + x) + 0] = val1[0];
     output[4 * (y * width + x) + 1] = val1[1];
     output[4 * (y * width + x) + 2] = val1[2];
@@ -118,7 +117,7 @@ __global__ void inference(float* weight2, float* bias, float* input, float* outp
 // A wrapper function that launches the kernel.
 void launchNNInference(float* weight, float* bias, float* input, float* output, unsigned int width, unsigned int height)
 {
-    dim3 dimBlock(32, 32);
+    dim3 dimBlock(16, 16);
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
     inference<<<dimGrid, dimBlock>>>(weight, bias, input, output, width, height);
 }
@@ -141,7 +140,7 @@ inline __device__ __half hfa_relu(const __half a, const __half b)
 }
 
 // The CUDA kernel. This sample simply copies the input surface.
-__global__ void fp16test(float* weight, float* bias, unsigned int* input, float* output, unsigned int width, unsigned int height)
+__global__ void fp16test(float* weight, float* bias,cudaTextureObject_t texObj,  unsigned int* input, float* output, unsigned int width, unsigned int height)
 {
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -233,25 +232,41 @@ __global__ void fp16test(float* weight, float* bias, unsigned int* input, float*
     // output[4 * (y * width + x) + 2] = val1[2];
 }
 // A wrapper function that launches the kernel.
-void launchFP16Test(float* weight, float* bias, unsigned int* input, float* output, unsigned int width, unsigned int height)
+void launchFP16Test(float* weight, float* bias, cudaTextureObject_t texObj, unsigned int* input, float* output, unsigned int width, unsigned int height)
 {
     dim3 dimBlock(16, 16);
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-    fp16test<<<dimGrid, dimBlock>>>(weight, bias, input, output, width, height);
+    fp16test<<<dimGrid, dimBlock>>>(weight, bias, texObj, input, output, width, height);
 }
 
 // The CUDA kernel. This sample simply copies the input surface.
 __global__ void validation(
     float* weight,
     float* bias,
-    __half* weighth,
-    __half* biash,
+    __half* weighth2,
+    __half* biash2,
     unsigned int* input,
     float* output,
     unsigned int width,
     unsigned int height
 )
 {
+    __shared__ __half weighth[3328];
+    __shared__ __half biash[100];
+    unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
+    if (localIdx < 100)
+    {
+        biash[localIdx] = biash2[localIdx];
+        for (int i = 0; i < 13; i++)
+        {
+            weighth[localIdx * 13 + i] = weighth2[localIdx * 13 + i];
+        }
+    }
+    else
+        for (int i = 0; i < 13; i++)
+            weighth[localIdx * 13 + i] = weighth2[localIdx * 13 + i];
+    __syncthreads();
+
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height)
@@ -259,7 +274,6 @@ __global__ void validation(
 
     float u = (x + 0.5f) / width;
     float v = (y + 0.5f) / height;
-
 
     int offset = 0;
     int biasOffset = 0;
@@ -271,10 +285,17 @@ __global__ void validation(
     __half val1[IN_NUM];
     __half val2[IN_NUM];
 
-    for (int i = 0; i < 16; i++)
+    // for (int i = 0; i < 16; i++)
+    // {
+    //     unpackSnorm2x16(inputVal[i], val1[2 * i], val1[2 * i + 1]);
+    // }
+    val1[0] = __float2half(u);
+    val1[1] = __float2half(v);
+    for (int i = 2; i < 32; i++)
     {
-        unpackSnorm2x16(inputVal[i], val1[2 * i], val1[2 * i + 1]);
+         val1[i] = __float2half((float)i / 32);
     }
+
     for (int k = 0; k < outNum; ++k)
     {
         val2[k] = CUDART_ZERO_FP16;
@@ -323,7 +344,7 @@ __global__ void validation(
         }
         val1[k] = __hmax(__hadd(val1[k], __float2half_rd(biash[k + biasOffset])), CUDART_ZERO_FP16);
     }
-
+    __syncthreads();
     output[4 * (y * width + x) + 0] = __half2float(val1[0]);
     output[4 * (y * width + x) + 1] = __half2float(val1[1]);
     output[4 * (y * width + x) + 2] = __half2float(val1[2]);

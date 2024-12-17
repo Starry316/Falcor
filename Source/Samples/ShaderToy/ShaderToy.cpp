@@ -149,6 +149,30 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
+
+    cudaExtent extent = make_cudaExtent(400, 400, 16);
+    cudaArray* d_array;
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
+    cudaMalloc3DArray(&d_array, &channelDesc, extent);
+
+
+
+    cudaTextureDesc texDesc;
+    memset(&texDesc, 0, sizeof(texDesc));
+    texDesc.addressMode[0] = cudaAddressModeWrap;
+    texDesc.addressMode[1] = cudaAddressModeWrap;
+    texDesc.addressMode[2] = cudaAddressModeWrap;
+    texDesc.filterMode = cudaFilterModeLinear;
+    texDesc.readMode = cudaReadModeElementType;
+    texDesc.normalizedCoords = 0;
+
+    cudaResourceDesc resDesc;
+    memset(&resDesc, 0, sizeof(resDesc));
+    resDesc.resType = cudaResourceTypeArray;
+    resDesc.res.array.array = d_array;
+
+
+
 }
 
 void ShaderToy::onResize(uint32_t width, uint32_t height)
@@ -202,23 +226,34 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
         //     targetDim.y
         // );
 
-    launchValidation(
-        (float*)mpWeightBuffer->getGpuAddress(),
-        (float*)mpBiasBuffer->getGpuAddress(),
-        (__half*)mpWeightFP16Buffer->getGpuAddress(),
-        (__half*)mpBiasFP16Buffer->getGpuAddress(),
-        (unsigned int*)mpInputBuffer->getGpuAddress(),
-        output,
-        targetDim.x,
-        targetDim.y
-    );
+        launchValidation(
+            (float*)mpWeightBuffer->getGpuAddress(),
+            (float*)mpBiasBuffer->getGpuAddress(),
+            (__half*)mpWeightFP16Buffer->getGpuAddress(),
+            (__half*)mpBiasFP16Buffer->getGpuAddress(),
+            (unsigned int*)mpInputBuffer->getGpuAddress(),
+            output,
+            targetDim.x,
+            targetDim.y
+        );
 
-    else launchNNInference(
-        (float*)mpWeightBuffer->getGpuAddress(), (float*)mpBiasBuffer->getGpuAddress(), input, output, targetDim.x, targetDim.y
-    );
+    else
+        launchValidation(
+            (float*)mpWeightBuffer->getGpuAddress(),
+            (float*)mpBiasBuffer->getGpuAddress(),
+            (__half*)mpWeightFP16Buffer->getGpuAddress(),
+            (__half*)mpBiasFP16Buffer->getGpuAddress(),
+            (unsigned int*)mpInputBuffer->getGpuAddress(),
+            output,
+            targetDim.x,
+            targetDim.y
+        );
+    // launchNNInference(
+    //     (float*)mpWeightBuffer->getGpuAddress(), (float*)mpBiasBuffer->getGpuAddress(), input, output, targetDim.x, targetDim.y
+    // );
 
     // timer end
-    cudaDeviceSynchronize();
+    // cudaDeviceSynchronize();
     cudaEventRecord(mCudaStop, NULL);
     cudaEventSynchronize(mCudaStop);
     cudaEventElapsedTime(&mCudaTime, mCudaStart, mCudaStop);
@@ -241,7 +276,8 @@ void ShaderToy::bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     if (mFP16)
         mpBindInputPass->getRootVar()["cudaInputUIntBuffer"] = mpInputBuffer;
     else
-        mpBindInputPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
+        // mpBindInputPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
+        mpBindInputPass->getRootVar()["cudaInputUIntBuffer"] = mpInputBuffer;
     mpNBTF->bindShaderData(mpBindInputPass->getRootVar()["CB"]["nbtf"]);
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
@@ -286,7 +322,7 @@ void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
     }
     else if (mRenderType == RenderType::CUDA)
     {
-        bindInput(pRenderContext, pTargetFbo);
+        // bindInput(pRenderContext, pTargetFbo);
         cudaInfer(pRenderContext, pTargetFbo);
         display(pRenderContext, pTargetFbo);
     }
@@ -306,9 +342,10 @@ void ShaderToy::onGuiRender(Gui* pGui)
     w.slider("UV Scale", mUVScale, 0.0f, 10.0f);
     w.checkbox("Enable Synthesis", mSynthesis);
     w.checkbox("Enable fp16", mFP16);
-    if (w.button("Click Here"))
+    if (w.button("Reset Timer"))
     {
-        msgBox("Info", "Now why would you do that?");
+        mFrames = 1;
+        mCudaAvgTime = 0.0;
     }
     w.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
     w.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mFrames) + " ms");
@@ -340,8 +377,10 @@ void printCudaDeviceProperties(int device)
     std::cout << "  Max threads per block: " << deviceProp.maxThreadsPerBlock << std::endl;
     std::cout << "  Max threads per multiprocessor: " << deviceProp.maxThreadsPerMultiProcessor << std::endl;
     std::cout << "  Max blocks per multiprocessor: " << deviceProp.maxBlocksPerMultiProcessor << std::endl;
-    std::cout << "  Max grid size: (" << deviceProp.maxGridSize[0] << ", " << deviceProp.maxGridSize[1] << ", " << deviceProp.maxGridSize[2] << ")" << std::endl;
-    std::cout << "  Max block dimensions: (" << deviceProp.maxThreadsDim[0] << ", " << deviceProp.maxThreadsDim[1] << ", " << deviceProp.maxThreadsDim[2] << ")" << std::endl;
+    std::cout << "  Max grid size: (" << deviceProp.maxGridSize[0] << ", " << deviceProp.maxGridSize[1] << ", " << deviceProp.maxGridSize[2]
+              << ")" << std::endl;
+    std::cout << "  Max block dimensions: (" << deviceProp.maxThreadsDim[0] << ", " << deviceProp.maxThreadsDim[1] << ", "
+              << deviceProp.maxThreadsDim[2] << ")" << std::endl;
     std::cout << "  Memory clock rate: " << deviceProp.memoryClockRate << " kHz" << std::endl;
     std::cout << "  Memory bus width: " << deviceProp.memoryBusWidth << " bits" << std::endl;
     std::cout << "  L2 cache size: " << deviceProp.l2CacheSize << " bytes" << std::endl;
@@ -351,10 +390,9 @@ void printCudaDeviceProperties(int device)
     std::cout << "  ECC enabled: " << (deviceProp.ECCEnabled ? "Yes" : "No") << std::endl;
 }
 
-
 int main(int argc, char** argv)
 {
-   int deviceCount;
+    int deviceCount;
     cudaGetDeviceCount(&deviceCount);
 
     for (int device = 0; device < deviceCount; ++device)

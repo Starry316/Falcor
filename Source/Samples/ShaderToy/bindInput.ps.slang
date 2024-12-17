@@ -42,6 +42,13 @@ Buffer<float> gInputColor;
 RWBuffer<uint> cudaInputUIntBuffer;
 RWBuffer<float> cudaInputBuffer;
 
+void bindInputUV(float2 fragCoord, uint2 pixel)
+{
+    uint offset = (pixel.y * iResolution.x + pixel.x);
+    float2 uv = fragCoord / iResolution.y;
+    cudaInputUIntBuffer[offset] = packSnorm2x16(uv);
+}
+
 
 void bindInputFP16(float2 fragCoord, uint2 pixel)
 {
@@ -75,8 +82,10 @@ float4 main(float2 texC: TEXCOORD) : SV_TARGET
     uint2 pixel = uint2(floor(texC * iResolution));
     printSetPixel(pixel);
     if (gFP16)
-        bindInputFP16(texC * iResolution, pixel);
+        bindInputUV(texC * iResolution, pixel);
+
     else
-        bindInput(texC * iResolution, pixel);
+        bindInputFP16(texC * iResolution, pixel);
+        // bindInput(texC * iResolution, pixel);
     return float4(0.0, 0.0, 0.0, 1.0);
 }

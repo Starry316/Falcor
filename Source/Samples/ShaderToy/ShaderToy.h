@@ -111,4 +111,6 @@ private:
 
     ref<Buffer> mpWeightFP16Buffer;
     ref<Buffer> mpBiasFP16Buffer;
+
+    cudaTextureObject_t mTexObj;
 };
