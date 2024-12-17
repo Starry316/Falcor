@@ -44,6 +44,16 @@ SamplerState gSampler;
 
 float4 mainImage(float2 fragCoord, uint2 pixel)
 {
+    print("output0", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0]);
+    print("output1", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2]);
+    // print("output1gt", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0] * 2);
+    print("output2", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1]);
+    // print("output2gt", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0] * 3);
+    print("output3", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]);
+    // print("output3gt", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0] * 4);
+
+
+
     return float4(
         gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
         gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],

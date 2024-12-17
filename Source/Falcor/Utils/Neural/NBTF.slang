@@ -228,13 +228,11 @@ struct NBTF
     }
 
     void bindInputFP16(
-        RWBuffer<float> inputBuffer,
+        RWBuffer<uint> inputBuffer,
         uint offset,
         float3 wi,
         float3 wo,
         float2 uv,
-        float zLimit,
-        float zMinLimit,
         float2 ddx,
         float2 ddy,
         bool synthesize = false
@@ -245,24 +243,6 @@ struct NBTF
         float3 vh = spherical_to_cartesian_rad(h);
         float3 vd = spherical_to_cartesian_rad(d);
 
-        if (vh.z > zLimit)
-        {
-            float sinTheta = sqrt(1 - vh.z * vh.z);
-            float newSinTheta = sqrt(1 - zLimit * zLimit);
-            vh.z = zLimit;
-            vh.xy *= newSinTheta / sinTheta;
-            vh = normalize(vh);
-        }
-
-        if (vh.z < zMinLimit)
-        {
-            float sinTheta = sqrt(1 - vh.z * vh.z);
-            float newSinTheta = sqrt(1 - zMinLimit * zMinLimit);
-            vh.z = zMinLimit;
-            vh.xy *= newSinTheta / sinTheta;
-            vh = normalize(vh);
-        }
-
         h = hemisphereDirToDiskSquare(vh);
         d = hemisphereDirToDiskSquare(vd);
 
@@ -270,14 +250,9 @@ struct NBTF
         for (uint i = 0; i < hDims.y; i++)
         {
             float4 val = hP.SampleLevel(gSampler, float3(h, i), 0.f);
-            // inputBuffer[count + offset] = packFloat32ToFloat16(val.x, val.y);
-            // inputBuffer[count + offset + 1] = packFloat32ToFloat16(val.x, val.y);
+            inputBuffer[count + offset] = packSnorm2x16(val.xy);
+            inputBuffer[count + offset + 1] = packSnorm2x16(val.zw);
             count += 2;
-            // inputBuffer[count + offset] = val.x;
-            // inputBuffer[count + offset + 1] = val.y;
-            // inputBuffer[count + offset + 2] = val.z;
-            // inputBuffer[count + offset + 3] = val.w;
-            // count += 4;
         }
         for (uint i = 0; i < uDims.y; i++)
         {
@@ -286,26 +261,16 @@ struct NBTF
                 val = HexTiling(uP, gSampler, ddx, ddy, uv, i);
             else
                 val = uP.SampleGrad(gSampler, float3(uv, i), ddx, ddy);
-            // inputBuffer[count + offset] = packFloat32ToFloat16(val.x, val.y);
-            // inputBuffer[count + offset + 1] = packFloat32ToFloat16(val.x, val.y);
+            inputBuffer[count + offset] = packSnorm2x16(val.xy);
+            inputBuffer[count + offset + 1] = packSnorm2x16(val.zw);
             count += 2;
-            // inputBuffer[count + offset] = val.x;
-            // inputBuffer[count + offset + 1] = val.y;
-            // inputBuffer[count + offset + 2] = val.z;
-            // inputBuffer[count + offset + 3] = val.w;
-            // count += 4;
         }
         for (uint i = 0; i < dDims.y; i++)
         {
             float4 val = dP.SampleLevel(gSampler, float3(d, i), 0.f);
-            // inputBuffer[count + offset] = packFloat32ToFloat16(val.x, val.y);
-            // inputBuffer[count + offset + 1] = packFloat32ToFloat16(val.x, val.y);
+            inputBuffer[count + offset] = packSnorm2x16(val.xy);
+            inputBuffer[count + offset + 1] = packSnorm2x16(val.zw);
             count += 2;
-            // inputBuffer[count + offset] = val.x;
-            // inputBuffer[count + offset + 1] = val.y;
-            // inputBuffer[count + offset + 2] = val.z;
-            // inputBuffer[count + offset + 3] = val.w;
-            // count += 4;
         }
     }
 }

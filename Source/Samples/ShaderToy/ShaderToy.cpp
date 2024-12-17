@@ -103,6 +103,7 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     // Load shaders
     mpMainPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/Toy.ps.slang");
     mpDisplayPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/display.ps.slang");
+    mpBindInputPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/bindInput.ps.slang");
 
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
 
@@ -115,18 +116,11 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     std::vector<float> cudaBias =
         readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", getProjectDirectory(), mNetName).c_str());
 
-    mpWeightBuffer = getDevice()->createBuffer(
-        cudaWeight.size() * sizeof(float),
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
-        MemoryType::DeviceLocal,
-        cudaWeight.data()
-    );
-    mpBiasBuffer = getDevice()->createBuffer(
-        cudaBias.size() * sizeof(float),
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
-        MemoryType::DeviceLocal,
-        cudaBias.data()
-    );
+    mpWeightBuffer =
+        getDevice()->createBuffer(cudaWeight.size() * sizeof(float), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaWeight.data());
+
+    mpBiasBuffer =
+        getDevice()->createBuffer(cudaBias.size() * sizeof(float), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaBias.data());
 
     std::vector<__half> cudaWeightFP16(cudaWeight.size());
     for (size_t i = 0; i < cudaWeight.size(); i++)
@@ -140,17 +134,11 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     }
 
     mpWeightFP16Buffer = getDevice()->createBuffer(
-        cudaWeightFP16.size() * sizeof(__half),
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
-        MemoryType::DeviceLocal,
-        cudaWeightFP16.data()
+        cudaWeightFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaWeightFP16.data()
     );
 
     mpBiasFP16Buffer = getDevice()->createBuffer(
-        cudaBiasFP16.size() * sizeof(__half),
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
-        MemoryType::DeviceLocal,
-        cudaBiasFP16.data()
+        cudaBiasFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaBiasFP16.data()
     );
 
     std::vector<float>().swap(cudaWeight);
@@ -204,9 +192,31 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     auto output = (float*)mpOutputBuffer->getGpuAddress();
     // timer start
     cudaEventRecord(mCudaStart, NULL);
-    launchNNInference(
+    if (mFP16)
+        // launchFP16Test(
+        //     (float*)mpWeightBuffer->getGpuAddress(),
+        //     (float*)mpBiasBuffer->getGpuAddress(),
+        //     (unsigned int*)mpInputBuffer->getGpuAddress(),
+        //     output,
+        //     targetDim.x,
+        //     targetDim.y
+        // );
+
+    launchValidation(
+        (float*)mpWeightBuffer->getGpuAddress(),
+        (float*)mpBiasBuffer->getGpuAddress(),
+        (__half*)mpWeightFP16Buffer->getGpuAddress(),
+        (__half*)mpBiasFP16Buffer->getGpuAddress(),
+        (unsigned int*)mpInputBuffer->getGpuAddress(),
+        output,
+        targetDim.x,
+        targetDim.y
+    );
+
+    else launchNNInference(
         (float*)mpWeightBuffer->getGpuAddress(), (float*)mpBiasBuffer->getGpuAddress(), input, output, targetDim.x, targetDim.y
     );
+
     // timer end
     cudaDeviceSynchronize();
     cudaEventRecord(mCudaStop, NULL);
@@ -222,22 +232,23 @@ void ShaderToy::bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     float height = (float)pTargetFbo->getHeight();
     Falcor::uint2 targetDim = Falcor::uint2(width, height);
 
-    auto var = mpMainPass->getRootVar()["ToyCB"];
+    auto var = mpBindInputPass->getRootVar()["CB"];
     var["iResolution"] = Falcor::float2(width, height);
-    var["iGlobalTime"] = (float)getGlobalClock().getTime();
     var["gUVScaling"] = mUVScale;
     var["gSynthesis"] = mSynthesis;
-    var["gDisplay"] = false;
-    mpMainPass->getRootVar()["gInputColor"] = mpOutputBuffer;
-    mpMainPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
-    mpTextureSynthesis->bindHFData(mpMainPass->getRootVar()["ToyCB"]["hfData"]);
-    mpNBTF->bindShaderData(mpMainPass->getRootVar()["ToyCB"]["nbtf"]);
+    var["gFP16"] = mFP16;
+    mpBindInputPass->getRootVar()["gInputColor"] = mpOutputBuffer;
+    if (mFP16)
+        mpBindInputPass->getRootVar()["cudaInputUIntBuffer"] = mpInputBuffer;
+    else
+        mpBindInputPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
+    mpNBTF->bindShaderData(mpBindInputPass->getRootVar()["CB"]["nbtf"]);
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
-    mpPixelDebug->prepareProgram(mpMainPass->getProgram(), mpMainPass->getRootVar());
+    mpPixelDebug->prepareProgram(mpBindInputPass->getProgram(), mpBindInputPass->getRootVar());
 
     // run final pass
-    mpMainPass->execute(pRenderContext, pTargetFbo);
+    mpBindInputPass->execute(pRenderContext, pTargetFbo);
     mpPixelDebug->endFrame(pRenderContext);
 }
 
@@ -277,8 +288,7 @@ void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
     {
         bindInput(pRenderContext, pTargetFbo);
         cudaInfer(pRenderContext, pTargetFbo);
-        // display(pRenderContext, pTargetFbo);
-
+        display(pRenderContext, pTargetFbo);
     }
     // else if (mRenderType == RenderType::CUDAFP16)
     // {
@@ -295,6 +305,7 @@ void ShaderToy::onGuiRender(Gui* pGui)
 
     w.slider("UV Scale", mUVScale, 0.0f, 10.0f);
     w.checkbox("Enable Synthesis", mSynthesis);
+    w.checkbox("Enable fp16", mFP16);
     if (w.button("Click Here"))
     {
         msgBox("Info", "Now why would you do that?");
@@ -315,8 +326,41 @@ int runMain(int argc, char** argv)
     ShaderToy shaderToy(config);
     return shaderToy.run();
 }
+void printCudaDeviceProperties(int device)
+{
+    cudaDeviceProp deviceProp;
+    cudaGetDeviceProperties(&deviceProp, device);
+
+    std::cout << "Device " << device << ": " << deviceProp.name << std::endl;
+    std::cout << "  Compute capability: " << deviceProp.major << "." << deviceProp.minor << std::endl;
+    std::cout << "  Total global memory: " << deviceProp.totalGlobalMem << " bytes" << std::endl;
+    std::cout << "  Shared memory per block: " << deviceProp.sharedMemPerBlock << " bytes" << std::endl;
+    std::cout << "  Registers per block: " << deviceProp.regsPerBlock << std::endl;
+    std::cout << "  Warp size: " << deviceProp.warpSize << std::endl;
+    std::cout << "  Max threads per block: " << deviceProp.maxThreadsPerBlock << std::endl;
+    std::cout << "  Max threads per multiprocessor: " << deviceProp.maxThreadsPerMultiProcessor << std::endl;
+    std::cout << "  Max blocks per multiprocessor: " << deviceProp.maxBlocksPerMultiProcessor << std::endl;
+    std::cout << "  Max grid size: (" << deviceProp.maxGridSize[0] << ", " << deviceProp.maxGridSize[1] << ", " << deviceProp.maxGridSize[2] << ")" << std::endl;
+    std::cout << "  Max block dimensions: (" << deviceProp.maxThreadsDim[0] << ", " << deviceProp.maxThreadsDim[1] << ", " << deviceProp.maxThreadsDim[2] << ")" << std::endl;
+    std::cout << "  Memory clock rate: " << deviceProp.memoryClockRate << " kHz" << std::endl;
+    std::cout << "  Memory bus width: " << deviceProp.memoryBusWidth << " bits" << std::endl;
+    std::cout << "  L2 cache size: " << deviceProp.l2CacheSize << " bytes" << std::endl;
+    std::cout << "  Number of multiprocessors: " << deviceProp.multiProcessorCount << std::endl;
+    std::cout << "  Clock rate: " << deviceProp.clockRate << " kHz" << std::endl;
+    std::cout << "  Concurrent kernels: " << (deviceProp.concurrentKernels ? "Yes" : "No") << std::endl;
+    std::cout << "  ECC enabled: " << (deviceProp.ECCEnabled ? "Yes" : "No") << std::endl;
+}
+
 
 int main(int argc, char** argv)
 {
+   int deviceCount;
+    cudaGetDeviceCount(&deviceCount);
+
+    for (int device = 0; device < deviceCount; ++device)
+    {
+        printCudaDeviceProperties(device);
+    }
+
     return catchAndReportAllExceptions([&]() { return runMain(argc, argv); });
 }

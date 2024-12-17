@@ -29,46 +29,27 @@ import Utils.Texture.HistogramBlending;
 import Utils.Neural.NBTF;
 import Utils.Debug.PixelDebug;
 import Utils.Math.FormatConversion;
-cbuffer ToyCB
+cbuffer CB
 {
     float2 iResolution;
-    float iGlobalTime;
-    HistogramBlendingHFData hfData;
     float gUVScaling;
     NBTF nbtf;
     bool gSynthesis;
-    bool gDisplay;
+    bool gFP16;
 };
 
 Buffer<float> gInputColor;
 RWBuffer<uint> cudaInputUIntBuffer;
 RWBuffer<float> cudaInputBuffer;
-SamplerState gSampler;
 
 
-float4 mainImage(float2 fragCoord, uint2 pixel)
-{
-    float2 uv = fragCoord / iResolution.y;
-
-    float2 ddx = 0.0001;
-    float2 ddy = 0.0001;
-
-    float3 wi = normalize(float3(0.2, 0.2, 1.0));
-    float3 wo = normalize(float3(0.3, 0.2, 0.8));
-
-    return float4(nbtf.evalDebug(wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis), 1.0);
-}
 void bindInputFP16(float2 fragCoord, uint2 pixel)
 {
 
     uint offset = 16 * (pixel.y * iResolution.x + pixel.x);
-
-
-
     float2 uv = fragCoord / iResolution.y;
     float2 ddx = 0.0001;
     float2 ddy = 0.0001;
-    // // float hf = HistorgramBlending(hfData, gSampler, ddx, ddy, uv * gUVScaling);
     float3 wi = normalize(float3(0.2, 0.2, 1.0));
     float3 wo = normalize(float3(0.3, 0.2, 0.8));
 
@@ -79,12 +60,9 @@ void bindInput(float2 fragCoord, uint2 pixel)
 {
 
 
-
-
     float2 uv = fragCoord / iResolution.y;
     float2 ddx = 0.0001;
     float2 ddy = 0.0001;
-    // float hf = HistorgramBlending(hfData, gSampler, ddx, ddy, uv * gUVScaling);
     float3 wi = normalize(float3(0.2, 0.2, 1.0));
     float3 wo = normalize(float3(0.3, 0.2, 0.8));
     uint offset = 32 * (pixel.y * iResolution.x + pixel.x);
@@ -96,13 +74,9 @@ float4 main(float2 texC: TEXCOORD) : SV_TARGET
 {
     uint2 pixel = uint2(floor(texC * iResolution));
     printSetPixel(pixel);
-
-    if (gDisplay)
-        return mainImage(texC * iResolution, pixel);
-    else
-    {
-        // bindInput(texC * iResolution, pixel);
+    if (gFP16)
         bindInputFP16(texC * iResolution, pixel);
-        return float4(0.0, 0.0, 0.0, 1.0);
-    }
+    else
+        bindInput(texC * iResolution, pixel);
+    return float4(0.0, 0.0, 0.0, 1.0);
 }

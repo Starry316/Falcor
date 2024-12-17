@@ -1,11 +1,10 @@
 #include "MLPInference.h"
 
-
 #define IN_NUM 32
 #define IN_1ST_NUM 32
 #define HIDDEN_NUM 32
 #define OUT_NUM 32
-
+#define CUDART_ZERO_FP16 __ushort_as_half((unsigned short)0x0000U)
 float __device__ __forceinline__ relu(float x)
 {
     return max(x, 0.0f);
@@ -21,28 +20,32 @@ int __device__ __forceinline__ relu(int x)
 
 float __device__ __forceinline__ leakyrelu(float x)
 {
-    return max(x, 0.0f) + min(x, 0.0f) * 0.01f;
+    // return max(x, 0.0f) + min(x, 0.0f) * 0.01f;
+    return max(x, 0.0f);
 }
 __half __device__ __forceinline__ leakyrelu(__half x)
 {
     return max(x, 0.0) + min(x, 0.0) * 0.01;
 }
 
-
-
-float __device__ __forceinline__ fracf(float x)
-{
-    return x - floorf(x);
-}
-
-
 // The CUDA kernel. This sample simply copies the input surface.
-__global__ void inference(float* weight, float* bias, float* input, float* output, unsigned int width, unsigned int height)
+__global__ void inference(float* weight2, float* bias, float* input, float* output, unsigned int width, unsigned int height)
 {
+    __shared__ float weight[3072];
 
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= width || y >= height) return;
+    if (x >= width || y >= height)
+        return;
+
+    unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
+    if (localIdx < 1024)
+    {
+        weight[3 * localIdx]     = weight2[3 * localIdx];
+        weight[3 * localIdx + 1] = weight2[3 * localIdx + 1];
+        weight[3 * localIdx + 2] = weight2[3 * localIdx + 2];
+    }
+    __syncthreads();
     // if (input[y*width + x + 32 * width*height] == 0) return;
 
     float u = (x + 0.5f) / width;
@@ -51,8 +54,6 @@ __global__ void inference(float* weight, float* bias, float* input, float* outpu
     // output[4 * (y * width + x) + 0] = abs(inputVal[8]);
     // output[4 * (y * width + x) + 1] = abs(inputVal[9]);
     // output[4 * (y * width + x) + 2] = abs(inputVal[10]);
-
-
 
     int offset = 0;
     int biasOffset = 0;
@@ -70,9 +71,8 @@ __global__ void inference(float* weight, float* bias, float* input, float* outpu
         for (int j = 0; j < inNumFirst; ++j)
         {
             sum += weight[inNumFirst * j + k + offset] * inputVal[j];
-
         }
-        val2[k] = leakyrelu(sum + bias[k+biasOffset]);
+        val2[k] = leakyrelu(sum + bias[k + biasOffset]);
     }
     offset += outNum * inNumFirst;
     biasOffset += outNum;
@@ -82,9 +82,8 @@ __global__ void inference(float* weight, float* bias, float* input, float* outpu
         for (int j = 0; j < inNum; ++j)
         {
             sum += weight[inNum * j + k + offset] * val2[j];
-
         }
-        val1[k] = leakyrelu(sum+ bias[k+biasOffset]);
+        val1[k] = leakyrelu(sum + bias[k + biasOffset]);
     }
     offset += outNum * inNum;
     biasOffset += outNum;
@@ -96,125 +95,253 @@ __global__ void inference(float* weight, float* bias, float* input, float* outpu
         {
             sum += weight[outNum * j + k + offset] * val1[j];
         }
-        val2[k] = leakyrelu(sum+ bias[k+biasOffset]);
+        val2[k] = leakyrelu(sum + bias[k + biasOffset]);
     }
     offset += outNum * inNum;
     biasOffset += outNum;
+    __syncthreads();
+
     for (int k = 0; k < 3; ++k)
     {
         float sum = 0;
         for (int j = 0; j < inNum; ++j)
         {
-            sum += weight[4 * j + k + offset] * val2[j];
+            sum += weight2[4 * j + k + offset] * val2[j];
         }
-        val1[k] = relu(sum+ bias[k+biasOffset]);
+        val1[k] = relu(sum + bias[k + biasOffset]);
     }
-
-
 
     output[4 * (y * width + x) + 0] = val1[0];
     output[4 * (y * width + x) + 1] = val1[1];
     output[4 * (y * width + x) + 2] = val1[2];
-
 }
 // A wrapper function that launches the kernel.
-void launchNNInference(float* weight, float* bias, float* input, float* output, unsigned int width, unsigned int height){
-    dim3 dimBlock(16, 16);
+void launchNNInference(float* weight, float* bias, float* input, float* output, unsigned int width, unsigned int height)
+{
+    dim3 dimBlock(32, 32);
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-    inference<<<dimGrid, dimBlock>>>(weight,bias, input, output, width, height);
+    inference<<<dimGrid, dimBlock>>>(weight, bias, input, output, width, height);
 }
 
+inline __device__ void unpackSnorm2x16(unsigned int packed, float& a, float& b)
+{
+    a = __int2float_rd((int)(packed << 16) >> 16) / 32767.f;
+    b = __int2float_rd((int)packed >> 16) / 32767.f;
+}
+
+inline __device__ void unpackSnorm2x16(unsigned int packed, __half& a, __half& b)
+{
+    a = __hdiv(__int2half_rd((int)(packed << 16) >> 16), 32767);
+    b = __hdiv(__int2half_rd((int)packed >> 16), 32767);
+}
+
+inline __device__ __half hfa_relu(const __half a, const __half b)
+{
+    return __hmax(__hadd(a, b), CUDART_ZERO_FP16);
+}
+
+// The CUDA kernel. This sample simply copies the input surface.
+__global__ void fp16test(float* weight, float* bias, unsigned int* input, float* output, unsigned int width, unsigned int height)
+{
+    unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= width || y >= height)
+        return;
+
+    float u = (x + 0.5f) / width;
+    float v = (y + 0.5f) / height;
+
+    int offset = 0;
+    int biasOffset = 0;
+    int inNumFirst = IN_1ST_NUM;
+    int inNum = IN_NUM;
+    int outNum = OUT_NUM;
+    unsigned int* inputVal = input + 16 * (y * width + x);
+
+    __half val1[IN_NUM];
+    __half val2[IN_NUM];
+
+    for (int i = 0; i < 16; i++)
+    {
+        unpackSnorm2x16(inputVal[i], val1[2 * i], val1[2 * i + 1]);
+    }
+    val2[0] = CUDART_ZERO_FP16;
+    val2[1] = CUDART_ZERO_FP16;
+    val2[2] = CUDART_ZERO_FP16;
+    val2[0] = __hfma(__float2half_rd(2.0f), val1[0], val2[0]);
+    val2[1] = hfa_relu(val1[0], val2[0]);
+    val2[2] = hfa_relu(val1[1], val2[0]);
+    output[4 * (y * width + x) + 0] = __half2float(val1[0]);
+    output[4 * (y * width + x) + 1] = __half2float(val2[0]);
+    output[4 * (y * width + x) + 2] = __half2float(val2[1]);
+    output[4 * (y * width + x) + 3] = __half2float(val2[2]);
+
+    // for (int k = 0; k < outNum; ++k)
+    // {
+    //     val2[k] = CUDART_ZERO_FP16;
+    //     for (int j = 0; j < inNumFirst; ++j)
+    //     {
+    //         val2[k] = __hfma(__float2half_rd(weight[inNumFirst * j + k + offset]), val1[j], val2[k]);
+    //     }
+    //     val2[k] = __hmax(__hadd(val2[k], __float2half_rd(bias[k + biasOffset])), CUDART_ZERO_FP16);
+    // }
+    // offset += outNum * inNumFirst;
+    // biasOffset += outNum;
+    // for (int k = 0; k < outNum; ++k)
+    // {
+    //     val1[k] = CUDART_ZERO_FP16;
+    //     for (int j = 0; j < inNumFirst; ++j)
+    //     {
+    //         val1[k] = __hfma(__float2half_rd(weight[inNumFirst * j + k + offset]), val2[j], val1[k]);
+    //     }
+    //     val1[k] = __hmax(__hadd(val1[k], __float2half_rd(bias[k + biasOffset])), CUDART_ZERO_FP16);
+    // }
+
+    // offset += outNum * inNumFirst;
+    // biasOffset += outNum;
+    // for (int k = 0; k < outNum; ++k)
+    // {
+    //     val2[k] = CUDART_ZERO_FP16;
+    //     for (int j = 0; j < inNumFirst; ++j)
+    //     {
+    //         val2[k] = __hfma(__float2half_rd(weight[inNumFirst * j + k + offset]), val1[j], val2[k]);
+    //     }
+    //     val2[k] = __hmax(__hadd(val2[k], __float2half_rd(bias[k + biasOffset])), CUDART_ZERO_FP16);
+    // }
+    // offset += outNum * inNumFirst;
+    // biasOffset += outNum;
+
+    // for (int k = 0; k < 3; ++k)
+    // {
+    //     val1[k] = CUDART_ZERO_FP16;
+    //     for (int j = 0; j < inNumFirst; ++j)
+    //     {
+    //         val1[k] = __hfma(__float2half_rd(weight[inNumFirst * j + k + offset]), val2[j], val1[k]);
+    //     }
+    //     // val1[k] = __hfma_relu(val1[k], bias[k+biasOffset], val1[k]);
+    //     val1[k] = __hmax(__hadd(val1[k], __float2half_rd(bias[k + biasOffset])), CUDART_ZERO_FP16);
+    // }
+
+    // output[4 * (y * width + x) + 0] = __half2float(val1[0]);
+    // output[4 * (y * width + x) + 1] = __half2float(val1[1]);
+    // output[4 * (y * width + x) + 2] = __half2float(val1[2]);
+
+    // output[4 * (y * width + x) + 2] = abs(inputVal[10]);
+
+    // output[4 * (y * width + x) + 0] = val1[0];
+    // output[4 * (y * width + x) + 1] = val1[1];
+    // output[4 * (y * width + x) + 2] = val1[2];
+}
+// A wrapper function that launches the kernel.
+void launchFP16Test(float* weight, float* bias, unsigned int* input, float* output, unsigned int width, unsigned int height)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+    fp16test<<<dimGrid, dimBlock>>>(weight, bias, input, output, width, height);
+}
+
+// The CUDA kernel. This sample simply copies the input surface.
+__global__ void validation(
+    float* weight,
+    float* bias,
+    __half* weighth,
+    __half* biash,
+    unsigned int* input,
+    float* output,
+    unsigned int width,
+    unsigned int height
+)
+{
+    unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= width || y >= height)
+        return;
+
+    float u = (x + 0.5f) / width;
+    float v = (y + 0.5f) / height;
 
 
+    int offset = 0;
+    int biasOffset = 0;
+    int inNumFirst = IN_1ST_NUM;
+    int inNum = IN_NUM;
+    int outNum = OUT_NUM;
+    unsigned int* inputVal = input + 16 * (y * width + x);
 
+    __half val1[IN_NUM];
+    __half val2[IN_NUM];
 
-// __global__ void inferenceFP16(__half* weight, __half* bias, float* input, float* output, unsigned int width, unsigned int height)
-// {
+    for (int i = 0; i < 16; i++)
+    {
+        unpackSnorm2x16(inputVal[i], val1[2 * i], val1[2 * i + 1]);
+    }
+    for (int k = 0; k < outNum; ++k)
+    {
+        val2[k] = CUDART_ZERO_FP16;
+        for (int j = 0; j < inNumFirst; ++j)
+        {
+            val2[k] = __hfma(__float2half_rd(weighth[inNumFirst * j + k + offset]), val1[j], val2[k]);
+        }
+        val2[k] = __hmax(__hadd(val2[k], __float2half_rd(biash[k + biasOffset])), CUDART_ZERO_FP16);
+    }
 
-//     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
-//     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-//     if (x >= width || y >= height) return;
-//     if (input[y*width + x + 32 * width*height] == 0) return;
+    offset += outNum * inNumFirst;
+    biasOffset += outNum;
 
-//      int offset = 0;
-//     int biasOffset = 0;
-//     int inNumFirst = IN_1ST_NUM;
-//     int inNum = IN_NUM;
-//     int outNum = OUT_NUM;
-//     float* inputVal = input + 12 * (y * width + x);
-//     __half val1[32];
+    for (int k = 0; k < outNum; ++k)
+    {
+        val1[k] = CUDART_ZERO_FP16;
+        for (int j = 0; j < inNum; ++j)
+        {
+            val1[k] = __hfma(__float2half_rd(weighth[inNum * j + k + offset]), val2[j], val1[k]);
+        }
+        val1[k] = __hmax(__hadd(val1[k], __float2half_rd(biash[k + biasOffset])), CUDART_ZERO_FP16);
+    }
 
-//     __half val2[32];
+    offset += outNum * inNum;
+    biasOffset += outNum;
 
-//     for(int i = 0; i < 16; i++){
-//         unpackFloat32ToFloat16(inputVal[i], val1[2 * i], val1[2 * i+1]);
-//     }
+    for (int k = 0; k < outNum; ++k)
+    {
+        val2[k] = CUDART_ZERO_FP16;
+        for (int j = 0; j < inNum; ++j)
+        {
+            val2[k] = __hfma(__float2half_rd(weighth[inNum * j + k + offset]), val1[j], val2[k]);
+        }
+        val2[k] = __hmax(__hadd(val2[k], __float2half_rd(biash[k + biasOffset])), CUDART_ZERO_FP16);
+    }
 
+    offset += outNum * inNum;
+    biasOffset += outNum;
 
-//     output[4 * (y * width + x) + 0] = val1[8];
-//     output[4 * (y * width + x) + 1] = val1[9];
-//     output[4 * (y * width + x) + 2] = val1[10];
+    for (int k = 0; k < 3; ++k)
+    {
+        val1[k] = CUDART_ZERO_FP16;
+        for (int j = 0; j < inNum; ++j)
+        {
+            val1[k] = __hfma(__float2half_rd(weighth[4 * j + k + offset]), val2[j], val1[k]);
+        }
+        val1[k] = __hmax(__hadd(val1[k], __float2half_rd(biash[k + biasOffset])), CUDART_ZERO_FP16);
+    }
 
-//     return;
-//     for (int k = 0; k < outNum; ++k)
-//     {
-//         __half sum = 0;
-//         for (int j = 0; j < inNum; ++j)
-//         {
+    output[4 * (y * width + x) + 0] = __half2float(val1[0]);
+    output[4 * (y * width + x) + 1] = __half2float(val1[1]);
+    output[4 * (y * width + x) + 2] = __half2float(val1[2]);
+}
 
-
-//             sum = __hadd(sum, __hmul(weight[outNum * j + k + offset], val1[j]));
-//             // sum += weight[outNum * j + k + offset] * val1[j];
-
-//         }
-//         val2[k] = leakyrelu(__hadd(sum, bias[k+biasOffset]));
-//     }
-//      offset += outNum * inNum;
-//     biasOffset += outNum;
-//     for (int k = 0; k < outNum; ++k)
-//     {
-//         __half sum = 0;
-//         for (int j = 0; j < inNum; ++j)
-//         {
-//             // sum += weight[outNum * j + k + offset] * val2[j];
-//             sum = __hadd(sum, __hmul(weight[outNum * j + k + offset], val2[j]));
-//         }
-//         val1[k] = leakyrelu(__hadd(sum, bias[k+biasOffset]));
-//     }
-//     offset += outNum * inNum;
-//     biasOffset += outNum;
-//     for (int k = 0; k < outNum; ++k)
-//     {
-//         __half sum = 0;
-//         for (int j = 0; j < inNum; ++j)
-//         {
-//             sum = __hadd(sum, __hmul(weight[outNum * j + k + offset], val1[j]));
-//             // sum += weight[outNum * j + k + offset] * val1[j];
-//         }
-//         val2[k] = leakyrelu(__hadd(sum, bias[k+biasOffset]));
-//     }
-//     offset += outNum * inNum;
-//     biasOffset += outNum;
-//     for (int k = 0; k < 3; ++k)
-//     {
-//         __half sum = 0;
-//         for (int j = 0; j < inNum; ++j)
-//         {
-//             // sum += weight[4 * j + k + offset] * val2[j];
-//             sum = __hadd(sum, __hmul(weight[outNum * j + k + offset], val2[j]));
-//         }
-//         val1[k] = relu(__hadd(sum, bias[k+biasOffset]));
-//     }
-
-
-//     output[4 * (y * width + x) + 0] = __half2float(val1[0]);
-//     output[4 * (y * width + x) + 1] = __half2float(val1[1]);
-//     output[4 * (y * width + x) + 2] = __half2float(val1[2]);
-
-// }
-// // A wrapper function that launches the kernel.
-// void launchNNInferenceFP16(__half* weight, __half* bias, float* input, float* output, unsigned int width, unsigned int height){
-//     dim3 dimBlock(16, 16);
-//     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-//     inferenceFP16<<<dimGrid, dimBlock>>>(weight,bias, input, output, width, height);
-// }
+// A wrapper function that launches the kernel.
+void launchValidation(
+    float* weight,
+    float* bias,
+    __half* weighth,
+    __half* biash,
+    unsigned int* input,
+    float* output,
+    unsigned int width,
+    unsigned int height
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+    validation<<<dimGrid, dimBlock>>>(weight, bias, weighth, biash, input, output, width, height);
+}

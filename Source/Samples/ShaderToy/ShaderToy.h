@@ -87,6 +87,7 @@ private:
     ref<BlendState> mpOpaqueBS;
     ref<FullScreenPass> mpMainPass;
     ref<FullScreenPass> mpDisplayPass;
+    ref<FullScreenPass> mpBindInputPass;
     float mUVScale = 1.0f;
     std::unique_ptr<NBTF> mpNBTF;
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
@@ -94,6 +95,7 @@ private:
     uint mFrames = 1;
 
     bool mSynthesis = false;
+    bool mFP16 = false;
 
     RenderType mRenderType = RenderType::CUDA;
 
