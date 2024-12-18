@@ -8,7 +8,7 @@ import Utils.Math.FormatConversion;
 #ifndef MAX_NN_DIM
 #define MAX_NN_DIM 8
 #endif
-static float scaleIn1 = 0.0022757172118872404;
+static float scaleIn1 = 0.0035758037120103836;
 
 inline  int clampInt8(int a)
 {
