@@ -34,6 +34,7 @@ cbuffer CB
     float2 iResolution;
     float gUVScaling;
     NBTF nbtf;
+    NBTF nbtfInt8;
     bool gSynthesis;
     bool gFP16;
 };
@@ -55,14 +56,13 @@ uint packInt16x2(int2 v)
 
 void bindInputUV(float2 fragCoord, uint2 pixel)
 {
-    uint offset = pixel.y * iResolution.x + pixel.x;
-    if (offset < 3424) {
-        int4 w1 = int4(gQInt8Buffer[4 * offset], gQInt8Buffer[4 * offset + 1], gQInt8Buffer[4 * offset + 2], gQInt8Buffer[4 * offset + 3]);
-        cudaInputUIntBuffer[offset] = packInt8x4(w1);
-    }
-
-
-
+    uint offset = 6 * (pixel.y * iResolution.x + pixel.x);
+    float2 uv = fragCoord / iResolution.y;
+    float2 ddx = 0.0001;
+    float2 ddy = 0.0001;
+    float3 wi = normalize(float3(0.2, 0.2, 1.0));
+    float3 wo = normalize(float3(0.3, 0.2, 0.8));
+    nbtfInt8.bindInputInt8(cudaInputUIntBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
 }
 
 
@@ -92,7 +92,7 @@ void bindInputFP16(float2 fragCoord, uint2 pixel)
     float3 wi = normalize(float3(0.2, 0.2, 1.0));
     float3 wo = normalize(float3(0.3, 0.2, 0.8));
 
-    nbtf.bindInputFP16(cudaInputUIntBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, false);
+    nbtf.bindInputFP16(cudaInputUIntBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
 }
 
 void bindInput(float2 fragCoord, uint2 pixel)
@@ -105,7 +105,7 @@ void bindInput(float2 fragCoord, uint2 pixel)
     float3 wi = normalize(float3(0.2, 0.2, 1.0));
     float3 wo = normalize(float3(0.3, 0.2, 0.8));
     uint offset = 32 * (pixel.y * iResolution.x + pixel.x);
-    nbtf.bindInput(cudaInputBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, false);
+    nbtf.bindInput(cudaInputBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
 }
 
 

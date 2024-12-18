@@ -90,8 +90,10 @@ private:
     ref<FullScreenPass> mpBindInputPass;
     float mUVScale = 1.0f;
     std::unique_ptr<NBTF> mpNBTF;
+    std::unique_ptr<NBTF> mpNBTFInt8;
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
     std::string mNetName = "leather11_m24u8h8d8";
+    std::string mNetInt8Name = "leather11_m24u8h8d8_int8";
     uint mFrames = 1;
 
     bool mSynthesis = false;

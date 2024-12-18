@@ -6,6 +6,20 @@
 #define OUT_NUM 24
 #define CUDART_ZERO_FP16 __ushort_as_half((unsigned short)0x0000U)
 #define CUDART_ONE_FP16 __ushort_as_half((unsigned short)0x3C00U)
+
+__constant__ float scaleIn1 = 0.0022757172118872404;
+__constant__ float scaleOut1 = 0.004643903113901615;
+__constant__ float dequantizeScale1 = 1.0568210200290196e-05;
+__constant__ float scaleIn2 = 0.0012081300374120474;
+__constant__ float scaleOut2 = 0.006946859881281853;
+__constant__ float dequantizeScale2 = 8.392709787585773e-06;
+__constant__ float scaleIn3 = 0.0012490618973970413;
+__constant__ float scaleOut3 = 0.006498344708234072;
+__constant__ float dequantizeScale3 = 8.116834578686394e-06;
+__constant__ float scaleIn4 = 0.0030918922275304794;
+// __constant__ float scaleOut4 = 0.006783898454159498;
+__constant__ float dequantizeScale4 = 2.0975083316443488e-05;
+
 float __device__ __forceinline__ relu(float x)
 {
     return max(x, 0.0f);
@@ -145,7 +159,8 @@ inline __device__ short2 packInt2x16(int a)
     return make_short2((short)((a << 16) >> 16), (short)(a >> 16));
 }
 
-inline __device__ int clampInt8(int a){
+inline __device__ int clampInt8(int a)
+{
     return min(127, max(-127, a));
 }
 inline __device__ int quantizeInt8x4_safe(float a, float b, float c, float d, const float scale)
@@ -153,7 +168,6 @@ inline __device__ int quantizeInt8x4_safe(float a, float b, float c, float d, co
     return (clampInt8(__float2int_rn((a / scale))) & 0x000000ff) | (clampInt8(__float2int_rn(b / scale)) << 8) & 0x0000ff00 |
            (clampInt8(__float2int_rn(c / scale)) << 16) & 0x00ff0000 | (clampInt8(__float2int_rn(d / scale)) << 24) & 0xff000000;
 }
-
 
 inline __device__ int quantizeInt8x4(float a, float b, float c, float d, const float scale)
 {
@@ -172,7 +186,7 @@ inline __device__ float dequantizeInt8(const int packedData, const float scale)
 
 inline __device__ float dequantizeInt8_relu(const int packedData, const float scale)
 {
-    return relu(__int2float_rn(packedData) * scale);
+    return __int2float_rn(relu(packedData) * scale);
 }
 
 inline __device__ void dequantizeInt8x4(const int packedData, __half& a, __half& b, __half& c, __half& d, const __half scale)
@@ -210,47 +224,41 @@ inline __device__ int requantizeInt8x4(const int packedData, const __half scale1
 }
 
 // The CUDA kernel. This sample simply copies the input surface.
-__global__ void int8test(float* weight, int* input, float* output, unsigned int width, unsigned int height, int debugOffset)
+__global__ void int8test(int* weight, int* input, float* output, unsigned int width, unsigned int height, int debugOffset)
 {
+    __shared__ int W[450];
+    unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
+    if (localIdx < 225)
+    {
+        W[2 * localIdx] = weight[2 * localIdx];
+        W[2 * localIdx + 1] = weight[2 * localIdx + 1];
+    }
+    __syncthreads();
+
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height)
         return;
-    int offset = 0;
-    float u = (x + 0.5f) / height;
-    float v = (y + 0.5f) / height;
-    if(u>1.0f) u -= 1.0f;
 
-    int hiddenNum = 32;
-    int hiddenPackedNum = hiddenNum/4;
-    int inNum = 2;
+    int offset = 0;
+    int* inputVal = input + 6 * (y * width + x);
+
+    int hiddenNum = 24;
+    int hiddenPackedNum = hiddenNum / 4;
+    int inNum = 6;
     int outNum = 3;
 
-    int val1[32];
-    int val2[8];
+    int val1[24];
+    int val2[6];
 
-    float scaleIn1 = 0.007871825248003006;
-    float scaleOut1 = 0.0059334347024559975;
-    float dequantizeScale1 = 4.670696216635406e-05;
-    float scaleIn2 = 0.010176027193665504;
-    float scaleOut2 = 0.006376488599926233;
-    float dequantizeScale2 = 6.488732469733804e-05;
-    float scaleIn3 = 0.006984632927924395;
-    float scaleOut3 = 0.019875366240739822;
-    float dequantizeScale3 = 0.00013882214261684567;
-    float scaleIn4 = 0.00754130445420742;
-    float scaleOut4 = 0.0053041246719658375;
-    float dequantizeScale4 = 4.000002081738785e-05;
-    float scaleIn5 = 0.008648429065942764;
-    float scaleOut5 = 0.005037424620240927;
-    float dequantizeScale5 = 4.356581121101044e-05;
-
-    val2[0] = quantizeInt8x4_safe(sinf(u * 2), cosf(v * 2), sinf(u * 4), cosf(v * 4), scaleIn1);
-    val2[1] = quantizeInt8x4_safe(sinf(u * 8), cosf(v * 8), u, v, scaleIn1);
-
+    // val2[0] = quantizeInt8x4_safe(sinf(u * 2), cosf(v * 2), sinf(u * 4), cosf(v * 4), scaleIn1);
+    // val2[1] = quantizeInt8x4_safe(sinf(u * 8), cosf(v * 8), u, v, scaleIn1);
     // val2[0] = quantizeInt8x4_safe(0.0050, 1.0000, 0.0100, 0.9999, scaleIn1);
     // val2[1] = quantizeInt8x4_safe( 0.0200, 0.9998, 0.0025, 0.0025, scaleIn1);
-
+    // for (int i = 0; i < 6; i++)
+    // {
+    //     val2[i] = quantizeInt8x4_safe(inputVal[i * 4 + 0], inputVal[i * 4 + 1], inputVal[i * 4 + 2], inputVal[i * 4 + 3], scaleIn1);
+    // }
 
     // layer 1
     for (int k = 0; k < hiddenNum; k++)
@@ -258,7 +266,7 @@ __global__ void int8test(float* weight, int* input, float* output, unsigned int 
         val1[k] = 0;
         for (int j = 0; j < inNum; j++)
         {
-            val1[k] = __dp4a(val2[j], input[offset + k * inNum + j], val1[k]);
+            val1[k] = __dp4a(inputVal[j], W[offset + k * inNum + j], val1[k]);
         }
     }
     offset += hiddenNum * inNum;
@@ -266,7 +274,7 @@ __global__ void int8test(float* weight, int* input, float* output, unsigned int 
     for (int k = 0; k < hiddenPackedNum; k++)
     {
         val2[k] = quantizeInt8x4_safe(
-            dequantizeInt8_relu(val1[4 * k],     dequantizeScale1),
+            dequantizeInt8_relu(val1[4 * k], dequantizeScale1),
             dequantizeInt8_relu(val1[4 * k + 1], dequantizeScale1),
             dequantizeInt8_relu(val1[4 * k + 2], dequantizeScale1),
             dequantizeInt8_relu(val1[4 * k + 3], dequantizeScale1),
@@ -274,21 +282,20 @@ __global__ void int8test(float* weight, int* input, float* output, unsigned int 
         );
     }
 
-
     // layer 2
     for (int k = 0; k < hiddenNum; k++)
     {
         val1[k] = 0;
         for (int j = 0; j < hiddenPackedNum; j++)
         {
-            val1[k] = __dp4a(val2[j], input[offset + k * hiddenPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
         }
     }
     offset += hiddenNum * hiddenPackedNum;
     for (int k = 0; k < hiddenPackedNum; k++)
     {
         val2[k] = quantizeInt8x4_safe(
-            dequantizeInt8_relu(val1[4 * k],     dequantizeScale2),
+            dequantizeInt8_relu(val1[4 * k], dequantizeScale2),
             dequantizeInt8_relu(val1[4 * k + 1], dequantizeScale2),
             dequantizeInt8_relu(val1[4 * k + 2], dequantizeScale2),
             dequantizeInt8_relu(val1[4 * k + 3], dequantizeScale2),
@@ -296,21 +303,20 @@ __global__ void int8test(float* weight, int* input, float* output, unsigned int 
         );
     }
 
-
     // layer 3
     for (int k = 0; k < hiddenNum; k++)
     {
         val1[k] = 0;
         for (int j = 0; j < hiddenPackedNum; j++)
         {
-            val1[k] = __dp4a(val2[j], input[offset + k * hiddenPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
         }
     }
     offset += hiddenNum * hiddenPackedNum;
     for (int k = 0; k < hiddenPackedNum; k++)
     {
         val2[k] = quantizeInt8x4_safe(
-            dequantizeInt8_relu(val1[4 * k],     dequantizeScale3),
+            dequantizeInt8_relu(val1[4 * k], dequantizeScale3),
             dequantizeInt8_relu(val1[4 * k + 1], dequantizeScale3),
             dequantizeInt8_relu(val1[4 * k + 2], dequantizeScale3),
             dequantizeInt8_relu(val1[4 * k + 3], dequantizeScale3),
@@ -318,40 +324,20 @@ __global__ void int8test(float* weight, int* input, float* output, unsigned int 
         );
     }
 
-
-    // layer 4
-    for (int k = 0; k < hiddenNum; k++)
-    {
-        val1[k] = 0;
-        for (int j = 0; j < hiddenPackedNum; j++)
-        {
-            val1[k] = __dp4a(val2[j], input[offset + k * hiddenPackedNum + j], val1[k]);
-        }
-    }
-    offset += hiddenNum * hiddenPackedNum;
-    for (int k = 0; k < hiddenPackedNum; k++)
-    {
-        val2[k] = quantizeInt8x4_safe(
-            dequantizeInt8_relu(val1[4 * k],     dequantizeScale4),
-            dequantizeInt8_relu(val1[4 * k + 1], dequantizeScale4),
-            dequantizeInt8_relu(val1[4 * k + 2], dequantizeScale4),
-            dequantizeInt8_relu(val1[4 * k + 3], dequantizeScale4),
-            scaleIn5
-        );
-    }
-
-
     // layer final
     for (int k = 0; k < outNum; k++)
     {
         val1[k] = 0;
         for (int j = 0; j < hiddenPackedNum; j++)
         {
-            val1[k] = __dp4a(val2[j], input[offset + k * hiddenPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
         }
     }
+    __syncthreads();
 
-
+    output[4 * (y * width + x) + 0] = dequantizeInt8_relu(val1[0], dequantizeScale4);
+    output[4 * (y * width + x) + 1] = dequantizeInt8_relu(val1[1], dequantizeScale4);
+    output[4 * (y * width + x) + 2] = dequantizeInt8_relu(val1[2], dequantizeScale4);
 
     // int a, b, c, d;
     // depackInt8x4(val2[4], a, b, c, d);
@@ -359,47 +345,13 @@ __global__ void int8test(float* weight, int* input, float* output, unsigned int 
     // output[4 * (y * width + x) + 1] = b;
     // output[4 * (y * width + x) + 2] = c;
     // output[4 * (y * width + x) + 3] = d;
-
-
-
-// int debugOffset = 20;
-    // output[4 * (y * width + x) + 0] = dequantizeInt8_relu(val1[0+debugOffset], dequantizeScale2) ;
-    // output[4 * (y * width + x) + 1] = dequantizeInt8_relu(val1[1+debugOffset], dequantizeScale2) ;
-    // output[4 * (y * width + x) + 2] = dequantizeInt8_relu(val1[2+debugOffset], dequantizeScale2) ;
-    // output[4 * (y * width + x) + 3] = dequantizeInt8_relu(val1[3+debugOffset], dequantizeScale2) ;
-
-
-
-
-
-
-
-
-
-    // output[4 * (y * width + x) + 0] = val1[0];
-    // output[4 * (y * width + x) + 1] = val1[1];
-    // output[4 * (y * width + x) + 2] = val1[2];
-    // output[4 * (y * width + x) + 3] = val1[3];
-
-    output[4 * (y * width + x) + 0] = dequantizeInt8_relu(val1[0], dequantizeScale5);
-    output[4 * (y * width + x) + 1] = dequantizeInt8_relu(val1[1], dequantizeScale5);
-    output[4 * (y * width + x) + 2] = dequantizeInt8_relu(val1[2], dequantizeScale5);
-    output[4 * (y * width + x) + 3] = dequantizeInt8_relu(val1[3], dequantizeScale5);
-
-    // output[4 * (y * width + x) + 0] = dequantizeInt8_relu(val1[0], dequantizeScale3);
-    // output[4 * (y * width + x) + 1] = dequantizeInt8_relu(val1[1], dequantizeScale3);
-    // output[4 * (y * width + x) + 2] = dequantizeInt8_relu(val1[2], dequantizeScale3);
-    // output[4 * (y * width + x) + 3] = 1;
-
-
-
 }
 // A wrapper function that launches the kernel.
-void launchInt8Test(float* weight, int* input, float* output, unsigned int width, unsigned int height, int debugOffset)
+void launchInt8Test(int* weight, int* input, float* output, unsigned int width, unsigned int height, int debugOffset)
 {
     dim3 dimBlock(16, 16);
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-    int8test<<<dimGrid, dimBlock>>>(weight, input, output, width, height,debugOffset);
+    int8test<<<dimGrid, dimBlock>>>(weight, input, output, width, height, debugOffset);
 }
 
 // The CUDA kernel. This sample simply copies the input surface.

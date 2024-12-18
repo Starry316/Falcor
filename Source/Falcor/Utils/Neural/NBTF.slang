@@ -8,6 +8,18 @@ import Utils.Math.FormatConversion;
 #ifndef MAX_NN_DIM
 #define MAX_NN_DIM 8
 #endif
+static float scaleIn1 = 0.0022757172118872404;
+
+inline  int clampInt8(int a)
+{
+    return min(127, max(-127, a));
+}
+inline int quantizeInt8x4_safe(float4 v, const float scale)
+{
+    return (clampInt8(int((v.x / scale))) & 0x000000ff) | (clampInt8(int(v.y / scale)) << 8) & 0x0000ff00 |
+           (clampInt8(int(v.z / scale)) << 16) & 0x00ff0000 | (clampInt8(int(v.w / scale)) << 24) & 0xff000000;
+}
+
 
 struct NBTF
 {
@@ -25,60 +37,6 @@ struct NBTF
     MLP mlp;
 
     SamplerState gSampler;
-
-
-
-    // float3 evalDebug(float3 wi, float3 wo, float2 uv, float2 ddx, float2 ddy, bool fp16 = false, bool synthesize = false)
-    // {
-    //     float2 h, d;
-    //     dirToRusinkiewicz(wi, wo, h, d);
-    //     float3 vh = spherical_to_cartesian_rad(h);
-    //     float3 vd = spherical_to_cartesian_rad(d);
-
-    //     h = hemisphereDirToDiskSquare(vh);
-    //     d = hemisphereDirToDiskSquare(vd);
-
-    //     float4 x[MAX_NN_DIM];
-    //     int count = 0;
-    //     for (uint i = 0; i < hDims.y; i++)
-    //     {
-    //         x[count] = hP.SampleLevel(gSampler, float3(h, i), 0.f);
-    //         count += 1;
-    //     }
-    //     for (uint i = 0; i < uDims.y; i++)
-    //     {
-    //         if (synthesize)
-    //             // return histoFeatureData.acf.SampleLevel(gSampler, uv, 0);
-    //             x[count] = HistorgramBlending(histoFeatureData, gSampler, uv, i, ddx, ddy);
-    //         // x[count] = HexTiling(uP, gSampler, ddx, ddy, uv, i);
-    //         else
-    //         {
-    //             x[count] = uP.SampleGrad(gSampler, float3(uv, i), ddx, ddy);
-    //         }
-
-    //         count += 1;
-    //     }
-
-    //     for (uint i = 0; i < dDims.y; i++)
-    //     {
-    //         x[count] = dP.SampleLevel(gSampler, float3(d, i), 0.f);
-    //         count += 1;
-    //     }
-
-    //     if (fp16) {
-    //         for (int i = 0; i < MAX_NN_DIM; i++)
-    //         {
-    //             // x[i] = unpackUnorm4x8(packUnorm4x8(x[i]));
-    //             x[i].xy = unpackSnorm2x16(packSnorm2x16(x[i].xy));
-    //             x[i].zw = unpackSnorm2x16(packSnorm2x16(x[i].zw));
-    //         }
-    //         return mlp.evalfp16(x).xyz;
-    //     }
-
-
-    //     return mlp.eval(x).xyz;
-    // }
-
 
 
     float3 evalDebug(float3 wi, float3 wo, float2 uv, float2 ddx, float2 ddy, bool synthesize = false)
@@ -275,4 +233,51 @@ struct NBTF
             count += 2;
         }
     }
+
+    void bindInputInt8(
+        RWBuffer<uint> inputBuffer,
+        uint offset,
+        float3 wi,
+        float3 wo,
+        float2 uv,
+        float2 ddx,
+        float2 ddy,
+        bool synthesize = false
+    )
+    {
+
+        float2 h, d;
+        dirToRusinkiewicz(wi, wo, h, d);
+        float3 vh = spherical_to_cartesian_rad(h);
+        float3 vd = spherical_to_cartesian_rad(d);
+
+        h = hemisphereDirToDiskSquare(vh);
+        d = hemisphereDirToDiskSquare(vd);
+
+        int count = 0;
+        for (uint i = 0; i < hDims.y; i++)
+        {
+            float4 val = hP.SampleLevel(gSampler, float3(h, i), 0.f);
+            inputBuffer[count + offset] = quantizeInt8x4_safe(val, scaleIn1);
+            count += 1;
+        }
+        for (uint i = 0; i < uDims.y; i++)
+        {
+            float4 val;
+            if (synthesize)
+                val = HexTiling(uP, gSampler, ddx, ddy, uv, i);
+            else
+                val = uP.SampleGrad(gSampler, float3(uv, i), ddx, ddy);
+            inputBuffer[count + offset] = quantizeInt8x4_safe(val, scaleIn1);
+            count += 1;
+        }
+        for (uint i = 0; i < dDims.y; i++)
+        {
+            float4 val = dP.SampleLevel(gSampler, float3(d, i), 0.f);
+            inputBuffer[count + offset] = quantizeInt8x4_safe(val, scaleIn1);
+            count += 1;
+        }
+    }
+
+
 }
