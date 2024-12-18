@@ -44,7 +44,8 @@ enum class RenderType : uint32_t
     // WAVEFRONT_SHADER_NN,
     SHADER_NN,
     CUDA,
-    CUDAFP16
+    CUDAFP16,
+    CUDAINT8
     // TRT,
     // DEBUG_MIP
 };
@@ -52,13 +53,10 @@ enum class RenderType : uint32_t
 FALCOR_ENUM_INFO(
     RenderType,
     {
-        // { RenderType::RT, "RT" },
-        // { RenderType::WAVEFRONT_SHADER_NN, "Wavefront Inference" },
         { RenderType::SHADER_NN, "Shader Inference" },
-        { RenderType::CUDA, "CUDA Inference" },
-        { RenderType::CUDAFP16, "CUDA FP16 Inference" }
-        // { RenderType::TRT, "TensorRT Inference" },
-        // { RenderType::DEBUG_MIP, "DEBUG MIP" }
+        { RenderType::CUDA, "CUDA FP32 Inference" },
+        { RenderType::CUDAFP16, "CUDA FP16 Inference" },
+        { RenderType::CUDAINT8, "CUDA INT8 Inference" }
     }
 );
 FALCOR_ENUM_REGISTER(RenderType);

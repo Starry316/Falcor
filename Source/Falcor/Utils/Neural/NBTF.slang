@@ -10,7 +10,7 @@ import Utils.Math.FormatConversion;
 #endif
 static float scaleIn1 = 0.0035758037120103836;
 
-inline  int clampInt8(int a)
+inline int clampInt8(int a)
 {
     return min(127, max(-127, a));
 }
@@ -19,7 +19,6 @@ inline int quantizeInt8x4_safe(float4 v, const float scale)
     return (clampInt8(int((v.x / scale))) & 0x000000ff) | (clampInt8(int(v.y / scale)) << 8) & 0x0000ff00 |
            (clampInt8(int(v.z / scale)) << 16) & 0x00ff0000 | (clampInt8(int(v.w / scale)) << 24) & 0xff000000;
 }
-
 
 struct NBTF
 {
@@ -37,7 +36,6 @@ struct NBTF
     MLP mlp;
 
     SamplerState gSampler;
-
 
     float3 evalDebug(float3 wi, float3 wo, float2 uv, float2 ddx, float2 ddy, bool synthesize = false)
     {
@@ -159,7 +157,8 @@ struct NBTF
         {
             float4 val;
             if (synthesize)
-                val = HexTiling(uP, gSampler, ddx, ddy, uv, i);
+                // val = HexTiling(uP, gSampler, ddx, ddy, uv, i);
+                val = HistorgramBlending(histoFeatureData, gSampler, uv, i, ddx, ddy);
             else
                 val = uP.SampleGrad(gSampler, float3(uv, i), ddx, ddy);
             // inputBuffer[count + offset] = packFloat32ToFloat16(val.x, val.y);
@@ -217,7 +216,8 @@ struct NBTF
         {
             float4 val;
             if (synthesize)
-                val = HexTiling(uP, gSampler, ddx, ddy, uv, i);
+                // val = HexTiling(uP, gSampler, ddx, ddy, uv, i);
+                val = HistorgramBlending(histoFeatureData, gSampler, uv, i, ddx, ddy);
             else
                 val = uP.SampleGrad(gSampler, float3(uv, i), ddx, ddy);
             inputBuffer[count + offset] = packSnorm2x16(val.xy);
@@ -245,7 +245,6 @@ struct NBTF
         bool synthesize = false
     )
     {
-
         float2 h, d;
         dirToRusinkiewicz(wi, wo, h, d);
         float3 vh = spherical_to_cartesian_rad(h);
@@ -265,7 +264,8 @@ struct NBTF
         {
             float4 val;
             if (synthesize)
-                val = HexTiling(uP, gSampler, ddx, ddy, uv, i);
+                // val = HexTiling(uP, gSampler, ddx, ddy, uv, i);
+                val = HistorgramBlending(histoFeatureData, gSampler, uv, i, ddx, ddy);
             else
                 val = uP.SampleGrad(gSampler, float3(uv, i), ddx, ddy);
             inputBuffer[count + offset] = quantizeInt8x4_safe(val, scaleIn1);
@@ -278,6 +278,4 @@ struct NBTF
             count += 1;
         }
     }
-
-
 }

@@ -9,6 +9,7 @@ target_sources(ShaderToy PRIVATE
     Toy.ps.slang
     cuda/MLPInference.cu
     cuda/MLPInference.h
+    cuda/cudaUtils.h
     display.ps.slang
     bindInput.ps.slang
 )

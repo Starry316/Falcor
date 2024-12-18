@@ -37,8 +37,8 @@ cbuffer CB
     NBTF nbtfInt8;
     bool gSynthesis;
     bool gFP16;
+    int gRenderType;
 };
-
 
 Buffer<float> gQInt8Buffer;
 RWBuffer<uint> cudaInputUIntBuffer;
@@ -54,7 +54,7 @@ uint packInt16x2(int2 v)
     return (v.x & 0x0000ffff) | ((v.y << 16) & 0xffff0000);
 }
 
-void bindInputUV(float2 fragCoord, uint2 pixel)
+void bindInputInt8(float2 fragCoord, uint2 pixel)
 {
     uint offset = 6 * (pixel.y * iResolution.x + pixel.x);
     float2 uv = fragCoord / iResolution.y;
@@ -64,7 +64,6 @@ void bindInputUV(float2 fragCoord, uint2 pixel)
     float3 wo = normalize(float3(0.3, 0.2, 0.8));
     nbtfInt8.bindInputInt8(cudaInputUIntBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
 }
-
 
 // void bindInputUV(float2 fragCoord, uint2 pixel)
 // {
@@ -81,10 +80,8 @@ void bindInputUV(float2 fragCoord, uint2 pixel)
 
 // }
 
-
 void bindInputFP16(float2 fragCoord, uint2 pixel)
 {
-
     uint offset = 16 * (pixel.y * iResolution.x + pixel.x);
     float2 uv = fragCoord / iResolution.y;
     float2 ddx = 0.0001;
@@ -97,8 +94,6 @@ void bindInputFP16(float2 fragCoord, uint2 pixel)
 
 void bindInput(float2 fragCoord, uint2 pixel)
 {
-
-
     float2 uv = fragCoord / iResolution.y;
     float2 ddx = 0.0001;
     float2 ddy = 0.0001;
@@ -108,16 +103,16 @@ void bindInput(float2 fragCoord, uint2 pixel)
     nbtf.bindInput(cudaInputBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
 }
 
-
 float4 main(float2 texC: TEXCOORD) : SV_TARGET
 {
     uint2 pixel = uint2(floor(texC * iResolution));
     printSetPixel(pixel);
-    if (gFP16)
-        bindInputUV(texC * iResolution, pixel);
-
-    else
+    if (gRenderType == 1)
+        bindInput(texC * iResolution, pixel);
+    else if (gRenderType == 2)
         bindInputFP16(texC * iResolution, pixel);
-        // bindInput(texC * iResolution, pixel);
+    else
+        bindInputInt8(texC * iResolution, pixel);
+
     return float4(0.0, 0.0, 0.0, 1.0);
 }
