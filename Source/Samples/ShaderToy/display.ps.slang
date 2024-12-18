@@ -38,19 +38,24 @@ cbuffer CB
 };
 
 Buffer<float> gInputColor;
-RWBuffer<float> cudaInputBuffer;
+Buffer<uint> cudaInputBuffer;
 SamplerState gSampler;
 
 
 float4 mainImage(float2 fragCoord, uint2 pixel)
 {
-    print("output0", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0]);
-    print("output1", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2]);
-    // print("output1gt", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0] * 2);
+    // int a = -32;
+    // int packedData = (a << 8) & 0x0000ff00;
+    // int unpackedData = (int)(packedData << 16) >> 24;
+
+    print("output1", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0]);
     print("output2", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1]);
-    // print("output2gt", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0] * 3);
-    print("output3", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]);
-    // print("output3gt", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0] * 4);
+
+    print("output3", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2]);
+    print("output4", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]);
+
+    // print("output5", unpackedData);
+
 
 
 

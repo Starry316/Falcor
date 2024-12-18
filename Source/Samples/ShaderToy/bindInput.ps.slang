@@ -38,16 +38,48 @@ cbuffer CB
     bool gFP16;
 };
 
-Buffer<float> gInputColor;
+
+Buffer<float> gQInt8Buffer;
 RWBuffer<uint> cudaInputUIntBuffer;
+RWBuffer<int> cudaInputIntBuffer;
 RWBuffer<float> cudaInputBuffer;
+
+uint packInt8x4(int4 v)
+{
+    return (v.x & 0x000000ff) | ((v.y << 8) & 0x0000ff00) | ((v.z << 16) & 0x00ff0000) | ((v.w << 24) & 0xff000000);
+}
+uint packInt16x2(int2 v)
+{
+    return (v.x & 0x0000ffff) | ((v.y << 16) & 0xffff0000);
+}
 
 void bindInputUV(float2 fragCoord, uint2 pixel)
 {
-    uint offset = (pixel.y * iResolution.x + pixel.x);
-    float2 uv = fragCoord / iResolution.y;
-    cudaInputUIntBuffer[offset] = packSnorm2x16(uv);
+    uint offset = pixel.y * iResolution.x + pixel.x;
+    if (offset < 3424) {
+        int4 w1 = int4(gQInt8Buffer[4 * offset], gQInt8Buffer[4 * offset + 1], gQInt8Buffer[4 * offset + 2], gQInt8Buffer[4 * offset + 3]);
+        cudaInputUIntBuffer[offset] = packInt8x4(w1);
+    }
+
+
+
 }
+
+
+// void bindInputUV(float2 fragCoord, uint2 pixel)
+// {
+//     uint offset = 16 * (pixel.y * iResolution.x + pixel.x);
+
+//     int4 w1 = int4(12, 2, 32, 46);
+//     int4 w2 = int4(3, 21, 6, -2);
+//     int4 w3 = int4(-3, -21, 6, -2);
+//     int2 inputData = int2(5, -16);
+//     cudaInputUIntBuffer[offset + 1] = packInt8x4(w1);
+//     cudaInputUIntBuffer[offset + 2] = packInt8x4(w2);
+//     cudaInputUIntBuffer[offset + 3] = packInt8x4(w3);
+//     cudaInputUIntBuffer[offset] = packInt16x2(inputData);
+
+// }
 
 
 void bindInputFP16(float2 fragCoord, uint2 pixel)

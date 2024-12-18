@@ -173,6 +173,11 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     resDesc.res.array.array = d_array;
 
 
+    std::vector<float> int8Weight =readBinaryFile("D:/QINT8.bin");
+    mpQInt8Buffer =
+        getDevice()->createBuffer(int8Weight.size() * sizeof(float), ResourceBindFlags::ShaderResource | ResourceBindFlags::Shared | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, int8Weight.data());
+    logInfo("QINT8 buffer size: " + std::to_string(int8Weight.size()));
+    logInfo("QINT8 buffer  {} {} {} {}", int8Weight[0], int8Weight[1], int8Weight[2], int8Weight[3]);
 
 }
 
@@ -217,7 +222,9 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     auto output = (float*)mpOutputBuffer->getGpuAddress();
     // timer start
     cudaEventRecord(mCudaStart, NULL);
-    if (mFP16)
+    for (size_t i = 0; i < 10; i++)
+    {
+         if (mFP16)
         // launchFP16Test(
         //     (float*)mpWeightBuffer->getGpuAddress(),
         //     (float*)mpBiasBuffer->getGpuAddress(),
@@ -228,12 +235,11 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
         // );
         launchInt8Test(
             (float*)mpWeightBuffer->getGpuAddress(),
-            (float*)mpBiasBuffer->getGpuAddress(),
-
-            (unsigned int*)mpInputBuffer->getGpuAddress(),
+            (int*)mpInputBuffer->getGpuAddress(),
             output,
             targetDim.x,
-            targetDim.y
+            targetDim.y,
+            mDebugOffset
         );
         // launchValidation(
         //     (float*)mpWeightBuffer->getGpuAddress(),
@@ -257,9 +263,9 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
             targetDim.x,
             targetDim.y
         );
-    // launchNNInference(
-    //     (float*)mpWeightBuffer->getGpuAddress(), (float*)mpBiasBuffer->getGpuAddress(), input, output, targetDim.x, targetDim.y
-    // );
+    }
+
+
 
     // timer end
     // cudaDeviceSynchronize();
@@ -281,12 +287,12 @@ void ShaderToy::bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     var["gUVScaling"] = mUVScale;
     var["gSynthesis"] = mSynthesis;
     var["gFP16"] = mFP16;
-    mpBindInputPass->getRootVar()["gInputColor"] = mpOutputBuffer;
+    // mpBindInputPass->getRootVar()["gInputColor"] = mpOutputBuffer;
     if (mFP16)
-        mpBindInputPass->getRootVar()["cudaInputUIntBuffer"] = mpInputBuffer;
+        mpBindInputPass->getRootVar()["cudaInputUIntBuffer"].setUav(mpInputBuffer->getUAV());
     else
-        // mpBindInputPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
         mpBindInputPass->getRootVar()["cudaInputUIntBuffer"] = mpInputBuffer;
+    mpBindInputPass->getRootVar()["gQInt8Buffer"] = mpQInt8Buffer;
     mpNBTF->bindShaderData(mpBindInputPass->getRootVar()["CB"]["nbtf"]);
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
@@ -332,7 +338,7 @@ void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
     }
     else if (mRenderType == RenderType::CUDA)
     {
-
+    //     bindInput(pRenderContext, pTargetFbo);
         cudaInfer(pRenderContext, pTargetFbo);
         display(pRenderContext, pTargetFbo);
     }
@@ -350,6 +356,7 @@ void ShaderToy::onGuiRender(Gui* pGui)
     w.dropdown("Render Type", mRenderType);
 
     w.slider("UV Scale", mUVScale, 0.0f, 10.0f);
+    w.slider("debugOffset", mDebugOffset, 0, 32);
     w.checkbox("Enable Synthesis", mSynthesis);
     w.checkbox("Enable fp16", mFP16);
     if (w.button("Reset Timer"))
@@ -359,6 +366,7 @@ void ShaderToy::onGuiRender(Gui* pGui)
     }
     w.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
     w.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mFrames) + " ms");
+    w.text("CUDA avg time (real): " + std::to_string(mCudaAvgTime / mFrames / 10) + " ms");
     mpPixelDebug->renderUI(w);
 }
 int runMain(int argc, char** argv)

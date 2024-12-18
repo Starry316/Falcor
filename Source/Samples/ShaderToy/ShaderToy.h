@@ -91,11 +91,11 @@ private:
     float mUVScale = 1.0f;
     std::unique_ptr<NBTF> mpNBTF;
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
-    std::string mNetName = "leather11_dim16_32_cos300";
+    std::string mNetName = "leather11_m24u8h8d8";
     uint mFrames = 1;
 
     bool mSynthesis = false;
-    bool mFP16 = false;
+    bool mFP16 = true;
 
     RenderType mRenderType = RenderType::CUDA;
 
@@ -109,8 +109,14 @@ private:
     ref<Buffer> mpWeightBuffer;
     ref<Buffer> mpBiasBuffer;
 
+
     ref<Buffer> mpWeightFP16Buffer;
     ref<Buffer> mpBiasFP16Buffer;
 
     cudaTextureObject_t mTexObj;
+
+    ref<Buffer> mpQInt8Buffer;
+
+    int mDebugOffset = 0;
+
 };
