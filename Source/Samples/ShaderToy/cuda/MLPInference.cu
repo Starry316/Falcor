@@ -30,7 +30,6 @@ __half __device__ __forceinline__ relu(__half x)
 }
 int __device__ __forceinline__ relu(int x)
 {
-    // return x;
     return max(x, 0);
 }
 
@@ -186,7 +185,7 @@ inline __device__ float dequantizeInt8(const int packedData, const float scale)
 
 inline __device__ float dequantizeInt8_relu(const int packedData, const float scale)
 {
-    return __int2float_rn(relu(packedData) * scale);
+    return relu(__int2float_rn(packedData) * scale);
 }
 
 inline __device__ void dequantizeInt8x4(const int packedData, __half& a, __half& b, __half& c, __half& d, const __half scale)
