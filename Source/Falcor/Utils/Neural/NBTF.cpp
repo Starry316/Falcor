@@ -34,16 +34,21 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
         mpTextureSynthesis->precomputeFeatureData(UPlaneBuffer, mUP.texDim, pDevice);
     }
 
-    if (mBuildCuda)
-    {
-        bindFlags |= ResourceBindFlags::Shared;
-        mUP.featureBuffer =
-            pDevice->createBuffer(UPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, UPlaneBuffer.data());
-        mHP.featureBuffer =
-            pDevice->createBuffer(HPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, HPlaneBuffer.data());
-        mDP.featureBuffer =
-            pDevice->createBuffer(DPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, DPlaneBuffer.data());
-    }
+    // Save for cuda
+    mUP.featureData = UPlaneBuffer;
+    mHP.featureData = HPlaneBuffer;
+    mDP.featureData = DPlaneBuffer;
+
+    // if (mBuildCuda)
+    // {
+    //     bindFlags |= ResourceBindFlags::Shared;
+    //     mUP.featureBuffer =
+    //         pDevice->createBuffer(UPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, UPlaneBuffer.data());
+    //     mHP.featureBuffer =
+    //         pDevice->createBuffer(HPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, HPlaneBuffer.data());
+    //     mDP.featureBuffer =
+    //         pDevice->createBuffer(DPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, DPlaneBuffer.data());
+    // }
 
     mUP.featureTex = pDevice->createTexture2D(
         mUP.texDim.x, mUP.texDim.x, ResourceFormat::RGBA32Float, mUP.texDim.y, Resource::kMaxPossible, UPlaneBuffer.data(), bindFlags
@@ -55,9 +60,9 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
     mHP.featureTex =
         pDevice->createTexture2D(mHP.texDim.x, mHP.texDim.x, ResourceFormat::RGBA32Float, mHP.texDim.y, 1, HPlaneBuffer.data(), bindFlags);
 
-    std::vector<float>().swap(DPlaneBuffer);
-    std::vector<float>().swap(HPlaneBuffer);
-    std::vector<float>().swap(UPlaneBuffer);
+    // std::vector<float>().swap(DPlaneBuffer);
+    // std::vector<float>().swap(HPlaneBuffer);
+    // std::vector<float>().swap(UPlaneBuffer);
 }
 
 NBTF::NBTF(ref<Device> pDevice, std::string networkName, bool buildCuda)

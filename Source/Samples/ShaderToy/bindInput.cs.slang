@@ -47,6 +47,7 @@ Buffer<float> gQInt8Buffer;
 RWBuffer<uint> cudaInputUIntBuffer;
 RWBuffer<int> cudaInputIntBuffer;
 RWBuffer<float> cudaInputBuffer;
+RWBuffer<float> testInput;
 
 uint packInt8x4(int4 v)
 {
@@ -95,6 +96,19 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
     const uint2 pixel = dispatchThreadId.xy;
     printSetPixel(pixel);
     float2 uv = (float2(pixel)) / iResolution.y;
+
+
+    float2 h, d;
+    dirToRusinkiewicz(sample_hemisphere(gWi), sample_hemisphere(gWo), h, d);
+    float3 vh = spherical_to_cartesian_rad(h);
+    float3 vd = spherical_to_cartesian_rad(d);
+
+    h = hemisphereDirToDiskSquare(vh);
+    d = hemisphereDirToDiskSquare(vd);
+    testInput[4 * (pixel.y * iResolution.x + pixel.x)] = h.x;
+    testInput[4 * (pixel.y * iResolution.x + pixel.x) + 1] = h.y;
+    testInput[4 * (pixel.y * iResolution.x + pixel.x) + 2] = d.x;
+    testInput[4 * (pixel.y * iResolution.x + pixel.x) + 3] = d.y;
 
     if (gRenderType == 1)
         bindInput(uv, pixel);

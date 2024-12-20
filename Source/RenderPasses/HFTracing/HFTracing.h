@@ -248,6 +248,7 @@ private:
     ref<Texture> mpOutputTex;
     ref<Buffer> mpInputBuffer;
     ref<Buffer> mpVaildBuffer;
+    ref<Buffer> mpPackedInputBuffer;
 
     ref<Buffer> mpWeightBuffer;
     ref<Buffer> mpBiasBuffer;
@@ -258,5 +259,11 @@ private:
 
     ref<Buffer> mpQInt8Buffer;
     uint mCudaAccumulatedFrames = 1;
+    cudaTextureObject_t mHTexObj;
+    cudaTextureObject_t mHFP32TexObj;
+    cudaTextureObject_t mUTexObj;
+    cudaTextureObject_t mUFP32TexObj;
+    cudaTextureObject_t mDTexObj;
+    cudaTextureObject_t mDFP32TexObj;
 
 };

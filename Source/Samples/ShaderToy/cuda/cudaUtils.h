@@ -81,6 +81,13 @@ inline __device__ int quantizeInt8x4f_safe(float a, float b, float c, float d, c
     return (clampInt8(__float2int_rn((a / scale))) & 0x000000ff) | (clampInt8(__float2int_rn(b / scale)) << 8) & 0x0000ff00 |
            (clampInt8(__float2int_rn(c / scale)) << 16) & 0x00ff0000 | (clampInt8(__float2int_rn(d / scale)) << 24) & 0xff000000;
 }
+
+inline __device__ int quantizeInt8x4f_safe(float4 v, const float scale)
+{
+    return (clampInt8(__float2int_rn((v.x / scale))) & 0x000000ff) | (clampInt8(__float2int_rn(v.y / scale)) << 8) & 0x0000ff00 |
+           (clampInt8(__float2int_rn(v.z / scale)) << 16) & 0x00ff0000 | (clampInt8(__float2int_rn(v.w / scale)) << 24) & 0xff000000;
+}
+
 inline __device__ int quantizeInt8x4h_safe(__half a, __half b, __half c, __half d, const __half scale)
 {
     return (clampInt8(__half2int_rn(__hdiv(a, scale))) & 0x000000ff) | (clampInt8(__half2int_rn(__hdiv(b, scale))) << 8) & 0x0000ff00 |

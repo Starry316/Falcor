@@ -12,7 +12,8 @@ struct FeatureTex{
     int2 texDim;
     ref<Texture> featureTex;
     // for cuda
-    ref<Buffer> featureBuffer;
+    // ref<Buffer> featureBuffer;
+    std::vector<float> featureData;
 };
 
 

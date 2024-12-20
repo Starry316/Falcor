@@ -49,7 +49,7 @@ float4 mainImage(float2 fragCoord, uint2 pixel)
         gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
         gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],
         gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2],
-        1.0
+        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]
     );
     print("ref", ouputColor[pixel]);
     print("out", cudaRet);
@@ -67,7 +67,7 @@ float4 mainImage(float2 fragCoord, uint2 pixel)
         gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
         gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],
         gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2],
-        1.0
+        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]
     );
 }
 

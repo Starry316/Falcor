@@ -77,7 +77,7 @@ cbuffer CB
     uint gPRNGDimension; // First available PRNG dimension.
     float4 gControlParas;
     float4 gCurvatureParas; // d, r
-    float2 gInvFrameDim;
+    uint2 gRenderTargetDim;
     bool gApplySyn;
     bool gUseFP16;
     EnvMapSampler envMapSampler;
@@ -103,7 +103,10 @@ Texture2D<float> gHFMaxMip;
 RWTexture2D<uint4> btfInput;
 RWTexture2D<float4> uvWoyz;
 RWTexture2D<float4> ddxy;
+
 RWBuffer<float> cudaInputBuffer;
+RWBuffer<uint4> packedInput;
+RWBuffer<int> cudaVaildBuffer;
 
 SamplerState gSampler;
 SamplerState gMaxSampler;
@@ -504,7 +507,9 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
         traceScatterRay(rayData);
     }
 
-    return float4(rayData.radiance, rayData.terminated ? 0.0f : 1.0f);
+    cudaVaildBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] = rayData.terminated ? 0 : 1;
+
+    return float4(rayData.radiance, 1.0f);
 }
 //
 // Shader entry points for miss shaders.
@@ -890,7 +895,7 @@ bool calcSynthesizedDisplacementIntersection(
     // calculate ray differentials from the extruded triangle. Would it better to use the base triangle?
     float2 ddx, ddy;
     computeRayDifferentials(
-        getGeometryInstanceID(), PrimitiveIndex(), ray.dir, extrudedTriangleIntersectAttri.t, gScene.camera, gInvFrameDim, ddx, ddy
+        getGeometryInstanceID(), PrimitiveIndex(), ray.dir, extrudedTriangleIntersectAttri.t, gScene.camera, 1.0f / float2(gRenderTargetDim), ddx, ddy
     );
     ddx *= FOOTPRINT_SCALING;
     ddy *= FOOTPRINT_SCALING;
@@ -1060,110 +1065,51 @@ void rayGen()
     float4 outputColor = tracePath(pixel, frameDim);
     gOutputColor[pixel] = outputColor;
 }
-// void handleHit(const HitInfo hit, inout ScatterRayData rayData)
-// {
-//     // Load shading data.
-//     ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
-
-//     // Create material instance.
-//     let lod = ExplicitLodTextureSampler(0.f);
-//     let mi = gScene.materials.getMaterialInstance(sd, lod);
-
-//     // Add emitted light.
-//     if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
-//     {
-//         rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
-//     }
-
-//     // Check whether to terminate based on max depth.
-//     if (rayData.pathLength >= kMaxBounces)
-//     {
-//         rayData.terminated = true;
-//         return;
-//     }
-
-//     // Add contribution of direct light from analytic lights.
-//     if (kUseAnalyticLights)
-//     {
-//         float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
-//         rayData.radiance += rayData.thp * Lr;
-//     }
-
-//     float3 wo = sd.frame.toLocal(sd.V);
-//     float3 envLi;
-//     float3 envDir;
-//     float envPdf;
-//     if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, envDir, envPdf))
-//     {
-//         // rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg) * MISWeight(envPdf, mi.evalPdf(sd, envDir));
-//         rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg);
-//     }
-
-//     // Generate scatter ray for the next path segment.
-//     // The raygen shader will continue the path based on the returned payload.
-//     if (!generateScatterRay(sd, mi, sd.computeRayOrigin(), rayData))
-//     {
-//         rayData.terminated = true;
-//         return;
-//     }
-
-//     rayData.pathLength++;
-// }
 void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
     // Load shading data.
     ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
-    // Load shading data.
-    GeometryInstanceID instanceID;
-    uint primitiveIndex;
+
+    // Create material instance.
+    let lod = ExplicitLodTextureSampler(0.f);
+    let mi = gScene.materials.getMaterialInstance(sd, lod);
+
+    // Add emitted light.
+    if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
+    {
+        rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
+    }
+
+    // always true for common surface
+    rayData.terminated = true;
+
+
+    // Add contribution of direct light from analytic lights.
+    if (kUseAnalyticLights)
+    {
+        float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
+        rayData.radiance += rayData.thp * Lr;
+    }
+
     float3 wo = sd.frame.toLocal(sd.V);
-
-
     float3 envLi;
     float3 envDir;
     float envPdf;
-    float2 ddx, ddy;
-    float hitT = length(sd.posW - gScene.camera.getPosition());
-    computeRayDifferentials(instanceID, primitiveIndex, -sd.V, hitT, gScene.camera, gInvFrameDim, ddx, ddy);
-    ddx *= FOOTPRINT_SCALING;
-    ddy *= FOOTPRINT_SCALING;
-    // float3 wi = sample_cosine_hemisphere_concentric(sampleNext2D(rayData.sg), envPdf);
-    // // float3 wi = reflect(-wo, float3(0, 0, 1));
-    // float NdotL = wi.z > 0 ? wi.z : 0;
-
-    // envLi = gScene.envMap.eval(sd.frame.fromLocal(wi));
-
-    // uint2 pixel = DispatchRaysIndex().xy;
-    // btfInput[pixel] = packInput(wi, wo, sd.uv, ddx, ddy);
-    // uvWoyz[pixel].xyz = envLi * NdotL;
-    // rayData.origin = hitT;
-    // rayData.terminated = false;
-    uint2 pixel = DispatchRaysIndex().xy;
-    uvWoyz[pixel].xyz = 0;
-    rayData.radiance = 0;
     if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, envDir, envPdf))
     {
-
-
-        float3 wi = sd.frame.toLocal(envDir);
-        float NdotL = wi.z > 0 ? wi.z : 0;
-
-        btfInput[pixel] = packInput(wi, wo, sd.uv, ddx, ddy);
-        uvWoyz[pixel].xyz = envLi * NdotL;
-        rayData.origin = hitT;
-        rayData.terminated = false;
-        // rayData.radiance = rayData.thp * envLi * NdotL;
-        rayData.radiance = envLi * NdotL;
+        // rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg) * MISWeight(envPdf, mi.evalPdf(sd, envDir));
+        rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg);
     }
 
+    // Generate scatter ray for the next path segment.
+    // The raygen shader will continue the path based on the returned payload.
+    if (!generateScatterRay(sd, mi, sd.computeRayOrigin(), rayData))
+    {
+        rayData.terminated = true;
+        return;
+    }
 
-
-
-
-
-
-
-
+    rayData.pathLength++;
 }
 
 
@@ -1178,7 +1124,7 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         return;
     }
     // we use terminated to indicate that if the cuda inference is needed
-    rayData.terminated = true;
+    rayData.terminated = false;
     // Load shading data.
     GeometryInstanceID instanceID;
     uint primitiveIndex;
@@ -1190,39 +1136,51 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     float envPdf;
     float2 ddx, ddy;
     float hitT = length(sd.posW - gScene.camera.getPosition());
-    computeRayDifferentials(instanceID, primitiveIndex, -sd.V, hitT, gScene.camera, gInvFrameDim, ddx, ddy);
+    computeRayDifferentials(instanceID, primitiveIndex, -sd.V, hitT, gScene.camera, 1.0f / float2(gRenderTargetDim), ddx, ddy);
     ddx *= FOOTPRINT_SCALING;
     ddy *= FOOTPRINT_SCALING;
 
 #ifdef RT
-    if (gApplySyn)
-        rayData.radiance = HexTiling(gColor, gSampler, float2(0.0001), float2(0.0001), UV_SCALING * (sd.uv));
-    else
-        rayData.radiance = gColor.SampleLevel(gSampler, sd.uv * UV_SCALING, 0);
-    return;
-#endif
-    if (generateEnvMapSample(sd.posW + sd.frame.N * gCurvatureParas.y, rayData.sg, envLi, envDir, envPdf))
+
+    rayData.radiance = float3(0, 0, 0);
+    float3 newPos = sd.posW + sd.frame.N * gCurvatureParas.y;
+    if (generateEnvMapSample(newPos, rayData.sg, envLi, envDir, envPdf))
     {
+
         float3 wi = sd.frame.toLocal(envDir);
-        float NdotL = wi.z > 0 ? 1 : 0;
-
-#ifdef SHADER_NN
-        // rayData.radiance += nbtf.evalDebug(wi, wo, (sd.uv.yx) * UV_SCALING, ddx, ddy, gApplySyn)
-        //                     * rayData.thp * envLi * NdotL * MISWeight(envPdf, wi.z * M_1_PI);
-        rayData.radiance += nbtf.evalDebug(wi, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn) * rayData.thp * envLi * NdotL;
-#endif
-
-#ifdef WAVEFRONT_SHADER_NN
-        uint2 pixel = DispatchRaysIndex().xy;
-
-        btfInput[pixel] = packInput(wi, wo, sd.uv, ddx, ddy);
-        uvWoyz[pixel] = float4(rayData.thp * envLi * NdotL, 1 );
-        // ddxy[pixel] = float4(ddx, ddy);
-        rayData.origin = hitT;
-        rayData.terminated = false;
-        rayData.radiance = rayData.thp * envLi * NdotL;
-#endif
+        float NdotL = wi.z > 0 ? wi.z : 0;
+        rayData.origin = newPos;
+        rayData.radiance = rayData.thp * envLi * NdotL * nbtf.evalDebug(wi, wo, frac(abs(sd.uv)), ddx, ddy, gApplySyn);
     }
+
+    // if (gApplySyn)
+    //     rayData.radiance = HexTiling(gColor, gSampler, float2(0.0001), float2(0.0001), UV_SCALING * (sd.uv));
+    // else
+    //     rayData.radiance = gColor.SampleLevel(gSampler, sd.uv * UV_SCALING, 0);
+    rayData.terminated = true;
+    return;
+#else
+
+    rayData.radiance = float3(0, 0, 0);
+    float3 newPos = sd.posW + sd.frame.N * gCurvatureParas.y;
+    if (generateEnvMapSample(newPos, rayData.sg, envLi, envDir, envPdf))
+    {
+        uint2 pixel = DispatchRaysIndex().xy;
+        float3 wi = sd.frame.toLocal(envDir);
+        float NdotL = wi.z > 0 ? wi.z : 0;
+        uint4 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+        // btfInput[pixel] = packedData;
+        // uvWoyz[pixel] = float4(rayData.thp * envLi * NdotL, 1 );
+        packedInput[4 *(pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+        packedInput[4 *(pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+        packedInput[4 *(pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+        packedInput[4 *(pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+
+        rayData.origin = newPos;
+        rayData.radiance = rayData.thp * envLi * NdotL;
+    }
+#endif
+
 
     // rayData.pathLength++;
     // if (rayData.pathLength == 2)

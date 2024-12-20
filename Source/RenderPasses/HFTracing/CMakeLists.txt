@@ -34,8 +34,8 @@ target_sources(HFTracing PRIVATE
     Tools/CommonNvrtc.hpp
     Tracing/MyIntersection.slang
     BTFUtils.slang
-    # cuda/cublasdxTest.cu
-    # cuda/cublasdxTest.h
+    cuda/cudaTextureHelper.cpp
+    cuda/cudaTextureHelper.h
 
 )
 set_target_properties(HFTracing PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

@@ -46,8 +46,8 @@ enum class RenderType : uint32_t
     SHADER_NN,
     CUDA,
     CUDAFP16,
-    CUDAINT8
-    // TRT,
+    CUDAINT8,
+    TEST
     // DEBUG_MIP
 };
 
@@ -57,7 +57,8 @@ FALCOR_ENUM_INFO(
         { RenderType::SHADER_NN, "Shader Inference" },
         { RenderType::CUDA, "CUDA FP32 Inference" },
         { RenderType::CUDAFP16, "CUDA FP16 Inference" },
-        { RenderType::CUDAINT8, "CUDA INT8 Inference" }
+        { RenderType::CUDAINT8, "CUDA INT8 Inference" },
+        { RenderType::TEST, "CUDA TEST" }
     }
 );
 FALCOR_ENUM_REGISTER(RenderType);
@@ -98,7 +99,7 @@ private:
 
     bool mSynthesis = false;
     bool mFP16 = true;
-    bool mShowShader = true;
+    bool mShowShader = false;
     bool mDebugMLP = true;
 
     RenderType mRenderType = RenderType::CUDA;
@@ -108,6 +109,7 @@ private:
     double mCudaAvgTime = 0.0;
     cudaEvent_t mCudaStart, mCudaStop;
     ref<Texture> mpOutColor;
+    ref<Buffer> mpTestInput;
     ref<Buffer> mpInputBuffer;
     ref<Buffer> mpOutputBuffer;
 
@@ -119,6 +121,10 @@ private:
     ref<Buffer> mpBiasFP16Buffer;
 
     cudaTextureObject_t mTexObj;
+    cudaTextureObject_t mHTexObj;
+    cudaTextureObject_t mUTexObj;
+    cudaTextureObject_t mDTexObj;
+
 
     ref<Buffer> mpQInt8Buffer;
 

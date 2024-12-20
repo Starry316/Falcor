@@ -32,6 +32,7 @@
 #include "Utils/CudaUtils.h"
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include "cuda/cudaTextureHelper.h"
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
     registry.registerClass<RenderPass, HFTracing>();
@@ -250,7 +251,7 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
 {
     Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-    createBuffer(mpVaildBuffer, mpDevice, targetDim);
+
     if (mInferType == InferType::SHADER)
         mpInferPass->getProgram()->addDefine("SHADER");
     else
@@ -275,7 +276,7 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
     var["PerFrameCB"]["gApplySyn"] = mApplySyn;
     var["PerFrameCB"]["gCurvatureParas"] = mCurvatureParas;
-    var["PerFrameCB"]["gMLPDebug"] = mMLPDebug;
+
     mpNBTF->bindShaderData(var["PerFrameCB"]["nbtf"]);
     mpNBTF->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpWeightBuffer, mpBiasBuffer);
     mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtfInt8"]);
@@ -287,7 +288,7 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
     var["cudaVaildBuffer"] = mpVaildBuffer;
 
     var["gOutputColor"] = renderData.getTexture("color");
-    var["btfInput"] = mpBTFInput1;
+    var["btfInput"] = mpPackedInputBuffer;
     var["uvWoyz"] = mpUVWoyz;
     var["dfDxy"] = mpDfDxy;
 
@@ -298,7 +299,7 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
 
     // mpPixelDebug->endFrame(pRenderContext);
 
-    pRenderContext->submit(true);
+    pRenderContext->submit(false);
     pRenderContext->signal(mpFence1.get());
     mpFence1->wait();
 
@@ -309,25 +310,33 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
 {
     Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-
-    createBuffer(mpOutputBuffer, mpDevice, targetDim, 8);
-
-    auto input = (float*)mpInputBuffer->getGpuAddress();
-
+    createBuffer(mpOutputBuffer, mpDevice, targetDim, 4);
     // timer start
     cudaEventRecord(mCudaStart, NULL);
     for (int i = 0; i < cudaInferTimes; i++)
     {
         if (mInferType == InferType::CUDAINT8)
-            launchInferInt8(
+            // launchInferInt8(
+            //     (int*)mpQInt8Buffer->getGpuAddress(),
+            //     (int*)mpInputBuffer->getGpuAddress(),
+            //     (float*)mpOutputBuffer->getGpuAddress(),
+            //     targetDim.x,
+            //     targetDim.y,
+            //     (int*)mpVaildBuffer->getGpuAddress()
+            // );
+            launchInferInt8Tex(
                 (int*)mpQInt8Buffer->getGpuAddress(),
-                (int*)mpInputBuffer->getGpuAddress(),
+                (int*)mpPackedInputBuffer->getGpuAddress(),
+                mHTexObj,
+                mDTexObj,
+                mUTexObj,
                 (float*)mpOutputBuffer->getGpuAddress(),
                 targetDim.x,
                 targetDim.y,
                 (int*)mpVaildBuffer->getGpuAddress()
             );
         else if (mInferType == InferType::CUDAFP16)
+
             launchInferFP16(
                 (__half*)mpWeightFP16Buffer->getGpuAddress(),
                 (__half*)mpBiasFP16Buffer->getGpuAddress(),
@@ -338,15 +347,28 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
                 (int*)mpVaildBuffer->getGpuAddress()
             );
         else
-            launchInferFP32(
+            launchInferFP32Tex(
                 (float*)mpWeightBuffer->getGpuAddress(),
                 (float*)mpBiasBuffer->getGpuAddress(),
-                (float*)mpInputBuffer->getGpuAddress(),
+                (int*)mpPackedInputBuffer->getGpuAddress(),
+                mHFP32TexObj,
+                mDFP32TexObj,
+                mUFP32TexObj,
                 (float*)mpOutputBuffer->getGpuAddress(),
                 targetDim.x,
                 targetDim.y,
                 (int*)mpVaildBuffer->getGpuAddress()
             );
+
+        // launchInferFP32(
+        //     (float*)mpWeightBuffer->getGpuAddress(),
+        //     (float*)mpBiasBuffer->getGpuAddress(),
+        //     (float*)mpInputBuffer->getGpuAddress(),
+        //     (float*)mpOutputBuffer->getGpuAddress(),
+        //     targetDim.x,
+        //     targetDim.y,
+        //     (int*)mpVaildBuffer->getGpuAddress()
+        // );
     }
 
     // timer end
@@ -354,7 +376,6 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
     cudaEventRecord(mCudaStop, NULL);
     cudaEventSynchronize(mCudaStop);
     cudaEventElapsedTime(&mCudaTime, mCudaStart, mCudaStop);
-
     mCudaAvgTime += mCudaTime;
     mCudaAccumulatedFrames++;
 }
@@ -374,9 +395,9 @@ void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& ren
     // mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, targetDim.x, targetDim.y);
     // mpPixelDebug->endFrame(pRenderContext);
-
-    pRenderContext->signal(mpFence2.get());
-    mpFence2->wait();
+    // pRenderContext->submit(false);
+    // pRenderContext->signal(mpFence2.get());
+    // mpFence2->wait();
 }
 void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& renderData)
 {
@@ -407,8 +428,9 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     createTex(mpBTFInput1, mpDevice, targetDim, false, true);
     createTex(mpUVWoyz, mpDevice, targetDim);
     createTex(mpDfDxy, mpDevice, targetDim);
-
+    createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
     createBuffer(mpInputBuffer, mpDevice, targetDim, 24);
+    createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
 
     // Request the light collection if emissive lights are enabled.
     if (mpScene->getRenderSettings().useEmissiveLights)
@@ -473,10 +495,12 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gCurvatureParas"] = mCurvatureParas;
     var["CB"]["gApplySyn"] = mApplySyn;
     // var["CB"]["gUseFP16"] = mUseFP16;
-    var["CB"]["gInvFrameDim"] = 1.0f / Falcor::float2(targetDim);
+    // var["CB"]["gInvFrameDim"] = 1.0f / Falcor::float2(targetDim);
     var["CB"]["gDebugPrism"] = mDebugPrism;
     var["CB"]["gShowTracedHF"] = mShowTracedHF;
     var["CB"]["gTracedShadowRay"] = mTracedShadowRay;
+    var["CB"]["gRenderTargetDim"] = targetDim;
+
     mpNBTF->bindShaderData(var["CB"]["nbtf"]);
     mpNBTFInt8->bindShaderData(var["CB"]["nbtfInt8"]);
     mpTextureSynthesis->bindHFData(var["CB"]["hfData"]);
@@ -505,21 +529,14 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["btfInput"].setUav(mpBTFInput1->getUAV());
     var["uvWoyz"].setUav(mpUVWoyz->getUAV());
     var["ddxy"].setUav(mpDfDxy->getUAV());
-
+    var["cudaVaildBuffer"] = mpVaildBuffer;
     var["cudaInputBuffer"].setUav(mpInputBuffer->getUAV());
     var["gMaxSampler"] = mpMaxSampler;
-
-    // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
-    // mpPixelDebug->prepareProgram(mTracer.pProgram, mTracer.pVars->getRootVar());
-
+    var["packedInput"] = mpPackedInputBuffer;
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
-
-    // mpPixelDebug->endFrame(pRenderContext);
-
-    pRenderContext->signal(mpFence.get());
-    mpFence->wait();
-
-    mFrameCount++;
+    pRenderContext->submit(false);
+    pRenderContext->signal(mpFence2.get());
+    mpFence2->wait();
 }
 
 void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderData)
@@ -543,7 +560,7 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
         dict[Falcor::kRenderPassRefreshFlags] = flags | Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         mOptionsChanged = false;
     }
-
+    mFrameCount++;
     // // // Preparation 2: generate mipmaps for each texture
     // if (!mMipGenerated)
     // {
@@ -555,7 +572,12 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     // Real rendering starts here
     renderHF(pRenderContext, renderData);
 
-    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN)
+    if (mMLPDebug)
+    {
+        return;
+    }
+
+    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
     {
         nnInferPass(pRenderContext, renderData);
     }
@@ -565,13 +587,6 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
         cudaInferPass(pRenderContext, renderData);
         displayPass(pRenderContext, renderData);
     }
-
-    // else if (mRenderType == RenderType::DEBUG_MIP)
-    // {
-    //     visualizeMaps(pRenderContext, renderData);
-    // }
-
-    mFrameCount++;
 }
 
 void HFTracing::renderUI(Gui::Widgets& widget)
@@ -611,9 +626,13 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.checkbox("Show Traced HF", mShowTracedHF);
     dirty |= widget.checkbox("Show Cuda", mUseFP16);
+    dirty |= widget.checkbox("Cancel NN", mMLPDebug);
 
-    dirty |= widget.checkbox("MLP Debug", mMLPDebug);
-
+    // if (widget.button("Save"))
+    // {
+    //     dirty = true;
+    //     mMLPDebug = true;
+    // }
     // dirty |= widget.var("debug", mDebugPrism);
     // widget.tooltip("0: top, 1 bot, 234 slab and fin", true);
 
@@ -838,6 +857,17 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 
     mpFence2 = mpDevice->createFence();
     mpFence2->breakStrongReferenceToDevice();
+
+    mUTexObj =
+        createCudaTextureArray(mpNBTFInt8->mUP.featureData, mpNBTFInt8->mUP.texDim.x, mpNBTFInt8->mUP.texDim.x, mpNBTFInt8->mUP.texDim.y);
+    mHTexObj =
+        createCudaTextureArray(mpNBTFInt8->mHP.featureData, mpNBTFInt8->mHP.texDim.x, mpNBTFInt8->mHP.texDim.x, mpNBTFInt8->mHP.texDim.y);
+    mDTexObj =
+        createCudaTextureArray(mpNBTFInt8->mDP.featureData, mpNBTFInt8->mDP.texDim.x, mpNBTFInt8->mDP.texDim.x, mpNBTFInt8->mDP.texDim.y);
+
+    mUFP32TexObj = createCudaTextureArray(mpNBTF->mUP.featureData, mpNBTF->mUP.texDim.x, mpNBTF->mUP.texDim.x, mpNBTF->mUP.texDim.y);
+    mHFP32TexObj = createCudaTextureArray(mpNBTF->mHP.featureData, mpNBTF->mHP.texDim.x, mpNBTF->mHP.texDim.x, mpNBTF->mHP.texDim.y);
+    mDFP32TexObj = createCudaTextureArray(mpNBTF->mDP.featureData, mpNBTF->mDP.texDim.x, mpNBTF->mDP.texDim.x, mpNBTF->mDP.texDim.y);
 }
 
 void HFTracing::prepareVars()
