@@ -29,6 +29,7 @@ import Utils.Texture.HistogramBlending;
 import Utils.Neural.NBTF;
 import Utils.Debug.PixelDebug;
 import Utils.Math.FormatConversion;
+import Utils.Math.MathHelpers;
 cbuffer ToyCB
 {
     float2 iResolution;
@@ -38,6 +39,8 @@ cbuffer ToyCB
     NBTF nbtf;
     bool gSynthesis;
     bool gDisplay;
+    float2 gWo;
+    float2 gWi;
 };
 
 Buffer<float> gInputColor;
@@ -50,59 +53,22 @@ float4 mainImage(float2 fragCoord, uint2 pixel)
 {
     float2 uv = fragCoord / iResolution.y;
 
-    float2 ddx = 0.0001;
-    float2 ddy = 0.0001;
+    float2 ddx = 0.0000001;
+    float2 ddy = 0.0000001;
 
-    float3 wi = normalize(float3(0.2, 0.2, 1.0));
-    float3 wo = normalize(float3(0.3, 0.2, 0.8));
-
+    float3 wi = sample_hemisphere(gWi);
+    float3 wo = sample_hemisphere(gWo);
+    float2 h = float2(0.951858, 0.01944);
+    float2 d = float2(0.875318, 0.58938);
     return float4(nbtf.evalDebug(wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis), 1.0);
 }
-void bindInputFP16(float2 fragCoord, uint2 pixel)
-{
 
-    uint offset = 16 * (pixel.y * iResolution.x + pixel.x);
-
-
-
-    float2 uv = fragCoord / iResolution.y;
-    float2 ddx = 0.0001;
-    float2 ddy = 0.0001;
-    // // float hf = HistorgramBlending(hfData, gSampler, ddx, ddy, uv * gUVScaling);
-    float3 wi = normalize(float3(0.2, 0.2, 1.0));
-    float3 wo = normalize(float3(0.3, 0.2, 0.8));
-
-    nbtf.bindInputFP16(cudaInputUIntBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, false);
-}
-
-void bindInput(float2 fragCoord, uint2 pixel)
-{
-
-
-
-
-    float2 uv = fragCoord / iResolution.y;
-    float2 ddx = 0.0001;
-    float2 ddy = 0.0001;
-    // float hf = HistorgramBlending(hfData, gSampler, ddx, ddy, uv * gUVScaling);
-    float3 wi = normalize(float3(0.2, 0.2, 1.0));
-    float3 wo = normalize(float3(0.3, 0.2, 0.8));
-    uint offset = 32 * (pixel.y * iResolution.x + pixel.x);
-    nbtf.bindInput(cudaInputBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, false);
-}
 
 
 float4 main(float2 texC: TEXCOORD) : SV_TARGET
 {
     uint2 pixel = uint2(floor(texC * iResolution));
     printSetPixel(pixel);
+    return mainImage(texC * iResolution, pixel);
 
-    if (gDisplay)
-        return mainImage(texC * iResolution, pixel);
-    else
-    {
-        // bindInput(texC * iResolution, pixel);
-        bindInputFP16(texC * iResolution, pixel);
-        return float4(0.0, 0.0, 0.0, 1.0);
-    }
 }

@@ -29,6 +29,7 @@
 #include "Falcor.h"
 #include "Core/SampleApp.h"
 #include "Core/Pass/FullScreenPass.h"
+#include "Core/Pass/ComputePass.h"
 #include "Utils/Texture/Synthesis.h"
 #include "Utils/Neural/NBTF.h"
 #include "Utils/Debug/PixelDebug.h"
@@ -85,7 +86,8 @@ private:
     ref<BlendState> mpOpaqueBS;
     ref<FullScreenPass> mpMainPass;
     ref<FullScreenPass> mpDisplayPass;
-    ref<FullScreenPass> mpBindInputPass;
+    ref<ComputePass> mpBindInputPass;
+    ref<ComputePass> mpDebugPass;
     float mUVScale = 1.0f;
     std::unique_ptr<NBTF> mpNBTF;
     std::unique_ptr<NBTF> mpNBTFInt8;
@@ -96,6 +98,8 @@ private:
 
     bool mSynthesis = false;
     bool mFP16 = true;
+    bool mShowShader = true;
+    bool mDebugMLP = true;
 
     RenderType mRenderType = RenderType::CUDA;
 
@@ -103,6 +107,7 @@ private:
     float mCudaTime = 0.0;
     double mCudaAvgTime = 0.0;
     cudaEvent_t mCudaStart, mCudaStop;
+    ref<Texture> mpOutColor;
     ref<Buffer> mpInputBuffer;
     ref<Buffer> mpOutputBuffer;
 
@@ -118,5 +123,7 @@ private:
     ref<Buffer> mpQInt8Buffer;
 
     int mDebugOffset = 0;
+    Falcor::float2 mWo = { 0.0f, 0.0f };
+    Falcor::float2 mWi = { 0.0f, 0.0f };
 
 };

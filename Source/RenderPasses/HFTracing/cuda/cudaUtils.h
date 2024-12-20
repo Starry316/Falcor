@@ -33,8 +33,6 @@ int __device__ __forceinline__ relu(int x)
 }
 float __device__ __forceinline__ leakyrelu(float x)
 {
-    return relu(x);
-    // return max(x, 0.0f) + min(x, 0.0f) * 0.01f;
     return max(x, 0.0f) + min(x, 0.0f) * 0.01f;
 }
 __half __device__ __forceinline__ leakyrelu(__half x)

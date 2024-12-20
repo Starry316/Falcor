@@ -29,6 +29,7 @@ import Utils.Texture.HistogramBlending;
 import Utils.Neural.NBTF;
 import Utils.Debug.PixelDebug;
 import Utils.Math.FormatConversion;
+import Utils.Math.MathHelpers;
 cbuffer CB
 {
     float2 iResolution;
@@ -38,6 +39,8 @@ cbuffer CB
     bool gSynthesis;
     bool gFP16;
     int gRenderType;
+    float2 gWo;
+    float2 gWi;
 };
 
 Buffer<float> gQInt8Buffer;
@@ -54,65 +57,50 @@ uint packInt16x2(int2 v)
     return (v.x & 0x0000ffff) | ((v.y << 16) & 0xffff0000);
 }
 
-void bindInputInt8(float2 fragCoord, uint2 pixel)
+void bindInputInt8(float2 uv, uint2 pixel)
 {
     uint offset = 6 * (pixel.y * iResolution.x + pixel.x);
-    float2 uv = fragCoord / iResolution.y;
-    float2 ddx = 0.0001;
-    float2 ddy = 0.0001;
-    float3 wi = normalize(float3(0.2, 0.2, 1.0));
-    float3 wo = normalize(float3(0.3, 0.2, 0.8));
+    float2 ddx = 0.0000001;
+    float2 ddy = 0.0000001;
+    float3 wi = sample_hemisphere(gWi);
+    float3 wo = sample_hemisphere(gWo);
     nbtfInt8.bindInputInt8(cudaInputUIntBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
 }
 
-// void bindInputUV(float2 fragCoord, uint2 pixel)
-// {
-//     uint offset = 16 * (pixel.y * iResolution.x + pixel.x);
-
-//     int4 w1 = int4(12, 2, 32, 46);
-//     int4 w2 = int4(3, 21, 6, -2);
-//     int4 w3 = int4(-3, -21, 6, -2);
-//     int2 inputData = int2(5, -16);
-//     cudaInputUIntBuffer[offset + 1] = packInt8x4(w1);
-//     cudaInputUIntBuffer[offset + 2] = packInt8x4(w2);
-//     cudaInputUIntBuffer[offset + 3] = packInt8x4(w3);
-//     cudaInputUIntBuffer[offset] = packInt16x2(inputData);
-
-// }
-
-void bindInputFP16(float2 fragCoord, uint2 pixel)
+void bindInputFP16(float2 uv, uint2 pixel)
 {
     uint offset = 16 * (pixel.y * iResolution.x + pixel.x);
-    float2 uv = fragCoord / iResolution.y;
     float2 ddx = 0.0001;
     float2 ddy = 0.0001;
-    float3 wi = normalize(float3(0.2, 0.2, 1.0));
-    float3 wo = normalize(float3(0.3, 0.2, 0.8));
+    float3 wi = sample_hemisphere(gWi);
+    float3 wo = sample_hemisphere(gWo);
 
     nbtf.bindInputFP16(cudaInputUIntBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
 }
 
-void bindInput(float2 fragCoord, uint2 pixel)
+void bindInput(float2 uv, uint2 pixel)
 {
-    float2 uv = fragCoord / iResolution.y;
     float2 ddx = 0.0001;
     float2 ddy = 0.0001;
-    float3 wi = normalize(float3(0.2, 0.2, 1.0));
-    float3 wo = normalize(float3(0.3, 0.2, 0.8));
-    uint offset = 32 * (pixel.y * iResolution.x + pixel.x);
+    float3 wi = sample_hemisphere(gWi);
+    float3 wo = sample_hemisphere(gWo);
+    uint offset = 24 * (pixel.y * iResolution.x + pixel.x);
     nbtf.bindInput(cudaInputBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
 }
-
-float4 main(float2 texC: TEXCOORD) : SV_TARGET
+[numthreads(16, 16, 1)]
+void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 {
-    uint2 pixel = uint2(floor(texC * iResolution));
+    if (any(dispatchThreadId.xy >= iResolution))
+        return;
+    const uint2 pixel = dispatchThreadId.xy;
     printSetPixel(pixel);
-    if (gRenderType == 1)
-        bindInput(texC * iResolution, pixel);
-    else if (gRenderType == 2)
-        bindInputFP16(texC * iResolution, pixel);
-    else
-        bindInputInt8(texC * iResolution, pixel);
+    float2 uv = (float2(pixel)) / iResolution.y;
 
-    return float4(0.0, 0.0, 0.0, 1.0);
+    if (gRenderType == 1)
+        bindInput(uv, pixel);
+    else if (gRenderType == 2)
+        bindInputFP16(uv, pixel);
+    else
+        bindInputInt8(uv, pixel);
+
 }

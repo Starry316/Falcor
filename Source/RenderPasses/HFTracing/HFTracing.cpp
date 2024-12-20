@@ -30,24 +30,13 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "Utils/CudaUtils.h"
-
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-// #include <nvrtc.h>
-#include "Tools/CommonNvrtc.hpp"
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
     registry.registerClass<RenderPass, HFTracing>();
 }
-// class Logger : public ILogger
-// {
-//     void log(Severity severity, const char* msg) noexcept override
-//     {
-//         // suppress info-level messages
-//         if (severity <= Severity::kWARNING)
-//             std::cout << msg << std::endl;
-//     }
-// } logger;
+
 namespace
 {
 std::vector<float> readBinaryFile(const char* filename)
@@ -95,7 +84,7 @@ const char kMaxBounces[] = "maxBounces";
 const char kComputeDirect[] = "computeDirect";
 const char kUseImportanceSampling[] = "useImportanceSampling";
 } // namespace
-void createTex(ref<Texture>& tex, ref<Device> device, Falcor::uint2 targetDim, bool buildCuda = false)
+void createTex(ref<Texture>& tex, ref<Device> device, Falcor::uint2 targetDim, bool buildCuda = false, bool isUint = false)
 {
     ResourceBindFlags flag = ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess;
     if (buildCuda)
@@ -103,13 +92,20 @@ void createTex(ref<Texture>& tex, ref<Device> device, Falcor::uint2 targetDim, b
 
     if (tex.get() == nullptr)
     {
-        tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Float, 1, 1, nullptr, flag);
+        if (isUint)
+            tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Uint, 1, 1, nullptr, flag);
+        else
+            tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Float, 1, 1, nullptr, flag);
     }
     else
     {
         if (tex.get()->getWidth() != targetDim.x || tex.get()->getHeight() != targetDim.y)
         {
-            tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Float, 1, 1, nullptr, flag);
+            logInfo("Recreating texture");
+            if (isUint)
+                tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Uint, 1, 1, nullptr, flag);
+            else
+                tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Float, 1, 1, nullptr, flag);
         }
     }
 }
@@ -128,6 +124,7 @@ void createBuffer(ref<Buffer>& buf, ref<Device> device, Falcor::uint2 targetDim,
     {
         if (buf.get()->getElementCount() != targetDim.x * targetDim.y * itemSize * sizeof(float))
         {
+            logInfo("Recreating Buffer");
             buf = device->createBuffer(
                 targetDim.x * targetDim.y * itemSize * sizeof(float),
                 ResourceBindFlags::ShaderResource | ResourceBindFlags::Shared | ResourceBindFlags::UnorderedAccess,
@@ -137,96 +134,10 @@ void createBuffer(ref<Buffer>& buf, ref<Device> device, Falcor::uint2 targetDim,
         }
     }
 }
-float leakyrelu(float x)
+int packInt8x4(int x, int y, int z, int w)
 {
-    return fmax(x, 0.0f) + fmin(x, 0.0f) * 0.01f;
+    return (x & 0x000000ff) | ((y << 8) & 0x0000ff00) | ((z << 16) & 0x00ff0000) | ((w << 24) & 0xff000000);
 }
-// CUfunction createNVRTCProgram()
-// {
-    // nvrtcProgram program;
-    // NVRTC_SAFE_CALL(nvrtcCreateProgram(
-    //     &program,         // program
-    //     cudaProgram,      // buffer
-    //     "test_kernel.cu", // name
-    //     0,                // numHeaders
-    //     NULL,             // headers
-    //     NULL
-    // )); // includeNames
-    // // Get current device
-    // int current_device;
-    // CUDA_CHECK_AND_EXIT(cudaGetDevice(&current_device));
-    // std::vector<const char*> opts = {
-    //     "--std=c++17",
-    //     "--device-as-default-execution-space",
-    //     "--include-path=" CUDA_INCLUDE_DIR, // Add path to CUDA include directory
-    // };
-    // // Parse cuBLASDx include dirs
-    // std::vector<std::string> cublasdx_include_dirs = example::nvrtc::get_cublasdx_include_dirs();
-    // // Add cuBLASDx include dirs to opts
-    // for (auto& d : cublasdx_include_dirs)
-    // {
-    //     opts.push_back(d.c_str());
-    // }
-    // // Add GPU_ARCHITECTURE definition to opts
-    // std::string gpu_architecture_definition = "-DBLAS_SM=" + std::to_string(example::nvrtc::get_device_architecture(current_device) * 10);
-    // opts.push_back(gpu_architecture_definition.c_str());
-    // // Add gpu-architecture to opts
-    // std::string gpu_architecture_option = example::nvrtc::get_device_architecture_option(current_device);
-    // opts.push_back(gpu_architecture_option.c_str());
-    // for (size_t i = 0; i < opts.size(); i++)
-    // {
-    //     /* code */
-    //     std::cout << opts[i] << std::endl;
-    // }
-
-    // nvrtcResult compileResult = nvrtcCompileProgram(
-    //     program,                       // program
-    //     static_cast<int>(opts.size()), // numOptions
-    //     opts.data()
-    // ); // options
-
-    // // Obtain compilation log from the program
-    // if (compileResult != NVRTC_SUCCESS)
-    // {
-    //     for (auto o : opts)
-    //     {
-    //         std::cout << o << std::endl;
-    //     }
-    //     example::nvrtc::print_program_log(program);
-    //     std::exit(1);
-    // }
-
-    // // Get PTX from the program
-    // size_t ptxSize;
-    // nvrtcGetPTXSize(program, &ptxSize);
-    // char* ptx = new char[ptxSize];
-    // nvrtcGetPTX(program, ptx);
-
-    // // Destroy the program
-    // nvrtcDestroyProgram(&program);
-
-    // // Load the PTX and launch the kernel
-    // CUmodule module;
-    // CUfunction kernel;
-    // cuModuleLoadData(&module, ptx);
-    // cuModuleGetFunction(&kernel, module, "helloFromGPU");
-
-    // void* args[] = {NULL};
-    // cuLaunchKernel(kernel, 2, 2, 1, 1, 1, 1, 0, 0, nullptr, nullptr);
-    // cudaDeviceSynchronize();
-
-    // return kernel;
-
-    // checkCudaError(, "Failed to get kernel function");
-
-    // // Launch the kernel
-    // checkCudaError(, "Failed to launch kernel");
-    // checkCudaError(, "Failed to synchronize");
-
-    // // Clean up
-    // delete[] ptx;
-    // checkCudaError(cuModuleUnload(module), "Failed to unload module");
-// }
 
 HFTracing::HFTracing(ref<Device> pDevice, const Properties& props) : RenderPass(pDevice)
 {
@@ -273,8 +184,9 @@ RenderPassReflection HFTracing::reflect(const CompileData& compileData)
     return reflector;
 }
 
-void generateMaxMip(RenderContext* pRenderContext, ref<Texture> pTex){
-   for (uint32_t m = 0; m < pTex->getMipCount() - 1; m++)
+void generateMaxMip(RenderContext* pRenderContext, ref<Texture> pTex)
+{
+    for (uint32_t m = 0; m < pTex->getMipCount() - 1; m++)
     {
         auto srv = pTex->getSRV(m, 1, 0, 1);
         auto rtv = pTex->getRTV(m + 1, 0, 1);
@@ -295,24 +207,6 @@ void generateMaxMip(RenderContext* pRenderContext, ref<Texture> pTex){
             srv, rtv, RenderContext::kMaxRect, RenderContext::kMaxRect, TextureFilteringMode::Linear, redModes, componentsTransform
         );
     }
-}
-
-void HFTracing::visualizeMaps(RenderContext* pRenderContext, const RenderData& renderData)
-{
-    // Get dimensions of ray dispatch.
-    Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
-    FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-    auto var = mpVisualizeMapsPass->getRootVar();
-    var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
-    var["PerFrameCB"]["gDisplayMipLevel"] = mCurvatureParas.w;
-
-    var["gOutputColor"] = renderData.getTexture("color");
-    var["gInputDebugMap"] = mpShellHF;
-    var["gInputDebugMap2"] = mpHF;
-
-    mpVisualizeMapsPass->execute(pRenderContext, targetDim.x, targetDim.y);
-    // refresh the frame
-    mOptionsChanged = true;
 }
 
 void HFTracing::createMaxMip(RenderContext* pRenderContext, const RenderData& renderData)
@@ -350,92 +244,139 @@ void HFTracing::createMaxMip(RenderContext* pRenderContext, const RenderData& re
     var["gOutputHeightMap"].setUav(mpShellHF->getUAV());
 
     mpCreateMaxMipPass->execute(pRenderContext, targetDim.x, targetDim.y);
-
-
 }
 
 void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
     Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
+    createBuffer(mpVaildBuffer, mpDevice, targetDim);
+    if (mInferType == InferType::SHADER)
+        mpInferPass->getProgram()->addDefine("SHADER");
+    else
+        mpInferPass->getProgram()->removeDefine("SHADER");
+
+    if (mInferType == InferType::CUDA)
+        mpInferPass->getProgram()->addDefine("CUDA");
+    else
+        mpInferPass->getProgram()->removeDefine("CUDA");
+
+    if (mInferType == InferType::CUDAFP16)
+        mpInferPass->getProgram()->addDefine("CUDAFP16");
+    else
+        mpInferPass->getProgram()->removeDefine("CUDAFP16");
+
+    if (mInferType == InferType::CUDAINT8)
+        mpInferPass->getProgram()->addDefine("CUDAINT8");
+    else
+        mpInferPass->getProgram()->removeDefine("CUDAINT8");
+
     auto var = mpInferPass->getRootVar();
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
     var["PerFrameCB"]["gApplySyn"] = mApplySyn;
     var["PerFrameCB"]["gCurvatureParas"] = mCurvatureParas;
+    var["PerFrameCB"]["gMLPDebug"] = mMLPDebug;
     mpNBTF->bindShaderData(var["PerFrameCB"]["nbtf"]);
+    mpNBTF->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpWeightBuffer, mpBiasBuffer);
+    mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtfInt8"]);
+
+    if (mInferType == InferType::CUDAINT8 || mInferType == InferType::CUDAFP16)
+        var["cudaInputUIntBuffer"].setUav(mpInputBuffer->getUAV());
+
+    var["cudaInputBuffer"] = mpInputBuffer;
+    var["cudaVaildBuffer"] = mpVaildBuffer;
 
     var["gOutputColor"] = renderData.getTexture("color");
-    var["wiWox"] = mpWiWox;
+    var["btfInput"] = mpBTFInput1;
     var["uvWoyz"] = mpUVWoyz;
     var["dfDxy"] = mpDfDxy;
 
+    // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
+    // mpPixelDebug->prepareProgram(mpInferPass->getProgram(), mpInferPass->getRootVar());
+
     mpInferPass->execute(pRenderContext, targetDim.x, targetDim.y);
+
+    // mpPixelDebug->endFrame(pRenderContext);
+
+    pRenderContext->submit(true);
+    pRenderContext->signal(mpFence1.get());
+    mpFence1->wait();
+
+    // pRenderContext->signal(mpFence1.get());
+    // mpFence1->wait();
 }
 void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
     Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
 
-    createBuffer(mpOutputBuffer, mpDevice, targetDim);
+    createBuffer(mpOutputBuffer, mpDevice, targetDim, 8);
 
     auto input = (float*)mpInputBuffer->getGpuAddress();
-    auto output = (float*)mpOutputBuffer->getGpuAddress();
-
-    void* weight;
-    void* bias;
-
-    if (mUseFP16)
-    {
-        weight = (void*)mpWeightFP16Buffer->getGpuAddress();
-        bias = (void*)mpBiasFP16Buffer->getGpuAddress();
-    }
-    else
-    {
-        weight = (void*)mpWeightBuffer->getGpuAddress();
-        bias = (void*)mpBiasBuffer->getGpuAddress();
-    }
 
     // timer start
     cudaEventRecord(mCudaStart, NULL);
+    for (int i = 0; i < cudaInferTimes; i++)
+    {
+        if (mInferType == InferType::CUDAINT8)
+            launchInferInt8(
+                (int*)mpQInt8Buffer->getGpuAddress(),
+                (int*)mpInputBuffer->getGpuAddress(),
+                (float*)mpOutputBuffer->getGpuAddress(),
+                targetDim.x,
+                targetDim.y,
+                (int*)mpVaildBuffer->getGpuAddress()
+            );
+        else if (mInferType == InferType::CUDAFP16)
+            launchInferFP16(
+                (__half*)mpWeightFP16Buffer->getGpuAddress(),
+                (__half*)mpBiasFP16Buffer->getGpuAddress(),
+                (int*)mpInputBuffer->getGpuAddress(),
+                (float*)mpOutputBuffer->getGpuAddress(),
+                targetDim.x,
+                targetDim.y,
+                (int*)mpVaildBuffer->getGpuAddress()
+            );
+        else
+            launchInferFP32(
+                (float*)mpWeightBuffer->getGpuAddress(),
+                (float*)mpBiasBuffer->getGpuAddress(),
+                (float*)mpInputBuffer->getGpuAddress(),
+                (float*)mpOutputBuffer->getGpuAddress(),
+                targetDim.x,
+                targetDim.y,
+                (int*)mpVaildBuffer->getGpuAddress()
+            );
+    }
 
-    // cuda
-    if (mUseFP16)
-        launchNNInferenceFP16((__half*)weight, (__half*)bias, input, output, targetDim.x, targetDim.y);
-    else
-        launchNNInference((float*)weight, (float*)bias, input, output, targetDim.x, targetDim.y);
     // timer end
     cudaDeviceSynchronize();
     cudaEventRecord(mCudaStop, NULL);
     cudaEventSynchronize(mCudaStop);
     cudaEventElapsedTime(&mCudaTime, mCudaStart, mCudaStop);
+
     mCudaAvgTime += mCudaTime;
+    mCudaAccumulatedFrames++;
 }
-void HFTracing::trtInferPass(RenderContext* pRenderContext, const RenderData& renderData)
-{
-    // Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
-    // FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
 
-    // createBuffer(mpOutputBuffer, mpDevice, targetDim);
-    // // timer start
-    // cudaEventRecord(mCudaStart, NULL);
-    // void* bindings[] = {(void*)(mpInputBuffer->getGpuAddress()), (void*)mpOutputBuffer->getGpuAddress()};
-    // bool status = mpContext->executeV2(bindings);
-
-    // cudaDeviceSynchronize();
-    // cudaEventRecord(mCudaStop, NULL);
-    // cudaEventSynchronize(mCudaStop);
-    // cudaEventElapsedTime(&mCudaTime, mCudaStart, mCudaStop);
-    // mCudaAvgTime += mCudaTime;
-}
 void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
     Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
     auto var = mpDisplayPass->getRootVar();
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
+    var["PerFrameCB"]["showCUDA"] = mUseFP16;
     var["gOutputColor"] = renderData.getTexture("color");
     var["gInputColor"] = mpOutputBuffer;
+    var["cudaVaildBuffer"] = mpVaildBuffer;
+    var["uvWoyz"] = mpUVWoyz;
+    // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
+    // mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, targetDim.x, targetDim.y);
+    // mpPixelDebug->endFrame(pRenderContext);
+
+    pRenderContext->signal(mpFence2.get());
+    mpFence2->wait();
 }
 void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& renderData)
 {
@@ -463,35 +404,11 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         }
     }
 
-    // auto light = mpScene->getLightByName("MyLight0");
-    // if (light)
-    // {
-    //     if (light->getType() == LightType::Sphere)
-    //     {
-    //         ref<SphereLight> sl = static_ref_cast<SphereLight>(light);
-    //         sl->setScaling(Falcor::float3(1.0f * mLightZPR.w));
-    //         float phi = M_2PI * mLightZPR.y;
-    //         Falcor::float3 pos = Falcor::float3(0, mLightZPR.x, 0);
-    //         float r = mLightZPR.z;
-    //         pos.x = r * cos(phi);
-    //         pos.z = r * sin(phi);
-    //         auto transf = Transform();
-    //         transf.setTranslation(pos);
-    //         sl->setTransformMatrix(transf.getMatrix());
-    //     }
-    // }
-
-    createTex(mpWiWox, mpDevice, targetDim);
+    createTex(mpBTFInput1, mpDevice, targetDim, false, true);
     createTex(mpUVWoyz, mpDevice, targetDim);
     createTex(mpDfDxy, mpDevice, targetDim);
 
-    createBuffer(mpInputBuffer, mpDevice, targetDim, 33);
-
-    // if (is_set(mpScene->getUpdates(), IScene::UpdateFlags::RecompileNeeded) ||
-    //     is_set(mpScene->getUpdates(), IScene::UpdateFlags::GeometryChanged))
-    // {
-    //     FALCOR_THROW("This render pass does not support scene changes that require shader recompilation.");
-    // }
+    createBuffer(mpInputBuffer, mpDevice, targetDim, 24);
 
     // Request the light collection if emissive lights are enabled.
     if (mpScene->getRenderSettings().useEmissiveLights)
@@ -555,12 +472,13 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gControlParas"] = mControlParas;
     var["CB"]["gCurvatureParas"] = mCurvatureParas;
     var["CB"]["gApplySyn"] = mApplySyn;
-    var["CB"]["gUseFP16"] = mUseFP16;
+    // var["CB"]["gUseFP16"] = mUseFP16;
     var["CB"]["gInvFrameDim"] = 1.0f / Falcor::float2(targetDim);
     var["CB"]["gDebugPrism"] = mDebugPrism;
     var["CB"]["gShowTracedHF"] = mShowTracedHF;
     var["CB"]["gTracedShadowRay"] = mTracedShadowRay;
     mpNBTF->bindShaderData(var["CB"]["nbtf"]);
+    mpNBTFInt8->bindShaderData(var["CB"]["nbtfInt8"]);
     mpTextureSynthesis->bindHFData(var["CB"]["hfData"]);
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["envMapSampler"]);
@@ -584,19 +502,22 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["gShellHF"].setSrv(mpShellHF->getSRV());
     // var["gHFMaxMip"].setSrv(mpHFMaxMip->getSRV());
 
-    var["wiWox"].setUav(mpWiWox->getUAV());
+    var["btfInput"].setUav(mpBTFInput1->getUAV());
     var["uvWoyz"].setUav(mpUVWoyz->getUAV());
     var["ddxy"].setUav(mpDfDxy->getUAV());
 
     var["cudaInputBuffer"].setUav(mpInputBuffer->getUAV());
     var["gMaxSampler"] = mpMaxSampler;
 
-    mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
-    mpPixelDebug->prepareProgram(mTracer.pProgram, mTracer.pVars->getRootVar());
+    // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
+    // mpPixelDebug->prepareProgram(mTracer.pProgram, mTracer.pVars->getRootVar());
 
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
 
-    mpPixelDebug->endFrame(pRenderContext);
+    // mpPixelDebug->endFrame(pRenderContext);
+
+    pRenderContext->signal(mpFence.get());
+    mpFence->wait();
 
     mFrameCount++;
 }
@@ -635,21 +556,20 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     renderHF(pRenderContext, renderData);
 
     if (mRenderType == RenderType::WAVEFRONT_SHADER_NN)
+    {
         nnInferPass(pRenderContext, renderData);
-    else if (mRenderType == RenderType::CUDA)
+    }
+
+    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
     {
         cudaInferPass(pRenderContext, renderData);
         displayPass(pRenderContext, renderData);
     }
-    // else if (mRenderType == RenderType::TRT)
+
+    // else if (mRenderType == RenderType::DEBUG_MIP)
     // {
-    //     trtInferPass(pRenderContext, renderData);
-    //     displayPass(pRenderContext, renderData);
+    //     visualizeMaps(pRenderContext, renderData);
     // }
-    else if (mRenderType == RenderType::DEBUG_MIP)
-    {
-        visualizeMaps(pRenderContext, renderData);
-    }
 
     mFrameCount++;
 }
@@ -659,6 +579,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     bool dirty = false;
 
     dirty |= widget.dropdown("Render Type", mRenderType);
+    dirty |= widget.dropdown("Infer Type", mInferType);
 
     // dirty |= widget.var("Max bounces", mMaxBounces, 0u, 1u << 16);
     // widget.tooltip("Maximum path length for indirect illumination.\n0 = direct only\n1 = one indirect bounce etc.", true);
@@ -687,14 +608,26 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
 
     dirty |= widget.checkbox("Traced Shadow Ray", mTracedShadowRay);
-    dirty |= widget.checkbox("FP16", mUseFP16);
+
     dirty |= widget.checkbox("Show Traced HF", mShowTracedHF);
+    dirty |= widget.checkbox("Show Cuda", mUseFP16);
 
-    dirty |= widget.var("debug", mDebugPrism);
-    widget.tooltip("0: top, 1 bot, 234 slab and fin", true);
+    dirty |= widget.checkbox("MLP Debug", mMLPDebug);
 
+    // dirty |= widget.var("debug", mDebugPrism);
+    // widget.tooltip("0: top, 1 bot, 234 slab and fin", true);
+
+    dirty |= widget.slider("CUDA infer times", cudaInferTimes, 1, 20);
     widget.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
-    widget.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mFrameCount) + " ms");
+    widget.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
+    widget.text("CUDA real avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames / cudaInferTimes) + " ms");
+    // widget.text("frames: " + std::to_string(mCudaAccumulatedFrames) );
+
+    if (widget.button("Reset Timer"))
+    {
+        mCudaAvgTime = mCudaTime;
+        mCudaAccumulatedFrames = 1;
+    }
 
     mpPixelDebug->renderUI(widget);
 
@@ -702,6 +635,8 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
     if (dirty)
     {
+        mCudaAvgTime = mCudaTime;
+        mCudaAccumulatedFrames = 1;
         mOptionsChanged = true;
     }
 }
@@ -779,7 +714,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpHF = Texture::createFromFile(
         mpDevice,
         fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mHFFileName).c_str(),
-            // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
+        // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
         // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
         true,
         false,
@@ -816,23 +751,25 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpMaxSampler = mpDevice->createSampler(samplerDesc);
     // mpMaxSampler->breakStrongReferenceToDevice();
 
-
     std::vector<float> cudaWeight =
         readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_flatten_{}.bin", mMediaPath, mNetName).c_str());
     std::vector<float> cudaBias = readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", mMediaPath, mNetName).c_str());
 
     mpWeightBuffer = mpDevice->createBuffer(
         cudaWeight.size() * sizeof(float),
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
+        ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal,
         cudaWeight.data()
     );
+
     mpBiasBuffer = mpDevice->createBuffer(
         cudaBias.size() * sizeof(float),
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
+        ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal,
         cudaBias.data()
     );
+    logInfo("Weight buffer size: " + std::to_string(cudaWeight.size()));
+    logInfo("Bias buffer size: " + std::to_string(cudaBias.size()));
 
     std::vector<__half> cudaWeightFP16(cudaWeight.size());
     for (size_t i = 0; i < cudaWeight.size(); i++)
@@ -846,17 +783,11 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     }
 
     mpWeightFP16Buffer = mpDevice->createBuffer(
-        cudaWeightFP16.size() * sizeof(__half),
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
-        MemoryType::DeviceLocal,
-        cudaWeightFP16.data()
+        cudaWeightFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaWeightFP16.data()
     );
 
     mpBiasFP16Buffer = mpDevice->createBuffer(
-        cudaBiasFP16.size() * sizeof(__half),
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared,
-        MemoryType::DeviceLocal,
-        cudaBiasFP16.data()
+        cudaBiasFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaBiasFP16.data()
     );
 
     std::vector<float>().swap(cudaWeight);
@@ -865,7 +796,6 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     std::vector<__half>().swap(cudaWeightFP16);
     std::vector<__half>().swap(cudaBiasFP16);
 
-    setupTRT();
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
 
     mpTextureSynthesis->readHFData(fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mShellHFFileName).c_str(), mpDevice);
@@ -873,7 +803,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 
     mpMLP = std::make_unique<MLP>(mpDevice, mNetName);
     mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, true);
-    // Create a precompute pass.
+    mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
 
     DefineList defines = mpScene->getSceneDefines();
     mpVisualizeMapsPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/VisualizeMaps.cs.slang", "csMain", defines);
@@ -885,29 +815,29 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     cudaEventCreate(&mCudaStop);
     // auto kernel = createNVRTCProgram();
 
+    std::vector<float> int8Weight =
+        readBinaryFile(fmt::format("{}/media/BTF/networks/Weight_int8_{}.bin", getProjectDirectory(), mNetInt8Name).c_str());
 
+    std::vector<int> int8WeightInt(int8Weight.size() / 4);
+    for (size_t i = 0; i < int8WeightInt.size(); i++)
+    {
+        int8WeightInt[i] =
+            packInt8x4((int)int8Weight[i * 4], (int)int8Weight[i * 4 + 1], (int)int8Weight[i * 4 + 2], (int)int8Weight[i * 4 + 3]);
+    }
 
+    mpQInt8Buffer = mpDevice->createBuffer(
+        int8WeightInt.size() * sizeof(int), ResourceBindFlags::Shared, MemoryType::DeviceLocal, int8WeightInt.data()
+    );
+    logInfo("QINT8 buffer size: " + std::to_string(int8Weight.size()));
+    logInfo("QINT8 buffer  {} {} {} {}", int8Weight[0], int8Weight[1], int8Weight[2], int8Weight[3]);
+    mpFence = mpDevice->createFence();
+    mpFence->breakStrongReferenceToDevice();
 
-}
+    mpFence1 = mpDevice->createFence();
+    mpFence1->breakStrongReferenceToDevice();
 
-void HFTracing::setupTRT()
-{
-    // IRuntime* runtime = createInferRuntime(logger);
-    // // std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath, mNetName).c_str(), std::ios::binary);
-    // std::ifstream planFile(fmt::format("{}/media/BTF/networks/{}.trt", mMediaPath,"block_io").c_str(), std::ios::binary);
-    // std::stringstream planBuffer;
-    // planBuffer << planFile.rdbuf();
-    // std::string plan = planBuffer.str();
-    // mpEngine = runtime->deserializeCudaEngine((void*)plan.data(), plan.size());
-
-    // mpContext = mpEngine->createExecutionContext();
-    // createBuffer(mpInputBuffer, mpDevice, Falcor::uint2(1080, 1920), 33);
-    // createBuffer(mpOutputBuffer, mpDevice, Falcor::uint2(1080, 1920));
-    // auto input = (void*)(mpInputBuffer->getGpuAddress());
-    // auto output = (void*)mpOutputBuffer->getGpuAddress();
-
-    // mpContext->setTensorAddress(mpEngine->getIOTensorName(0), input);
-    // mpContext->setTensorAddress(mpEngine->getIOTensorName(1), output);
+    mpFence2 = mpDevice->createFence();
+    mpFence2->breakStrongReferenceToDevice();
 }
 
 void HFTracing::prepareVars()

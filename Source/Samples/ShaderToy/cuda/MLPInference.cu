@@ -1,10 +1,9 @@
 #include "MLPInference.h"
 #include "cudaUtils.h"
 #define IN_NUM 24
-#define IN_1ST_NUM 24
 #define HIDDEN_NUM 24
 #define OUT_NUM 24
-#define TEST_H 0
+#define HALF_ACC 1
 
 __global__ void inferInt8(int* weight, int* input, float* output, unsigned int width, unsigned int height, int debugOffset)
 {
@@ -25,9 +24,9 @@ __global__ void inferInt8(int* weight, int* input, float* output, unsigned int w
     int offset = 0;
     int* inputVal = input + 6 * (y * width + x);
 
-    int hiddenNum = 24;
+    int hiddenNum = HIDDEN_NUM;
     int hiddenPackedNum = hiddenNum / 4;
-    int inNum = 6;
+    int inNum = IN_NUM / 4;
     int outNum = 3;
 
     int val1[24];
@@ -49,7 +48,7 @@ __global__ void inferInt8(int* weight, int* input, float* output, unsigned int w
 
     for (int k = 0; k < hiddenPackedNum; k++)
     {
-#if TEST_H
+#if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
             dequantizeInt8h_relu(val1[4 * k], dequantizeScale1),
             dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale1),
@@ -81,7 +80,7 @@ __global__ void inferInt8(int* weight, int* input, float* output, unsigned int w
     offset += hiddenNum * hiddenPackedNum;
     for (int k = 0; k < hiddenPackedNum; k++)
     {
-#if TEST_H
+#if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
             dequantizeInt8h_relu(val1[4 * k], dequantizeScale2),
             dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale2),
@@ -112,7 +111,7 @@ __global__ void inferInt8(int* weight, int* input, float* output, unsigned int w
     offset += hiddenNum * hiddenPackedNum;
     for (int k = 0; k < hiddenPackedNum; k++)
     {
-#if TEST_H
+#if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
             dequantizeInt8h_relu(val1[4 * k], dequantizeScale3),
             dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale3),
@@ -141,7 +140,7 @@ __global__ void inferInt8(int* weight, int* input, float* output, unsigned int w
         }
     }
     __syncthreads();
-#if TEST_H
+#if HALF_ACC
     output[4 * (y * width + x) + 0] = dequantizeInt8h_relu(val1[0], dequantizeScale4);
     output[4 * (y * width + x) + 1] = dequantizeInt8h_relu(val1[1], dequantizeScale4);
     output[4 * (y * width + x) + 2] = dequantizeInt8h_relu(val1[2], dequantizeScale4);
@@ -180,9 +179,9 @@ __global__ void inferFP16(__half* weighth2, __half* biash2, int* input, float* o
 
     int offset = 0;
     int biasOffset = 0;
-    int inNumFirst = IN_1ST_NUM;
+    int inNumFirst = IN_NUM;
     int inNum = IN_NUM;
-    int outNum = OUT_NUM;
+    int outNum = HIDDEN_NUM;
     int* inputVal = input + 16 * (y * width + x);
 
     __half val1[IN_NUM];
@@ -249,8 +248,8 @@ __global__ void inferFP16(__half* weighth2, __half* biash2, int* input, float* o
 
 __global__ void inferFP32(float* weight2, float* bias2, float* input, float* output, unsigned int width, unsigned int height)
 {
-    __shared__ float weight[3328];
-    __shared__ float bias[100];
+    __shared__ float weight[2048];
+    __shared__ float bias[75];
 
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -258,13 +257,13 @@ __global__ void inferFP32(float* weight2, float* bias2, float* input, float* out
     unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
     if (localIdx < 256)
     {
-        if (localIdx < 100)
+        if (localIdx < 75)
         {
             bias[localIdx] = bias2[localIdx];
         }
-        for (int i = 0; i < 13; i++)
+        for (int i = 0; i < 8; i++)
         {
-            weight[localIdx * 13 + i] = weight2[localIdx * 13 + i];
+            weight[localIdx * 8 + i] = weight2[localIdx * 8 + i];
         }
     }
     __syncthreads();
@@ -274,10 +273,10 @@ __global__ void inferFP32(float* weight2, float* bias2, float* input, float* out
 
     int offset = 0;
     int biasOffset = 0;
-    int inNumFirst = IN_1ST_NUM;
+    int inNumFirst = IN_NUM;
     int inNum = IN_NUM;
-    int outNum = OUT_NUM;
-    float* inputVal = input + 32 * (y * width + x);
+    int outNum = HIDDEN_NUM;
+    float* inputVal = input + 24 * (y * width + x);
     // float* inputVal = input + inNumFirst * (y * width + x);
     float val1[IN_NUM];
 

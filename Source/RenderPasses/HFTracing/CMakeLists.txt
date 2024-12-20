@@ -28,10 +28,12 @@ target_sources(HFTracing PRIVATE
     Display.cs.slang
     cuda/MLPInference.cu
     cuda/MLPInference.h
+    cuda/cudaUtils.h
     Tools/Utils.cpp
     Tools/Utils.h
     Tools/CommonNvrtc.hpp
     Tracing/MyIntersection.slang
+    BTFUtils.slang
     # cuda/cublasdxTest.cu
     # cuda/cublasdxTest.h
 

@@ -48,6 +48,26 @@
 using namespace Falcor;
 
 
+enum class InferType : uint32_t
+{
+
+    SHADER,
+    CUDA,
+    CUDAFP16,
+    CUDAINT8
+};
+
+
+FALCOR_ENUM_INFO(
+    InferType,
+    {
+        { InferType::SHADER, "Shader Inference" },
+        { InferType::CUDA, "CUDA FP32 Inference" },
+        { InferType::CUDAFP16, "CUDA FP16 Inference" },
+        { InferType::CUDAINT8, "CUDA INT8 Inference" }
+    }
+);
+FALCOR_ENUM_REGISTER(InferType);
 
 enum class RenderType : uint32_t
 {
@@ -99,13 +119,11 @@ public:
     virtual RenderPassReflection reflect(const CompileData& compileData) override;
     virtual void execute(RenderContext* pRenderContext, const RenderData& renderData) override;
     void renderHF(RenderContext* pRenderContext, const RenderData& renderData);
-    void visualizeMaps(RenderContext* pRenderContext, const RenderData& renderData);
     void createMaxMip(RenderContext* pRenderContext, const RenderData& renderData);
     void nnInferPass(RenderContext* pRenderContext, const RenderData& renderData);
     void cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData);
-    void trtInferPass(RenderContext* pRenderContext, const RenderData& renderData);
+
     void displayPass(RenderContext* pRenderContext, const RenderData& renderData);
-    void setupTRT();
     virtual void renderUI(Gui::Widgets& widget) override;
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) override {   return mpPixelDebug->onMouseEvent(mouseEvent); }
@@ -155,14 +173,18 @@ private:
     std::string mHFFileName = "leather11.png";
     std::string mShellHFFileName = "leather11.png";
     std::string mColorFileName = "RoofTilesTerracotta005_COL_6K";
-    std::string mNetName = "leather11_dim16_32_cos300";
+    std::string mNetName = "leather11_m24u8h8d8";
+    // std::string mNetName = "leather11_dim16_32_cos300";
+
+    std::string mNetInt8Name = "leather11_m24u8h8d8_int8";
+
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;
     ref<Texture> mpHFMaxMip;
     ref<Texture> mpColor;
 
 
-    ref<Texture> mpWiWox;
+    ref<Texture> mpBTFInput1;
     ref<Texture> mpUVWoyz;
     ref<Texture> mpDfDxy;
 
@@ -177,7 +199,8 @@ private:
 
 
 
-    RenderType mRenderType = RenderType::SHADER_NN;
+    RenderType mRenderType = RenderType::WAVEFRONT_SHADER_NN;
+    InferType mInferType = InferType::CUDA;
 
     bool mContactRefinement = true;
     bool mMipGenerated = false;
@@ -187,8 +210,11 @@ private:
     bool mLocalFrame = true;
     bool mCudaInfer = true;
     bool mUseFP16 = false;
+    bool mMLPDebug = false;
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
+    ref<Fence> mpFence1;
+    ref<Fence> mpFence2;
     /// Buffer for data for the selected pixel.
     ref<Buffer> mpPixelDataBuffer;
     /// Staging buffer for readback of pixel data.
@@ -203,24 +229,25 @@ private:
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
     std::unique_ptr<MLP> mpMLP;
     std::unique_ptr<NBTF> mpNBTF;
-
+    std::unique_ptr<NBTF> mpNBTFInt8;
 
     std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;
 
-    // trt
-    // IBuilder* mpBuilder;
-    // INetworkDefinition* mpNetwork;
-    // ICudaEngine* mpEngine;
-    // IExecutionContext* mpContext;
+    uint mDebugPrism = 0;
+    bool mShowTracedHF = false;
+    bool mTracedShadowRay = true;
+    bool mUseMIS = false;
 
 
     // cuda
     float mCudaTime = 0.0;
     double mCudaAvgTime = 0.0;
+    int cudaInferTimes = 1;
     cudaEvent_t mCudaStart, mCudaStop;
     ref<Buffer> mpOutputBuffer;
     ref<Texture> mpOutputTex;
     ref<Buffer> mpInputBuffer;
+    ref<Buffer> mpVaildBuffer;
 
     ref<Buffer> mpWeightBuffer;
     ref<Buffer> mpBiasBuffer;
@@ -228,8 +255,8 @@ private:
     ref<Buffer> mpWeightFP16Buffer;
     ref<Buffer> mpBiasFP16Buffer;
 
-    uint mDebugPrism = 0;
-    bool mShowTracedHF = false;
-    bool mTracedShadowRay = false;
-    bool mUseMIS = false;
+
+    ref<Buffer> mpQInt8Buffer;
+    uint mCudaAccumulatedFrames = 1;
+
 };

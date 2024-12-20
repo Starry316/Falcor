@@ -34,30 +34,34 @@ cbuffer CB
     float2 iResolution;
     NBTF nbtf;
     bool gSynthesis;
-    bool gDisplay;
+    bool gShowShader;
 };
 
 Buffer<float> gInputColor;
 Buffer<uint> cudaInputBuffer;
-SamplerState gSampler;
+Texture2D<float4> ouputColor;
 
+SamplerState gSampler;
 
 float4 mainImage(float2 fragCoord, uint2 pixel)
 {
-    // int a = -32;
-    // int packedData = (a << 8) & 0x0000ff00;
-    // int unpackedData = (int)(packedData << 16) >> 24;
+    float4 cudaRet = float4(
+        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
+        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],
+        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2],
+        1.0
+    );
+    print("ref", ouputColor[pixel]);
+    print("out", cudaRet);
+    print("dif", abs(cudaRet - ouputColor[pixel]));
 
-    print("output1", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0]);
-    print("output2", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1]);
+    // print("output1", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0]);
+    // print("output2", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1]);
+    // print("output3", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2]);
+    // print("output4", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]);
 
-    print("output3", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2]);
-    print("output4", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]);
-
-    // print("output5", unpackedData);
-
-
-
+    if (gShowShader)
+        return ouputColor[pixel];
 
     return float4(
         gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],

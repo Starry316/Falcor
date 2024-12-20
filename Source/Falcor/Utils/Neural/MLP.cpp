@@ -98,5 +98,10 @@ void MLP::bindShaderData(const ShaderVar& var) const
     var["bias"] = mpBias;
     var["meta"] = mpMeta;
 }
+void MLP::bindDebugData(const ShaderVar& var, ref<Buffer> w, ref<Buffer> b) const
+{
+    var["debugWeights"] =  w;
+    var["debugBias"] = b;
+}
 
 } // namespace Falcor

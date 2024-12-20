@@ -10,6 +10,10 @@ struct MLP
     StructuredBuffer<float4x4> weights;
     StructuredBuffer<float4> bias;
     StructuredBuffer<float> meta;
+
+    Buffer<float> debugWeights;
+    Buffer<float> debugBias;
+
     float4 eval(inout float4 x[MAX_NN_DIM])
     {
         float4 y[MAX_NN_DIM];
@@ -79,7 +83,70 @@ struct MLP
         }
     }
 
-    float4 evalfp16(inout float4 x[MAX_NN_DIM])
+    float4 eval(inout float inputVal[24])
+    {
+        float val1[24];
+        float val2[24];
+        int offset = 0;
+        int biasOffset = 0;
+
+        int inNumFirst = 24;
+        int inNum = 24;
+        int outNum = 24;
+
+        for (int k = 0; k < outNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNumFirst; ++j)
+            {
+                sum += debugWeights[inNumFirst * k + j + offset] * inputVal[j];
+            }
+            val2[k] = sum + debugBias[k + biasOffset];
+            val2[k] = leakyrelu(val2[k]);
+        }
+        offset += outNum * inNumFirst;
+        biasOffset += outNum;
+
+        for (int k = 0; k < outNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNum; ++j)
+            {
+                sum += debugWeights[inNum * k + j + offset] * val2[j];
+            }
+            val1[k] = sum + debugBias[k + biasOffset];
+            val1[k] = leakyrelu(val1[k]);
+        }
+        offset += outNum * inNum;
+        biasOffset += outNum;
+
+        for (int k = 0; k < outNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNum; ++j)
+            {
+                sum += debugWeights[inNum * k + j + offset] * val1[j];
+            }
+            val2[k] = sum + debugBias[k + biasOffset];
+            val2[k] = leakyrelu(val2[k]);
+        }
+        offset += outNum * inNum;
+        biasOffset += outNum;
+
+        for (int k = 0; k < 3; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNum; ++j)
+            {
+                sum += debugWeights[inNum * k + j + offset] * val2[j];
+            }
+            val1[k] = sum + debugBias[k + biasOffset];
+            val1[k] = relu(val1[k]);
+        }
+        return float4(val1[0], val1[1], val1[2], 1.0);
+    }
+
+    float4 eval_relu(inout float4 x[MAX_NN_DIM])
     {
         float4 y[MAX_NN_DIM];
         int offset = 0;
@@ -106,9 +173,7 @@ struct MLP
                 for (int j = 0; j < outNum; ++j)
                 {
                     y[j] += bias[j + biasOffset];
-                    y[j] = leakyrelu(y[j]);
-                    y[j].xy = unpackSnorm2x16(packSnorm2x16(y[j].xy));
-                    y[j].zw = unpackSnorm2x16(packSnorm2x16(y[j].zw));
+                    y[j] = relu(y[j]);
                 }
                 biasOffset += outNum;
                 offset += (int)(h * w) / 16;
@@ -133,10 +198,7 @@ struct MLP
                 for (int j = 0; j < outNum; ++j)
                 {
                     x[j] += bias[j + biasOffset];
-                    x[j] = leakyrelu(x[j]);
-                    x[j].xy = unpackSnorm2x16(packSnorm2x16(x[j].xy));
-                    x[j].zw = unpackSnorm2x16(packSnorm2x16(x[j].zw));
-
+                    x[j] = relu(x[j]);
                 }
                 biasOffset += outNum;
                 offset += (int)(h * w) / 16;
@@ -152,4 +214,72 @@ struct MLP
             return relu(x[0]);
         }
     }
+
+    float4 eval_relu(inout float inputVal[24])
+    {
+        float val1[24];
+        float val2[24];
+        int offset = 0;
+        int biasOffset = 0;
+
+        int inNumFirst = 24;
+        int inNum = 24;
+        int outNum = 24;
+
+        for (int k = 0; k < outNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNumFirst; ++j)
+            {
+                sum += debugWeights[inNumFirst * k + j + offset] * inputVal[j];
+            }
+            val2[k] = sum + debugBias[k + biasOffset];
+            val2[k] = relu(val2[k]);
+        }
+        offset += outNum * inNumFirst;
+        biasOffset += outNum;
+
+        for (int k = 0; k < outNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNum; ++j)
+            {
+                sum += debugWeights[inNum * k + j + offset] * val2[j];
+            }
+            val1[k] = sum + debugBias[k + biasOffset];
+            val1[k] = relu(val1[k]);
+        }
+        offset += outNum * inNum;
+        biasOffset += outNum;
+
+        for (int k = 0; k < outNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNum; ++j)
+            {
+                sum += debugWeights[inNum * k + j + offset] * val1[j];
+            }
+            val2[k] = sum + debugBias[k + biasOffset];
+            val2[k] = relu(val2[k]);
+        }
+        offset += outNum * inNum;
+        biasOffset += outNum;
+
+        for (int k = 0; k < 3; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNum; ++j)
+            {
+                sum += debugWeights[inNum * k + j + offset] * val2[j];
+            }
+            val1[k] = sum + debugBias[k + biasOffset];
+            val1[k] = relu(val1[k]);
+        }
+        return float4(val1[0], val1[1], val1[2], 1.0);
+
+    }
+
+
+
+
 }

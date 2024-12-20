@@ -64,12 +64,13 @@ import Utils.Geometry.GeometryHelpers;
 import Utils.Sampling.SampleGenerator;
 import Utils.Texture.HexTiling;
 import Rendering.Lights.LightHelpers;
-
+import Utils.Math.FormatConversion;
 import Utils.Debug.PixelDebug;
 import Rendering.Lights.EnvMapSampler;
 import Utils.Neural.NBTF;
 import Scene.Displacement.DisplacementMapping;
 import Utils.Texture.HistogramBlending;
+import BTFUtils;
 cbuffer CB
 {
     uint gFrameCount;    // Frame count since scene was loaded.
@@ -81,6 +82,7 @@ cbuffer CB
     bool gUseFP16;
     EnvMapSampler envMapSampler;
     NBTF nbtf;
+    NBTF nbtfInt8;
     uint gDebugPrism;
     bool gShowTracedHF;
     bool gTracedShadowRay;
@@ -98,7 +100,7 @@ Texture2D<float> gHF;
 Texture2D<float4> gShellHF;
 Texture2D<float> gHFMaxMip;
 
-RWTexture2D<float4> wiWox;
+RWTexture2D<uint4> btfInput;
 RWTexture2D<float4> uvWoyz;
 RWTexture2D<float4> ddxy;
 RWBuffer<float> cudaInputBuffer;
@@ -497,7 +499,7 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     rayData.origin = primaryRayOrigin;
     rayData.direction = primaryRayDir;
 
-    for (uint depth = 0; depth < 2 && !rayData.terminated; depth++)
+    for (uint depth = 0; depth < 1 && !rayData.terminated; depth++)
     {
         traceScatterRay(rayData);
     }
@@ -1053,60 +1055,120 @@ void rayGen()
 {
     uint2 pixel = DispatchRaysIndex().xy;
     uint2 frameDim = DispatchRaysDimensions().xy;
-    printSetPixel(pixel);
+    // printSetPixel(pixel);
 
     float4 outputColor = tracePath(pixel, frameDim);
     gOutputColor[pixel] = outputColor;
 }
+// void handleHit(const HitInfo hit, inout ScatterRayData rayData)
+// {
+//     // Load shading data.
+//     ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
+
+//     // Create material instance.
+//     let lod = ExplicitLodTextureSampler(0.f);
+//     let mi = gScene.materials.getMaterialInstance(sd, lod);
+
+//     // Add emitted light.
+//     if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
+//     {
+//         rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
+//     }
+
+//     // Check whether to terminate based on max depth.
+//     if (rayData.pathLength >= kMaxBounces)
+//     {
+//         rayData.terminated = true;
+//         return;
+//     }
+
+//     // Add contribution of direct light from analytic lights.
+//     if (kUseAnalyticLights)
+//     {
+//         float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
+//         rayData.radiance += rayData.thp * Lr;
+//     }
+
+//     float3 wo = sd.frame.toLocal(sd.V);
+//     float3 envLi;
+//     float3 envDir;
+//     float envPdf;
+//     if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, envDir, envPdf))
+//     {
+//         // rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg) * MISWeight(envPdf, mi.evalPdf(sd, envDir));
+//         rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg);
+//     }
+
+//     // Generate scatter ray for the next path segment.
+//     // The raygen shader will continue the path based on the returned payload.
+//     if (!generateScatterRay(sd, mi, sd.computeRayOrigin(), rayData))
+//     {
+//         rayData.terminated = true;
+//         return;
+//     }
+
+//     rayData.pathLength++;
+// }
 void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
     // Load shading data.
     ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
-
-    // Create material instance.
-    let lod = ExplicitLodTextureSampler(0.f);
-    let mi = gScene.materials.getMaterialInstance(sd, lod);
-
-    // Add emitted light.
-    if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
-    {
-        rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
-    }
-
-    // Check whether to terminate based on max depth.
-    if (rayData.pathLength >= kMaxBounces)
-    {
-        rayData.terminated = true;
-        return;
-    }
-
-    // Add contribution of direct light from analytic lights.
-    if (kUseAnalyticLights)
-    {
-        float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
-        rayData.radiance += rayData.thp * Lr;
-    }
-
+    // Load shading data.
+    GeometryInstanceID instanceID;
+    uint primitiveIndex;
     float3 wo = sd.frame.toLocal(sd.V);
+
+
     float3 envLi;
     float3 envDir;
     float envPdf;
+    float2 ddx, ddy;
+    float hitT = length(sd.posW - gScene.camera.getPosition());
+    computeRayDifferentials(instanceID, primitiveIndex, -sd.V, hitT, gScene.camera, gInvFrameDim, ddx, ddy);
+    ddx *= FOOTPRINT_SCALING;
+    ddy *= FOOTPRINT_SCALING;
+    // float3 wi = sample_cosine_hemisphere_concentric(sampleNext2D(rayData.sg), envPdf);
+    // // float3 wi = reflect(-wo, float3(0, 0, 1));
+    // float NdotL = wi.z > 0 ? wi.z : 0;
+
+    // envLi = gScene.envMap.eval(sd.frame.fromLocal(wi));
+
+    // uint2 pixel = DispatchRaysIndex().xy;
+    // btfInput[pixel] = packInput(wi, wo, sd.uv, ddx, ddy);
+    // uvWoyz[pixel].xyz = envLi * NdotL;
+    // rayData.origin = hitT;
+    // rayData.terminated = false;
+    uint2 pixel = DispatchRaysIndex().xy;
+    uvWoyz[pixel].xyz = 0;
+    rayData.radiance = 0;
     if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, envDir, envPdf))
     {
-        // rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg) * MISWeight(envPdf, mi.evalPdf(sd, envDir));
-        rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg);
+
+
+        float3 wi = sd.frame.toLocal(envDir);
+        float NdotL = wi.z > 0 ? wi.z : 0;
+
+        btfInput[pixel] = packInput(wi, wo, sd.uv, ddx, ddy);
+        uvWoyz[pixel].xyz = envLi * NdotL;
+        rayData.origin = hitT;
+        rayData.terminated = false;
+        // rayData.radiance = rayData.thp * envLi * NdotL;
+        rayData.radiance = envLi * NdotL;
     }
 
-    // Generate scatter ray for the next path segment.
-    // The raygen shader will continue the path based on the returned payload.
-    if (!generateScatterRay(sd, mi, sd.computeRayOrigin(), rayData))
-    {
-        rayData.terminated = true;
-        return;
-    }
 
-    rayData.pathLength++;
+
+
+
+
+
+
+
 }
+
+
+
+
 void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
 {
     if (gShowTracedHF)
@@ -1115,7 +1177,8 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.terminated = true;
         return;
     }
-
+    // we use terminated to indicate that if the cuda inference is needed
+    rayData.terminated = true;
     // Load shading data.
     GeometryInstanceID instanceID;
     uint primitiveIndex;
@@ -1138,7 +1201,6 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.radiance = gColor.SampleLevel(gSampler, sd.uv * UV_SCALING, 0);
     return;
 #endif
-
     if (generateEnvMapSample(sd.posW + sd.frame.N * gCurvatureParas.y, rayData.sg, envLi, envDir, envPdf))
     {
         float3 wi = sd.frame.toLocal(envDir);
@@ -1152,29 +1214,32 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
 
 #ifdef WAVEFRONT_SHADER_NN
         uint2 pixel = DispatchRaysIndex().xy;
-        wiWox[pixel] = float4(wi, wo.x);
-        uvWoyz[pixel] = float4((sd.uv.yx) * UV_SCALING, wo.yz);
-        ddxy[pixel] = float4(ddx, ddy);
+
+        btfInput[pixel] = packInput(wi, wo, sd.uv, ddx, ddy);
+        uvWoyz[pixel] = float4(rayData.thp * envLi * NdotL, 1 );
+        // ddxy[pixel] = float4(ddx, ddy);
         rayData.origin = hitT;
+        rayData.terminated = false;
+        rayData.radiance = rayData.thp * envLi * NdotL;
 #endif
     }
 
-    rayData.pathLength++;
-    if (rayData.pathLength == 2)
-    {
-        rayData.terminated = true;
-        return;
-    }
-    float pdf;
-    float3 scatterDir = sample_cosine_hemisphere_concentric(sampleNext2D(rayData.sg), pdf);
-    rayData.origin = sd.computeRayOrigin();
-    rayData.direction = sd.frame.fromLocal(scatterDir);
-    rayData.thp *= nbtf.evalDebug(scatterDir, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn) / pdf;
-    rayData.BRDFPdf = pdf;
-    if (all(rayData.thp == 0.f))
-    {
-        rayData.terminated = true;
-        return;
-    }
+    // rayData.pathLength++;
+    // if (rayData.pathLength == 2)
+    // {
+    //     rayData.terminated = true;
+    //     return;
+    // }
+    // float pdf;
+    // float3 scatterDir = sample_cosine_hemisphere_concentric(sampleNext2D(rayData.sg), pdf);
+    // rayData.origin = sd.computeRayOrigin();
+    // rayData.direction = sd.frame.fromLocal(scatterDir);
+    // rayData.thp *= nbtf.evalDebug(scatterDir, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn) / pdf;
+    // rayData.BRDFPdf = pdf;
+    // if (all(rayData.thp == 0.f))
+    // {
+    //     rayData.terminated = true;
+    //     return;
+    // }
 }
 

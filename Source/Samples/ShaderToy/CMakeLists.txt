@@ -11,7 +11,8 @@ target_sources(ShaderToy PRIVATE
     cuda/MLPInference.h
     cuda/cudaUtils.h
     display.ps.slang
-    bindInput.ps.slang
+    bindInput.cs.slang
+    InferDebug.cs.slang
 )
 set_target_properties(ShaderToy PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
