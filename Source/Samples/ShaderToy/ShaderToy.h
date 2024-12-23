@@ -46,8 +46,8 @@ enum class RenderType : uint32_t
     SHADER_NN,
     CUDA,
     CUDAFP16,
-    CUDAINT8,
-    TEST
+    CUDAINT8
+    // TEST
     // DEBUG_MIP
 };
 
@@ -57,8 +57,8 @@ FALCOR_ENUM_INFO(
         { RenderType::SHADER_NN, "Shader Inference" },
         { RenderType::CUDA, "CUDA FP32 Inference" },
         { RenderType::CUDAFP16, "CUDA FP16 Inference" },
-        { RenderType::CUDAINT8, "CUDA INT8 Inference" },
-        { RenderType::TEST, "CUDA TEST" }
+        { RenderType::CUDAINT8, "CUDA INT8 Inference" }
+        // { RenderType::TEST, "CUDA TEST" }
     }
 );
 FALCOR_ENUM_REGISTER(RenderType);
@@ -90,10 +90,8 @@ private:
     ref<ComputePass> mpBindInputPass;
     ref<ComputePass> mpDebugPass;
     float mUVScale = 1.0f;
-    std::unique_ptr<NBTF> mpNBTF;
     std::unique_ptr<NBTF> mpNBTFInt8;
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
-    std::string mNetName = "leather11_m24u8h8d8";
     std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
     uint mFrames = 1;
 
@@ -129,6 +127,7 @@ private:
     ref<Buffer> mpQInt8Buffer;
 
     int mDebugOffset = 0;
+    int mCudaInferTimes = 1;
     Falcor::float2 mWo = { 0.0f, 0.0f };
     Falcor::float2 mWi = { 0.0f, 0.0f };
 

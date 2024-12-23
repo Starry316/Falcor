@@ -32,24 +32,21 @@ import Utils.Math.FormatConversion;
 cbuffer CB
 {
     float2 iResolution;
-    NBTF nbtf;
     bool gSynthesis;
     bool gShowShader;
 };
-
-Buffer<float> gInputColor;
-Buffer<uint> cudaInputBuffer;
+// cuda infer output
+Buffer<float> cudaColor;
 Texture2D<float4> ouputColor;
 
-SamplerState gSampler;
 
 float4 mainImage(float2 fragCoord, uint2 pixel)
 {
     float4 cudaRet = float4(
-        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
-        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],
-        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2],
-        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]
+        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
+        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],
+        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 2],
+        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]
     );
     print("ref", ouputColor[pixel]);
     print("out", cudaRet);
@@ -63,12 +60,7 @@ float4 mainImage(float2 fragCoord, uint2 pixel)
     if (gShowShader)
         return ouputColor[pixel];
 
-    return float4(
-        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
-        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],
-        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2],
-        gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]
-    );
+    return cudaRet;
 }
 
 float4 main(float2 texC: TEXCOORD) : SV_TARGET

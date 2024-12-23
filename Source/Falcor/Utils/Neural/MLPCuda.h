@@ -21,8 +21,13 @@ public:
 
     void inferInt8(int* packedInput, float* output, int width, int height, int* valid, float scale);
     void inferFp32(int* packedInput, float* output, int width, int height, int* valid, float scale);
-    void inferInt8Test(float* testInput, float* output, int width, int height, float scale);
     void inferFp16(int* packedInput, float* output, int width, int height, int* valid, float scale);
+
+    // for infer speed test
+    void inferInt8Test(float* testInput, float* output, int width, int height, float scale);
+    void inferFp32Test(float* testInput, float* output, int width, int height, float scale);
+    void inferFp16Test(float* testInput, float* output, int width, int height, float scale);
+
     ref<Buffer> mpInt8Buffer;
     ref<Buffer> mpFp32Buffer;
     ref<Buffer> mpFp16Buffer;

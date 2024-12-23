@@ -4,18 +4,18 @@
 #define CUDART_ONE_FP16 __ushort_as_half((unsigned short)0x3C00U)
 
 
-__constant__ float scaleIn1 = 0.0020032862666994333;
-__constant__ float scaleOut1 = 0.0035241753794252872;
-__constant__ float dequantizeScale1 = 7.0599321588815656e-06;
-__constant__ float scaleIn2 = 0.0016174662159755826;
-__constant__ float scaleOut2 = 0.006601687055081129;
-__constant__ float dequantizeScale2 = 1.0678006219677627e-05;
-__constant__ float scaleIn3 = 0.0008834964828565717;
-__constant__ float scaleOut3 = 0.011556388810276985;
-__constant__ float dequantizeScale3 = 1.0210028449364472e-05;
-__constant__ float scaleIn4 = 0.0011115598026663065;
-__constant__ float scaleOut4 = 0.012618034146726131;
-__constant__ float dequantizeScale4 = 1.4025699783815071e-05;
+__constant__ float scaleIn1 = 0.0024755310732871294;
+__constant__ float scaleOut1 = 0.002964676357805729;
+__constant__ float dequantizeScale1 = 7.339148396567907e-06;
+__constant__ float scaleIn2 = 0.002071766648441553;
+__constant__ float scaleOut2 = 0.005431175231933594;
+__constant__ float dequantizeScale2 = 1.1252127478655893e-05;
+__constant__ float scaleIn3 = 0.0010126761626452208;
+__constant__ float scaleOut3 = 0.010284638032317162;
+__constant__ float dequantizeScale3 = 1.041500763676595e-05;
+__constant__ float scaleIn4 = 0.0009620034252293408;
+__constant__ float scaleOut4 = 0.015066449530422688;
+__constant__ float dequantizeScale4 = 1.4493975868390407e-05;
 
 
 

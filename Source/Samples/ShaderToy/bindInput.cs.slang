@@ -33,20 +33,12 @@ import Utils.Math.MathHelpers;
 cbuffer CB
 {
     float2 iResolution;
-    float gUVScaling;
-    NBTF nbtf;
-    NBTF nbtfInt8;
+    float gUVScale;
     bool gSynthesis;
-    bool gFP16;
-    int gRenderType;
     float2 gWo;
     float2 gWi;
 };
 
-Buffer<float> gQInt8Buffer;
-RWBuffer<uint> cudaInputUIntBuffer;
-RWBuffer<int> cudaInputIntBuffer;
-RWBuffer<float> cudaInputBuffer;
 RWBuffer<float> testInput;
 
 uint packInt8x4(int4 v)
@@ -58,36 +50,7 @@ uint packInt16x2(int2 v)
     return (v.x & 0x0000ffff) | ((v.y << 16) & 0xffff0000);
 }
 
-void bindInputInt8(float2 uv, uint2 pixel)
-{
-    uint offset = 6 * (pixel.y * iResolution.x + pixel.x);
-    float2 ddx = 0.0000001;
-    float2 ddy = 0.0000001;
-    float3 wi = sample_hemisphere(gWi);
-    float3 wo = sample_hemisphere(gWo);
-    nbtfInt8.bindInputInt8(cudaInputUIntBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
-}
 
-void bindInputFP16(float2 uv, uint2 pixel)
-{
-    uint offset = 16 * (pixel.y * iResolution.x + pixel.x);
-    float2 ddx = 0.0001;
-    float2 ddy = 0.0001;
-    float3 wi = sample_hemisphere(gWi);
-    float3 wo = sample_hemisphere(gWo);
-
-    nbtf.bindInputFP16(cudaInputUIntBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
-}
-
-void bindInput(float2 uv, uint2 pixel)
-{
-    float2 ddx = 0.0001;
-    float2 ddy = 0.0001;
-    float3 wi = sample_hemisphere(gWi);
-    float3 wo = sample_hemisphere(gWo);
-    uint offset = 24 * (pixel.y * iResolution.x + pixel.x);
-    nbtf.bindInput(cudaInputBuffer, offset, wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis);
-}
 [numthreads(16, 16, 1)]
 void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 {
@@ -110,11 +73,6 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
     testInput[4 * (pixel.y * iResolution.x + pixel.x) + 2] = d.x;
     testInput[4 * (pixel.y * iResolution.x + pixel.x) + 3] = d.y;
 
-    // if (gRenderType == 1)
-    //     bindInput(uv, pixel);
-    // else if (gRenderType == 2)
-    //     bindInputFP16(uv, pixel);
-    // else
-    //     bindInputInt8(uv, pixel);
+
 
 }

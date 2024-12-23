@@ -105,10 +105,6 @@ ShaderToy::ShaderToy(const SampleAppConfig& config) : SampleApp(config) {}
 
 ShaderToy::~ShaderToy() {}
 
-int packInt8x4(int x, int y, int z, int w)
-{
-    return (x & 0x000000ff) | ((y << 8) & 0x0000ff00) | ((z << 16) & 0x00ff0000) | ((w << 24) & 0xff000000);
-}
 void ShaderToy::onLoad(RenderContext* pRenderContext)
 {
     // create rasterizer state
@@ -139,88 +135,21 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
 
-    // mpTextureSynthesis->readHFData("D:/textures/ubo/leather11.png", getDevice());
     mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
 
-    // std::vector<float> cudaWeight =
-    //     readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_flatten_{}.bin", getProjectDirectory(), mNetName).c_str());
-    // std::vector<float> cudaBias =
-    //     readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", getProjectDirectory(), mNetName).c_str());
-
-    // for (size_t i = 0; i < cudaBias.size(); i++)
-    // {
-    //     logInfo("Bias: " + std::to_string(cudaBias[i]));
-    // }
-
-    // mpWeightBuffer = getDevice()->createBuffer(
-    //     cudaWeight.size() * sizeof(float),
-    //     ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-    //     MemoryType::DeviceLocal,
-    //     cudaWeight.data()
-    // );
-
-    // mpBiasBuffer = getDevice()->createBuffer(
-    //     cudaBias.size() * sizeof(float),
-    //     ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-    //     MemoryType::DeviceLocal,
-    //     cudaBias.data()
-    // );
-
-    // std::vector<__half> cudaWeightFP16(cudaWeight.size());
-    // for (size_t i = 0; i < cudaWeight.size(); i++)
-    // {
-    //     cudaWeightFP16[i] = __float2half(cudaWeight[i]);
-    // }
-    // std::vector<__half> cudaBiasFP16(cudaBias.size());
-    // for (size_t i = 0; i < cudaBias.size(); i++)
-    // {
-    //     cudaBiasFP16[i] = __float2half(cudaBias[i]);
-    // }
-
-    // mpWeightFP16Buffer = getDevice()->createBuffer(
-    //     cudaWeightFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaWeightFP16.data()
-    // );
-
-    // mpBiasFP16Buffer = getDevice()->createBuffer(
-    //     cudaBiasFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaBiasFP16.data()
-    // );
-
-    // std::vector<float>().swap(cudaWeight);
-    // std::vector<float>().swap(cudaBias);
-
-    // std::vector<__half>().swap(cudaWeightFP16);
-    // std::vector<__half>().swap(cudaBiasFP16);
-
-    // mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, true);
+    std::vector<float> cudaWeight =
+        readBinaryFile(fmt::format("{}/media/BTF/networks/Weight_fp32_{}.bin", getProjectDirectory(), mNetInt8Name).c_str());
+    mpWeightBuffer = getDevice()->createBuffer(
+        cudaWeight.size() * sizeof(float),
+        ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+        MemoryType::DeviceLocal,
+        cudaWeight.data()
+    );
+    std::vector<float>().swap(cudaWeight);
     mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
 
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
-
-    std::vector<float> int8Weight =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Weight_int8_{}.bin", getProjectDirectory(), mNetInt8Name).c_str());
-
-    std::vector<int> int8WeightInt(int8Weight.size() / 4);
-    for (size_t i = 0; i < int8WeightInt.size(); i++)
-    {
-        int8WeightInt[i] =
-            packInt8x4((int)int8Weight[i * 4], (int)int8Weight[i * 4 + 1], (int)int8Weight[i * 4 + 2], (int)int8Weight[i * 4 + 3]);
-    }
-
-    mpQInt8Buffer = getDevice()->createBuffer(
-        int8WeightInt.size() * sizeof(int), ResourceBindFlags::Shared, MemoryType::DeviceLocal, int8WeightInt.data()
-    );
-    logInfo("QINT8 buffer size: " + std::to_string(int8Weight.size()));
-    logInfo("QINT8 buffer  {} {} {} {}", int8Weight[0], int8Weight[1], int8Weight[2], int8Weight[3]);
-
-    // mUTexObj = createCudaTextureArray(mpNBTF->mUP.featureData, mpNBTF->mUP.texDim.x, mpNBTF->mUP.texDim.x, mpNBTF->mUP.texDim.y);
-    // mHTexObj = createCudaTextureArray(mpNBTF->mHP.featureData, mpNBTF->mHP.texDim.x, mpNBTF->mHP.texDim.x, mpNBTF->mHP.texDim.y);
-    // mDTexObj = createCudaTextureArray(mpNBTF->mDP.featureData, mpNBTF->mDP.texDim.x, mpNBTF->mDP.texDim.x, mpNBTF->mDP.texDim.y);
-
-
-    mUTexObj = createCudaTextureArray(mpNBTFInt8->mUP.featureData, mpNBTFInt8->mUP.texDim.x, mpNBTFInt8->mUP.texDim.x, mpNBTFInt8->mUP.texDim.y);
-    mHTexObj = createCudaTextureArray(mpNBTFInt8->mHP.featureData, mpNBTFInt8->mHP.texDim.x, mpNBTFInt8->mHP.texDim.x, mpNBTFInt8->mHP.texDim.y);
-    mDTexObj = createCudaTextureArray(mpNBTFInt8->mDP.featureData, mpNBTFInt8->mDP.texDim.x, mpNBTFInt8->mDP.texDim.x, mpNBTFInt8->mDP.texDim.y);
 }
 
 void ShaderToy::onResize(uint32_t width, uint32_t height)
@@ -245,12 +174,10 @@ void ShaderToy::shaderInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarg
     var["gDebugMLP"] = mDebugMLP;
     var["gWo"] = mWo;
     var["gWi"] = mWi;
-    mpDebugPass->getRootVar()["gInputColor"] = mpOutputBuffer;
-    mpDebugPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
     mpDebugPass->getRootVar()["ouputColor"] = mpOutColor;
-    mpTextureSynthesis->bindHFData(mpDebugPass->getRootVar()["ToyCB"]["hfData"]);
-    mpNBTF->bindShaderData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]);
-    mpNBTF->mpMLP->bindDebugData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]["mlp"], mpWeightBuffer, mpBiasBuffer);
+    // mpTextureSynthesis->bindHFData(mpDebugPass->getRootVar()["ToyCB"]["hfData"]);
+    mpNBTFInt8->bindShaderData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]);
+    mpNBTFInt8->mpMLP->bindDebugData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]["mlp"], mpWeightBuffer, mpBiasBuffer);
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
     mpPixelDebug->prepareProgram(mpDebugPass->getProgram(), mpDebugPass->getRootVar());
@@ -266,52 +193,17 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     float height = (float)pTargetFbo->getHeight();
     Falcor::uint2 targetDim = Falcor::uint2(width, height);
 
-    auto input = (float*)mpInputBuffer->getGpuAddress();
     auto output = (float*)mpOutputBuffer->getGpuAddress();
     // timer start
     cudaEventRecord(mCudaStart, NULL);
-    for (size_t i = 0; i < 10; i++)
+    for (size_t i = 0; i < mCudaInferTimes; i++)
     {
         if (mRenderType == RenderType::CUDAINT8)
-        //     launchInferInt8(
-        //         (int*)mpQInt8Buffer->getGpuAddress(), (int*)mpInputBuffer->getGpuAddress(), output, targetDim.x, targetDim.y, mDebugOffset
-        //     );
-
-        // else if (mRenderType == RenderType::CUDAFP16)
-        // {
-        //     launchInferFP16(
-        //         (__half*)mpWeightFP16Buffer->getGpuAddress(),
-        //         (__half*)mpBiasFP16Buffer->getGpuAddress(),
-        //         (int*)mpInputBuffer->getGpuAddress(),
-        //         output,
-        //         targetDim.x,
-        //         targetDim.y
-        //     );
-        // }
-        // else if (mRenderType == RenderType::CUDA)
-        //     launchInferFP32(
-        //         (float*)mpWeightBuffer->getGpuAddress(),
-        //         (float*)mpBiasBuffer->getGpuAddress(),
-        //         (float*)mpInputBuffer->getGpuAddress(),
-        //         output,
-        //         targetDim.x,
-        //         targetDim.y
-        //     );
-        // else
-        //
-        mpNBTFInt8->mpMLPCuda->inferInt8Test((float*)mpTestInput->getGpuAddress(), output,  targetDim.x, targetDim.y, 1);
-            // testTexture((int*)mpNBTFInt8->mpMLPCuda->mpInt8Buffer->getGpuAddress(), (float*)mpTestInput->getGpuAddress(),mpNBTFInt8->mpMLPCuda->mHTexObj, mpNBTFInt8->mpMLPCuda->mDTexObj, mpNBTFInt8->mpMLPCuda->mUTexObj, output, targetDim.x, targetDim.y);
-
-        // testTextureFP32(
-        //     (float*)mpWeightBuffer->getGpuAddress(),
-        //     (float*)mpBiasBuffer->getGpuAddress(),
-        //     mHTexObj,
-        //     mDTexObj,
-        //     mUTexObj,
-        //     output,
-        //     targetDim.x,
-        //     targetDim.y
-        // );
+            mpNBTFInt8->mpMLPCuda->inferInt8Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+        else if (mRenderType == RenderType::CUDAFP16)
+            mpNBTFInt8->mpMLPCuda->inferFp16Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+        else
+            mpNBTFInt8->mpMLPCuda->inferFp32Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
     }
 
     // timer end
@@ -332,19 +224,12 @@ void ShaderToy::bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTarget
 
     auto var = mpBindInputPass->getRootVar()["CB"];
     var["iResolution"] = Falcor::float2(width, height);
-    var["gUVScaling"] = mUVScale;
+    var["gUVScale"] = mUVScale;
     var["gSynthesis"] = mSynthesis;
     var["gWo"] = mWo;
     var["gWi"] = mWi;
 
-    var["gRenderType"] = (int)mRenderType;
-    if (mRenderType == RenderType::CUDAINT8 || mRenderType == RenderType::CUDAFP16)
-        mpBindInputPass->getRootVar()["cudaInputUIntBuffer"].setUav(mpInputBuffer->getUAV());
-    else
-        mpBindInputPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
     mpBindInputPass->getRootVar()["testInput"] = mpTestInput;
-    // mpNBTF->bindShaderData(mpBindInputPass->getRootVar()["CB"]["nbtf"]);
-    // mpNBTFInt8->bindShaderData(mpBindInputPass->getRootVar()["CB"]["nbtfInt8"]);
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
     mpPixelDebug->prepareProgram(mpBindInputPass->getProgram(), mpBindInputPass->getRootVar());
@@ -354,9 +239,9 @@ void ShaderToy::bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     mpPixelDebug->endFrame(pRenderContext);
 }
 
+// fill the screen with the shader/cuda output
 void ShaderToy::display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
 {
-    // iResolution
     float width = (float)pTargetFbo->getWidth();
     float height = (float)pTargetFbo->getHeight();
     Falcor::uint2 targetDim = Falcor::uint2(width, height);
@@ -364,14 +249,12 @@ void ShaderToy::display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFb
     auto var = mpDisplayPass->getRootVar()["CB"];
     var["iResolution"] = Falcor::float2(width, height);
     var["gSynthesis"] = mSynthesis;
-    var["gShowShader"] = mShowShader;
-    mpDisplayPass->getRootVar()["gInputColor"] = mpOutputBuffer;
-    mpDisplayPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
+    var["gShowShader"] = mShowShader || mRenderType == RenderType::SHADER_NN;
+    mpDisplayPass->getRootVar()["cudaColor"] = mpOutputBuffer;
     mpDisplayPass->getRootVar()["ouputColor"] = mpOutColor;
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
     mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
-    // run final pass
     mpDisplayPass->execute(pRenderContext, pTargetFbo);
     mpPixelDebug->endFrame(pRenderContext);
 }
@@ -382,22 +265,15 @@ void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
     float height = (float)pTargetFbo->getHeight();
     Falcor::uint2 targetDim = Falcor::uint2(width, height);
     createBuffer(mpOutputBuffer, getDevice(), targetDim);
-    createBuffer(mpInputBuffer, getDevice(), targetDim, 33);
-    // if(mFrames<2)
 
     if (mRenderType == RenderType::SHADER_NN)
     {
         shaderInfer(pRenderContext, pTargetFbo);
     }
-    else if (mRenderType == RenderType::TEST)
-    {
-            bindInput(pRenderContext, pTargetFbo);
-        cudaInfer(pRenderContext, pTargetFbo);
-    }
     else
     {
-        // if (mFrames < 2)
-        bindInput(pRenderContext, pTargetFbo);
+        if (mFrames < 2)
+            bindInput(pRenderContext, pTargetFbo);
         cudaInfer(pRenderContext, pTargetFbo);
     }
     display(pRenderContext, pTargetFbo);
@@ -414,19 +290,20 @@ void ShaderToy::onGuiRender(Gui* pGui)
     dirty |= w.slider("Wo", mWo, 0.0f, 1.0f);
 
     dirty |= w.slider("UV Scale", mUVScale, 0.0f, 10.0f);
-    // w.slider("debugOffset", mDebugOffset, 0, 32);
     dirty |= w.checkbox("Enable Synthesis", mSynthesis);
     dirty |= w.checkbox("Show shader", mShowShader);
     dirty |= w.checkbox("debug mlp", mDebugMLP);
     dirty |= w.button("Reset Timer");
+    dirty |= w.slider("CUDA infer times", mCudaInferTimes, 1, 20);
     if (dirty)
     {
         mFrames = 1;
         mCudaAvgTime = mCudaTime;
     }
+
     w.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
     w.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mFrames) + " ms");
-    w.text("CUDA avg time (real): " + std::to_string(mCudaAvgTime / mFrames / 10) + " ms");
+    w.text("CUDA avg time (real): " + std::to_string(mCudaAvgTime / mFrames / mCudaInferTimes) + " ms");
     mpPixelDebug->renderUI(w);
 }
 int runMain(int argc, char** argv)
