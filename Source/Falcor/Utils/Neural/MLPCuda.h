@@ -13,7 +13,6 @@ namespace Falcor
 class FALCOR_API MLPCuda
 {
 public:
-
     MLPCuda();
 
     void loadInt8(ref<Device> pDevice, std::string networkPath);
@@ -21,8 +20,9 @@ public:
     // void loadTex(ref<Device> pDevice, std::string featurePath);
 
     void inferInt8(int* packedInput, float* output, int width, int height, int* valid, float scale);
+    void inferFp32(int* packedInput, float* output, int width, int height, int* valid, float scale);
     void inferInt8Test(float* testInput, float* output, int width, int height, float scale);
-
+    void inferFp16(int* packedInput, float* output, int width, int height, int* valid, float scale);
     ref<Buffer> mpInt8Buffer;
     ref<Buffer> mpFp32Buffer;
     ref<Buffer> mpFp16Buffer;
@@ -30,7 +30,6 @@ public:
     cudaTextureObject_t mHTexObj;
     cudaTextureObject_t mUTexObj;
     cudaTextureObject_t mDTexObj;
-
 };
 
-}
+} // namespace Falcor

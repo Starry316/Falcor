@@ -41,7 +41,6 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
     mHP.featureData = HPlaneBuffer;
     mDP.featureData = DPlaneBuffer;
 
-
     mUP.featureTex = pDevice->createTexture2D(
         mUP.texDim.x, mUP.texDim.x, ResourceFormat::RGBA32Float, mUP.texDim.y, Resource::kMaxPossible, UPlaneBuffer.data(), bindFlags
     );
@@ -66,34 +65,26 @@ NBTF::NBTF(ref<Device> pDevice, std::string networkName, bool buildCuda)
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
     loadFeature(pDevice, networkName);
 
-
     if (buildCuda)
     {
         mpMLPCuda = std::make_unique<MLPCuda>();
         mpMLPCuda->loadInt8(pDevice, fmt::format("{}/media/BTF/networks/Weight_int8_{}.bin", getProjectDirectory(), networkName));
         mpMLPCuda->loadFP32(pDevice, fmt::format("{}/media/BTF/networks/Weight_fp32_{}.bin", getProjectDirectory(), networkName));
 
-        mpMLPCuda->mUTexObj = createCudaTextureArray(
-            mUP.featureData, mUP.texDim.x,mUP.texDim.x, mUP.texDim.y
-        );
-        mpMLPCuda->mHTexObj = createCudaTextureArray(
-            mHP.featureData, mHP.texDim.x, mHP.texDim.x,mHP.texDim.y
-        );
-        mpMLPCuda->mDTexObj = createCudaTextureArray(
-           mDP.featureData, mDP.texDim.x, mDP.texDim.x, mDP.texDim.y
-        );
+        mpMLPCuda->mUTexObj = createCudaTextureArray(mUP.featureData, mUP.texDim.x, mUP.texDim.x, mUP.texDim.y);
+        mpMLPCuda->mHTexObj = createCudaTextureArray(mHP.featureData, mHP.texDim.x, mHP.texDim.x, mHP.texDim.y);
+        mpMLPCuda->mDTexObj = createCudaTextureArray(mDP.featureData, mDP.texDim.x, mDP.texDim.x, mDP.texDim.y);
     }
-    else
-    {
-        mpMLP = std::make_unique<MLP>(pDevice, networkName);
-    }
-
+    // else
+    // {
+    mpMLP = std::make_unique<MLP>(pDevice, networkName);
+    // }
 }
 
 void NBTF::bindShaderData(const ShaderVar& var) const
 {
-    if (mBuildCuda)
-        return;
+    // if (mBuildCuda)
+    //     return;
 
     mpMLP->bindShaderData(var["mlp"]);
     if (mHistogram)

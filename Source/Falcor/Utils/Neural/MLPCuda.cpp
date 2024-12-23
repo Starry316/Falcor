@@ -62,8 +62,15 @@ void MLPCuda::inferInt8Test(float* testInput, float* output, int width, int heig
 {
     launchInferInt8TexTest((int*)mpInt8Buffer->getGpuAddress(), testInput, mHTexObj, mDTexObj, mUTexObj, output, width, height,  scale);
 }
+void MLPCuda::inferFp32(int* packedInput, float* output, int width, int height, int* valid, float scale)
+{
+    launchInferFP32Tex((float*)mpFp32Buffer->getGpuAddress(), packedInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, valid, scale);
+}
 
-
+void MLPCuda::inferFp16(int* packedInput, float* output, int width, int height, int* valid, float scale)
+{
+    launchInferFP16Tex((__half*)mpFp16Buffer->getGpuAddress(), packedInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, valid, scale);
+}
 
 
 }

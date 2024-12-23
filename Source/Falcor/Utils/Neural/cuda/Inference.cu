@@ -33,7 +33,6 @@ __global__ void inferInt8TexTest(
     if (x >= width || y >= height)
         return;
 
-
     int offset = 0;
     int hiddenNum = HIDDEN_NUM;
     int hiddenPackedNum = HIDDEN_PACKED_NUM;
@@ -42,7 +41,6 @@ __global__ void inferInt8TexTest(
 
     int val1[HIDDEN_NUM];
     int val2[HIDDEN_PACKED_NUM];
-
 
     float u = (float)x / (float)height;
     float v = (float)y / (float)height;
@@ -60,7 +58,7 @@ __global__ void inferInt8TexTest(
     val = tex2DLayered<float4>(UP, v * uvScale, u * uvScale, 0);
     val2[2] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    val = tex2DLayered<float4>(UP, v *uvScale, u * uvScale, 1);
+    val = tex2DLayered<float4>(UP, v * uvScale, u * uvScale, 1);
     val2[3] = quantizeInt8x4f_safe(val, scaleIn1);
 
     val = tex2DLayered<float4>(DP, d1, d2, 0);
@@ -68,8 +66,6 @@ __global__ void inferInt8TexTest(
 
     val = tex2DLayered<float4>(DP, d1, d2, 1);
     val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
-
-
 
     // layer 1
     for (int k = 0; k < hiddenNum; k++)
@@ -196,7 +192,7 @@ void launchInferInt8TexTest(
     float* output,
     unsigned int width,
     unsigned int height,
-     float uvScale
+    float uvScale
 )
 {
     dim3 dimBlock(16, 16);
@@ -212,7 +208,8 @@ __global__ void inferInt8Tex(
     float* output,
     unsigned int width,
     unsigned int height,
-    int* validMask, float uvScale
+    int* validMask,
+    float uvScale
 )
 {
     __shared__ int W[768];
@@ -257,7 +254,7 @@ __global__ void inferInt8Tex(
     val = tex2DLayered<float4>(UP, v * uvScale, u * uvScale, 0);
     val2[2] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    val = tex2DLayered<float4>(UP, v *uvScale, u * uvScale, 1);
+    val = tex2DLayered<float4>(UP, v * uvScale, u * uvScale, 1);
     val2[3] = quantizeInt8x4f_safe(val, scaleIn1);
 
     val = tex2DLayered<float4>(DP, d1, d2, 0);
@@ -265,8 +262,6 @@ __global__ void inferInt8Tex(
 
     val = tex2DLayered<float4>(DP, d1, d2, 1);
     val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
-
-
 
     // layer 1
     for (int k = 0; k < hiddenNum; k++)
@@ -393,7 +388,8 @@ void launchInferInt8Tex(
     float* output,
     unsigned int width,
     unsigned int height,
-    int* validMask,    float uvScale
+    int* validMask,
+    float uvScale
 )
 {
     dim3 dimBlock(16, 16);
@@ -403,7 +399,6 @@ void launchInferInt8Tex(
 
 __global__ void inferFP32Tex(
     float* weight2,
-    float* bias2,
     int* packedInput,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
@@ -411,11 +406,11 @@ __global__ void inferFP32Tex(
     float* output,
     unsigned int width,
     unsigned int height,
-    int* validMask
+    int* validMask,
+    float uvScale
 )
 {
-    __shared__ float weight[2048];
-    __shared__ float bias[75];
+    __shared__ float weight[3072];
 
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -423,17 +418,12 @@ __global__ void inferFP32Tex(
     unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
     if (localIdx < 256)
     {
-        if (localIdx < 75)
+        for (int i = 0; i < 12; i++)
         {
-            bias[localIdx] = bias2[localIdx];
-        }
-        for (int i = 0; i < 8; i++)
-        {
-            weight[localIdx * 8 + i] = weight2[localIdx * 8 + i];
+            weight[localIdx * 12 + i] = weight2[localIdx * 12 + i];
         }
     }
     __syncthreads();
-
 
     if (x >= width || y >= height)
         return;
@@ -443,10 +433,10 @@ __global__ void inferFP32Tex(
     int offset = 0;
     int biasOffset = 0;
     int inNumFirst = IN_NUM;
-    int inNum = IN_NUM;
+    int inNum = HIDDEN_NUM;
     int outNum = HIDDEN_NUM;
-    float val1[IN_NUM];
-    float val2[IN_NUM];
+    float val1[HIDDEN_NUM];
+    float val2[HIDDEN_NUM];
 
     float h1, h2;
     float d1, d2;
@@ -454,6 +444,8 @@ __global__ void inferFP32Tex(
     unpackUnorm2x16(packedInput[4 * (y * width + x) + 0], h1, h2);
     unpackUnorm2x16(packedInput[4 * (y * width + x) + 1], d1, d2);
     unpackUnorm2x16(packedInput[4 * (y * width + x) + 2], u, v);
+    u *= uvScale;
+    v *= uvScale;
     int inputOffset = 0;
     float4 val = tex2DLayered<float4>(HP, h1, h2, 0);
     val1[0] = val.x;
@@ -469,14 +461,14 @@ __global__ void inferFP32Tex(
     val1[3 + inputOffset] = val.w;
     inputOffset += 4;
 
-    val = tex2DLayered<float4>(UP, u * 6.5, v * 6.5, 0);
+    val = tex2DLayered<float4>(UP, v, u, 0);
     val1[0 + inputOffset] = val.x;
     val1[1 + inputOffset] = val.y;
     val1[2 + inputOffset] = val.z;
     val1[3 + inputOffset] = val.w;
     inputOffset += 4;
 
-    val = tex2DLayered<float4>(UP, u * 6.5, v * 6.5, 1);
+    val = tex2DLayered<float4>(UP, v, u, 1);
     val1[0 + inputOffset] = val.x;
     val1[1 + inputOffset] = val.y;
     val1[2 + inputOffset] = val.z;
@@ -496,17 +488,16 @@ __global__ void inferFP32Tex(
     val1[2 + inputOffset] = val.z;
     val1[3 + inputOffset] = val.w;
 
-   for (int k = 0; k < outNum; ++k)
+    for (int k = 0; k < outNum; ++k)
     {
         float sum = 0;
         for (int j = 0; j < inNumFirst; ++j)
         {
             sum += weight[inNumFirst * k + j + offset] * val1[j];
         }
-        val2[k] = leakyrelu(sum + bias[k + biasOffset]);
+        val2[k] = relu(sum);
     }
     offset += outNum * inNumFirst;
-    biasOffset += outNum;
     for (int k = 0; k < outNum; ++k)
     {
         float sum = 0;
@@ -514,10 +505,9 @@ __global__ void inferFP32Tex(
         {
             sum += weight[inNum * k + j + offset] * val2[j];
         }
-        val1[k] = leakyrelu(sum + bias[k + biasOffset]);
+        val1[k] = relu(sum);
     }
     offset += outNum * inNum;
-    biasOffset += outNum;
 
     for (int k = 0; k < outNum; ++k)
     {
@@ -526,10 +516,9 @@ __global__ void inferFP32Tex(
         {
             sum += weight[outNum * k + j + offset] * val1[j];
         }
-        val2[k] = leakyrelu(sum + bias[k + biasOffset]);
+        val2[k] = relu(sum);
     }
     offset += outNum * inNum;
-    biasOffset += outNum;
 
     for (int k = 0; k < 3; ++k)
     {
@@ -538,7 +527,7 @@ __global__ void inferFP32Tex(
         {
             sum += weight[inNum * k + j + offset] * val2[j];
         }
-        val1[k] = relu(sum + bias[k + biasOffset]);
+        val1[k] = relu(sum);
     }
 
     __syncthreads();
@@ -549,7 +538,6 @@ __global__ void inferFP32Tex(
 
 void launchInferFP32Tex(
     float* weight,
-    float* bias,
     int* packedInput,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
@@ -557,11 +545,170 @@ void launchInferFP32Tex(
     float* output,
     unsigned int width,
     unsigned int height,
-    int* validMask
-
+    int* validMask,
+    float uvScale
 )
 {
     dim3 dimBlock(16, 16);
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-    inferFP32Tex<<<dimGrid, dimBlock>>>(weight, bias, packedInput, HP, DP, UP, output, width, height, validMask);
+    inferFP32Tex<<<dimGrid, dimBlock>>>(weight, packedInput, HP, DP, UP, output, width, height, validMask, uvScale);
+}
+
+
+__global__ void inferFP16Tex(
+    __half* weight2,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask,
+    float uvScale
+)
+{
+    __shared__ __half weight[3072];
+
+    unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
+    if (localIdx < 256)
+    {
+        for (int i = 0; i < 12; i++)
+        {
+            weight[localIdx * 12 + i] = weight2[localIdx * 12 + i];
+        }
+    }
+    __syncthreads();
+
+    if (x >= width || y >= height)
+        return;
+    if (validMask[y * width + x] == 0)
+        return;
+
+    int offset = 0;
+    int biasOffset = 0;
+    int inNumFirst = IN_NUM;
+    int inNum = HIDDEN_NUM;
+    int outNum = HIDDEN_NUM;
+    __half val1[HIDDEN_NUM];
+    __half val2[HIDDEN_NUM];
+
+    float h1, h2;
+    float d1, d2;
+    float u, v;
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 0], h1, h2);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 1], d1, d2);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 2], u, v);
+    u *= uvScale;
+    v *= uvScale;
+    int inputOffset = 0;
+
+    float4 val = tex2DLayered<float4>(HP, h1, h2, 0);
+    val1[0] = __float2half_rn(val.x);
+    val1[1] = __float2half_rn(val.y);
+    val1[2] = __float2half_rn(val.z);
+    val1[3] = __float2half_rn(val.w);
+    inputOffset += 4;
+
+    val = tex2DLayered<float4>(HP, h1, h2, 1);
+    val1[0 + inputOffset] = __float2half_rn(val.x);
+    val1[1 + inputOffset] = __float2half_rn(val.y);
+    val1[2 + inputOffset] = __float2half_rn(val.z);
+    val1[3 + inputOffset] = __float2half_rn(val.w);
+    inputOffset += 4;
+
+    val = tex2DLayered<float4>(UP, v, u, 0);
+    val1[0 + inputOffset] = __float2half_rn(val.x);
+    val1[1 + inputOffset] = __float2half_rn(val.y);
+    val1[2 + inputOffset] = __float2half_rn(val.z);
+    val1[3 + inputOffset] = __float2half_rn(val.w);
+    inputOffset += 4;
+
+    val = tex2DLayered<float4>(UP, v, u, 1);
+    val1[0 + inputOffset] = __float2half_rn(val.x);
+    val1[1 + inputOffset] = __float2half_rn(val.y);
+    val1[2 + inputOffset] = __float2half_rn(val.z);
+    val1[3 + inputOffset] = __float2half_rn(val.w);
+    inputOffset += 4;
+
+    val = tex2DLayered<float4>(DP, d1, d2, 0);
+    val1[0 + inputOffset] = __float2half_rn(val.x);
+    val1[1 + inputOffset] = __float2half_rn(val.y);
+    val1[2 + inputOffset] = __float2half_rn(val.z);
+    val1[3 + inputOffset] = __float2half_rn(val.w);
+    inputOffset += 4;
+
+    val = tex2DLayered<float4>(DP, d1, d2, 1);
+    val1[0 + inputOffset] = __float2half_rn(val.x);
+    val1[1 + inputOffset] = __float2half_rn(val.y);
+    val1[2 + inputOffset] = __float2half_rn(val.z);
+    val1[3 + inputOffset] = __float2half_rn(val.w);
+
+    for (int k = 0; k < outNum; ++k)
+    {
+        val2[k] = CUDART_ZERO_FP16;
+        for (int j = 0; j < inNumFirst; ++j)
+        {
+            val2[k]  = __hfma(weight[inNumFirst * k + j + offset], val1[j], val2[k]);
+        }
+        val2[k] = relu(val2[k]);
+    }
+    offset += outNum * inNumFirst;
+    for (int k = 0; k < outNum; ++k)
+    {
+        val1[k] = CUDART_ZERO_FP16;
+        for (int j = 0; j < inNum; ++j)
+        {
+            val1[k]  = __hfma(weight[inNum * k + j + offset], val2[j], val1[k]);
+        }
+        val1[k] = __hmax(val1[k], CUDART_ZERO_FP16);
+    }
+    offset += outNum * inNum;
+
+    for (int k = 0; k < outNum; ++k)
+    {
+        val2[k] = CUDART_ZERO_FP16;
+        for (int j = 0; j < inNum; ++j)
+        {
+            val2[k]  = __hfma(weight[inNum * k + j + offset], val1[j], val2[k]);
+        }
+        val2[k] = relu(val2[k]);
+    }
+    offset += outNum * inNum;
+
+    for (int k = 0; k < 3; ++k)
+    {
+        val1[k] = CUDART_ZERO_FP16;
+        for (int j = 0; j < inNum; ++j)
+        {
+            val1[k]  = __hfma(weight[inNum * k + j + offset], val2[j], val1[k]);
+        }
+        val1[k] = __hmax(val1[k], CUDART_ZERO_FP16);
+    }
+
+    __syncthreads();
+    output[4 * (y * width + x) + 0] = __half2float(val1[0]);
+    output[4 * (y * width + x) + 1] = __half2float(val1[1]);
+    output[4 * (y * width + x) + 2] = __half2float(val1[2]);
+}
+
+void launchInferFP16Tex(
+    __half* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask,
+    float uvScale
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+    inferFP16Tex<<<dimGrid, dimBlock>>>(weight, packedInput, HP, DP, UP, output, width, height, validMask, uvScale);
 }

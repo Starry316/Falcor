@@ -252,82 +252,35 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
     Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
 
-    if (mInferType == InferType::SHADER)
-        mpInferPass->getProgram()->addDefine("SHADER");
-    else
-        mpInferPass->getProgram()->removeDefine("SHADER");
-
-    if (mInferType == InferType::CUDA)
-        mpInferPass->getProgram()->addDefine("CUDA");
-    else
-        mpInferPass->getProgram()->removeDefine("CUDA");
-
-    if (mInferType == InferType::CUDAFP16)
-        mpInferPass->getProgram()->addDefine("CUDAFP16");
-    else
-        mpInferPass->getProgram()->removeDefine("CUDAFP16");
-
-    if (mInferType == InferType::CUDAINT8)
-        mpInferPass->getProgram()->addDefine("CUDAINT8");
-    else
-        mpInferPass->getProgram()->removeDefine("CUDAINT8");
-
     auto var = mpInferPass->getRootVar();
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
     var["PerFrameCB"]["gApplySyn"] = mApplySyn;
     var["PerFrameCB"]["gCurvatureParas"] = mCurvatureParas;
-
-    mpNBTF->bindShaderData(var["PerFrameCB"]["nbtf"]);
-    mpNBTF->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpWeightBuffer, mpBiasBuffer);
-
-    if (mInferType == InferType::CUDAINT8 || mInferType == InferType::CUDAFP16)
-        var["cudaInputUIntBuffer"].setUav(mpInputBuffer->getUAV());
-
-    var["cudaInputBuffer"] = mpInputBuffer;
+    var["PerFrameCB"]["gDebugMLP"] = mMLPDebug;
     var["cudaVaildBuffer"] = mpVaildBuffer;
-
     var["gOutputColor"] = renderData.getTexture("color");
-    var["btfInput"] = mpPackedInputBuffer;
-    var["uvWoyz"] = mpUVWoyz;
-    var["dfDxy"] = mpDfDxy;
+    var["btfInput"] = mpPackedInputBuffer,
+    mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtf"]);
+    mpNBTFInt8->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpWeightBuffer, mpBiasBuffer);
 
-    // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
-    // mpPixelDebug->prepareProgram(mpInferPass->getProgram(), mpInferPass->getRootVar());
+    mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
+    mpPixelDebug->prepareProgram(mpInferPass->getProgram(), mpInferPass->getRootVar());
 
     mpInferPass->execute(pRenderContext, targetDim.x, targetDim.y);
-
-    // mpPixelDebug->endFrame(pRenderContext);
-
+    mpPixelDebug->endFrame(pRenderContext);
     pRenderContext->submit(false);
     pRenderContext->signal(mpFence1.get());
     mpFence1->wait();
-
-    // pRenderContext->signal(mpFence1.get());
-    // mpFence1->wait();
 }
 void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
     Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
     createBuffer(mpOutputBuffer, mpDevice, targetDim, 4);
-    // timer start
     cudaEventRecord(mCudaStart, NULL);
     for (int i = 0; i < cudaInferTimes; i++)
     {
         if (mInferType == InferType::CUDAINT8)
-
-            // launchInferInt8Tex(
-            //     (int*)mpQInt8Buffer->getGpuAddress(),
-            //     (int*)mpPackedInputBuffer->getGpuAddress(),
-            //     mHTexObj,
-            //     mDTexObj,
-            //     mUTexObj,
-            //     (float*)mpOutputBuffer->getGpuAddress(),
-            //     targetDim.x,
-            //     targetDim.y,
-            //     (int*)mpVaildBuffer->getGpuAddress(),
-            //      mCurvatureParas.z * 10
-            // );
             mpNBTFInt8->mpMLPCuda->inferInt8(
                 (int*)mpPackedInputBuffer->getGpuAddress(),
                 (float*)mpOutputBuffer->getGpuAddress(),
@@ -337,42 +290,25 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
                 mCurvatureParas.z * 10
             );
 
+        else if (mInferType == InferType::CUDAFP16)
 
-
-        // else if (mInferType == InferType::CUDAFP16)
-
-        //     launchInferFP16(
-        //         (__half*)mpWeightFP16Buffer->getGpuAddress(),
-        //         (__half*)mpBiasFP16Buffer->getGpuAddress(),
-        //         (int*)mpInputBuffer->getGpuAddress(),
-        //         (float*)mpOutputBuffer->getGpuAddress(),
-        //         targetDim.x,
-        //         targetDim.y,
-        //         (int*)mpVaildBuffer->getGpuAddress()
-        //     );
-        // else
-        //     launchInferFP32Tex(
-        //         (float*)mpWeightBuffer->getGpuAddress(),
-        //         (float*)mpBiasBuffer->getGpuAddress(),
-        //         (int*)mpPackedInputBuffer->getGpuAddress(),
-        //         mHFP32TexObj,
-        //         mDFP32TexObj,
-        //         mUFP32TexObj,
-        //         (float*)mpOutputBuffer->getGpuAddress(),
-        //         targetDim.x,
-        //         targetDim.y,
-        //         (int*)mpVaildBuffer->getGpuAddress()
-        //     );
-
-        // launchInferFP32(
-        //     (float*)mpWeightBuffer->getGpuAddress(),
-        //     (float*)mpBiasBuffer->getGpuAddress(),
-        //     (float*)mpInputBuffer->getGpuAddress(),
-        //     (float*)mpOutputBuffer->getGpuAddress(),
-        //     targetDim.x,
-        //     targetDim.y,
-        //     (int*)mpVaildBuffer->getGpuAddress()
-        // );
+            mpNBTFInt8->mpMLPCuda->inferFp16(
+                (int*)mpPackedInputBuffer->getGpuAddress(),
+                (float*)mpOutputBuffer->getGpuAddress(),
+                targetDim.x,
+                targetDim.y,
+                (int*)mpVaildBuffer->getGpuAddress(),
+                mCurvatureParas.z * 10
+            );
+        else
+            mpNBTFInt8->mpMLPCuda->inferFp32(
+                (int*)mpPackedInputBuffer->getGpuAddress(),
+                (float*)mpOutputBuffer->getGpuAddress(),
+                targetDim.x,
+                targetDim.y,
+                (int*)mpVaildBuffer->getGpuAddress(),
+                mCurvatureParas.z * 10
+            );
     }
 
     // timer end
@@ -564,7 +500,7 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
         mOptionsChanged = false;
     }
     mFrameCount++;
-    // // // Preparation 2: generate mipmaps for each texture
+
     // if (!mMipGenerated)
     // {
     //     createMaxMip(pRenderContext, renderData);
@@ -575,15 +511,15 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     // Real rendering starts here
     renderHF(pRenderContext, renderData);
 
-    if (mMLPDebug)
-    {
-        return;
-    }
-
-    // if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
+    // if (mMLPDebug)
     // {
-    //     nnInferPass(pRenderContext, renderData);
+    //     return;
     // }
+
+    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
+    {
+        nnInferPass(pRenderContext, renderData);
+    }
 
     if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
     {
@@ -784,33 +720,16 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         cudaWeight.data()
     );
 
-    logInfo("Weight buffer size: " + std::to_string(cudaWeight.size()));
-
-    std::vector<__half> cudaWeightFP16(cudaWeight.size());
-    for (size_t i = 0; i < cudaWeight.size(); i++)
-    {
-        cudaWeightFP16[i] = __float2half(cudaWeight[i]);
-    }
-
-    mpWeightFP16Buffer = mpDevice->createBuffer(
-        cudaWeightFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaWeightFP16.data()
-    );
-
-
-
+    logInfo("==============Weight buffer size: " + std::to_string(cudaWeight.size()));
     std::vector<float>().swap(cudaWeight);
-    std::vector<__half>().swap(cudaWeightFP16);
 
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
 
     mpTextureSynthesis->readHFData(fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(), mpDevice);
     generateMaxMip(pRenderContext, mpTextureSynthesis->mpHFT);
 
-    mpMLP = std::make_unique<MLP>(mpDevice, mNetName);
     mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, false);
     mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
-
-
 
     DefineList defines = mpScene->getSceneDefines();
     mpVisualizeMapsPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/VisualizeMaps.cs.slang", "csMain", defines);
@@ -822,21 +741,6 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     cudaEventCreate(&mCudaStop);
     // auto kernel = createNVRTCProgram();
 
-    std::vector<float> int8Weight =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Weight_int8_{}.bin", getProjectDirectory(), mNetInt8Name).c_str());
-
-    std::vector<int> int8WeightInt(int8Weight.size() / 4);
-    for (size_t i = 0; i < int8WeightInt.size(); i++)
-    {
-        int8WeightInt[i] =
-            packInt8x4((int)int8Weight[i * 4], (int)int8Weight[i * 4 + 1], (int)int8Weight[i * 4 + 2], (int)int8Weight[i * 4 + 3]);
-    }
-
-    mpQInt8Buffer = mpDevice->createBuffer(
-        int8WeightInt.size() * sizeof(int), ResourceBindFlags::Shared, MemoryType::DeviceLocal, int8WeightInt.data()
-    );
-    logInfo("QINT8 buffer size: " + std::to_string(int8Weight.size()));
-    logInfo("QINT8 buffer  {} {} {} {}", int8Weight[0], int8Weight[1], int8Weight[2], int8Weight[3]);
     mpFence = mpDevice->createFence();
     mpFence->breakStrongReferenceToDevice();
 
@@ -845,17 +749,6 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 
     mpFence2 = mpDevice->createFence();
     mpFence2->breakStrongReferenceToDevice();
-
-    mUTexObj =
-        createCudaTextureArray(mpNBTFInt8->mUP.featureData, mpNBTFInt8->mUP.texDim.x, mpNBTFInt8->mUP.texDim.x, mpNBTFInt8->mUP.texDim.y);
-    mHTexObj =
-        createCudaTextureArray(mpNBTFInt8->mHP.featureData, mpNBTFInt8->mHP.texDim.x, mpNBTFInt8->mHP.texDim.x, mpNBTFInt8->mHP.texDim.y);
-    mDTexObj =
-        createCudaTextureArray(mpNBTFInt8->mDP.featureData, mpNBTFInt8->mDP.texDim.x, mpNBTFInt8->mDP.texDim.x, mpNBTFInt8->mDP.texDim.y);
-
-    mUFP32TexObj = createCudaTextureArray(mpNBTF->mUP.featureData, mpNBTF->mUP.texDim.x, mpNBTF->mUP.texDim.x, mpNBTF->mUP.texDim.y);
-    mHFP32TexObj = createCudaTextureArray(mpNBTF->mHP.featureData, mpNBTF->mHP.texDim.x, mpNBTF->mHP.texDim.x, mpNBTF->mHP.texDim.y);
-    mDFP32TexObj = createCudaTextureArray(mpNBTF->mDP.featureData, mpNBTF->mDP.texDim.x, mpNBTF->mDP.texDim.x, mpNBTF->mDP.texDim.y);
 }
 
 void HFTracing::prepareVars()

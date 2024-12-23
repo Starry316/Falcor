@@ -21,7 +21,7 @@ MLP::MLP(ref<Device> pDevice, std::string networkName)
     mLayerNum = metaBuffer[0];
     int totalWeightNum = 0;
     int totalBiasNum = 0;
-    logInfo("[MLP] Layer num: {}", mLayerNum);
+    logInfo("[MLP] {} Layer num: {}", networkName, mLayerNum);
     for (int i = 1; i < mLayerNum * 2 + 1; i += 2)
     {
         logInfo("[MLP] {} -> {}", metaBuffer[i], metaBuffer[i + 1]);
@@ -66,13 +66,6 @@ MLP::MLP(ref<Device> pDevice, std::string networkName)
     std::vector<float>().swap(biasBuffer);
     std::vector<float>().swap(metaBuffer);
 
-    // Sampler::Desc samplerDesc;
-    // samplerDesc.setAddressingMode(TextureAddressingMode::Wrap, TextureAddressingMode::Wrap, TextureAddressingMode::Wrap);
-    // pSampler = pDevice->createSampler(samplerDesc);
-
-    // Sampler::Desc samplerTileDesc;
-    // samplerTileDesc.setAddressingMode(TextureAddressingMode::Clamp, TextureAddressingMode::Clamp, TextureAddressingMode::Clamp);
-    // pTileSampler = pDevice->createSampler(samplerTileDesc);
 }
 void MLP::bindShaderData(const ShaderVar& var) const
 {
