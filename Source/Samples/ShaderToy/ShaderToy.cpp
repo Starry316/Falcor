@@ -142,56 +142,56 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     // mpTextureSynthesis->readHFData("D:/textures/ubo/leather11.png", getDevice());
     mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
 
-    std::vector<float> cudaWeight =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_flatten_{}.bin", getProjectDirectory(), mNetName).c_str());
-    std::vector<float> cudaBias =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", getProjectDirectory(), mNetName).c_str());
+    // std::vector<float> cudaWeight =
+    //     readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_flatten_{}.bin", getProjectDirectory(), mNetName).c_str());
+    // std::vector<float> cudaBias =
+    //     readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", getProjectDirectory(), mNetName).c_str());
 
-    for (size_t i = 0; i < cudaBias.size(); i++)
-    {
-        logInfo("Bias: " + std::to_string(cudaBias[i]));
-    }
+    // for (size_t i = 0; i < cudaBias.size(); i++)
+    // {
+    //     logInfo("Bias: " + std::to_string(cudaBias[i]));
+    // }
 
-    mpWeightBuffer = getDevice()->createBuffer(
-        cudaWeight.size() * sizeof(float),
-        ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-        MemoryType::DeviceLocal,
-        cudaWeight.data()
-    );
+    // mpWeightBuffer = getDevice()->createBuffer(
+    //     cudaWeight.size() * sizeof(float),
+    //     ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+    //     MemoryType::DeviceLocal,
+    //     cudaWeight.data()
+    // );
 
-    mpBiasBuffer = getDevice()->createBuffer(
-        cudaBias.size() * sizeof(float),
-        ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-        MemoryType::DeviceLocal,
-        cudaBias.data()
-    );
+    // mpBiasBuffer = getDevice()->createBuffer(
+    //     cudaBias.size() * sizeof(float),
+    //     ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+    //     MemoryType::DeviceLocal,
+    //     cudaBias.data()
+    // );
 
-    std::vector<__half> cudaWeightFP16(cudaWeight.size());
-    for (size_t i = 0; i < cudaWeight.size(); i++)
-    {
-        cudaWeightFP16[i] = __float2half(cudaWeight[i]);
-    }
-    std::vector<__half> cudaBiasFP16(cudaBias.size());
-    for (size_t i = 0; i < cudaBias.size(); i++)
-    {
-        cudaBiasFP16[i] = __float2half(cudaBias[i]);
-    }
+    // std::vector<__half> cudaWeightFP16(cudaWeight.size());
+    // for (size_t i = 0; i < cudaWeight.size(); i++)
+    // {
+    //     cudaWeightFP16[i] = __float2half(cudaWeight[i]);
+    // }
+    // std::vector<__half> cudaBiasFP16(cudaBias.size());
+    // for (size_t i = 0; i < cudaBias.size(); i++)
+    // {
+    //     cudaBiasFP16[i] = __float2half(cudaBias[i]);
+    // }
 
-    mpWeightFP16Buffer = getDevice()->createBuffer(
-        cudaWeightFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaWeightFP16.data()
-    );
+    // mpWeightFP16Buffer = getDevice()->createBuffer(
+    //     cudaWeightFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaWeightFP16.data()
+    // );
 
-    mpBiasFP16Buffer = getDevice()->createBuffer(
-        cudaBiasFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaBiasFP16.data()
-    );
+    // mpBiasFP16Buffer = getDevice()->createBuffer(
+    //     cudaBiasFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaBiasFP16.data()
+    // );
 
-    std::vector<float>().swap(cudaWeight);
-    std::vector<float>().swap(cudaBias);
+    // std::vector<float>().swap(cudaWeight);
+    // std::vector<float>().swap(cudaBias);
 
-    std::vector<__half>().swap(cudaWeightFP16);
-    std::vector<__half>().swap(cudaBiasFP16);
+    // std::vector<__half>().swap(cudaWeightFP16);
+    // std::vector<__half>().swap(cudaBiasFP16);
 
-    mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, true);
+    // mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, true);
     mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
 
     cudaEventCreate(&mCudaStart);
@@ -298,7 +298,9 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
         //         targetDim.y
         //     );
         // else
-            testTexture((int*)mpQInt8Buffer->getGpuAddress(), (float*)mpTestInput->getGpuAddress(),mHTexObj, mDTexObj, mUTexObj, output, targetDim.x, targetDim.y);
+        //
+        mpNBTFInt8->mpMLPCuda->inferInt8Test((float*)mpTestInput->getGpuAddress(), output,  targetDim.x, targetDim.y, 1);
+            // testTexture((int*)mpNBTFInt8->mpMLPCuda->mpInt8Buffer->getGpuAddress(), (float*)mpTestInput->getGpuAddress(),mpNBTFInt8->mpMLPCuda->mHTexObj, mpNBTFInt8->mpMLPCuda->mDTexObj, mpNBTFInt8->mpMLPCuda->mUTexObj, output, targetDim.x, targetDim.y);
 
         // testTextureFP32(
         //     (float*)mpWeightBuffer->getGpuAddress(),
@@ -341,8 +343,8 @@ void ShaderToy::bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     else
         mpBindInputPass->getRootVar()["cudaInputBuffer"] = mpInputBuffer;
     mpBindInputPass->getRootVar()["testInput"] = mpTestInput;
-    mpNBTF->bindShaderData(mpBindInputPass->getRootVar()["CB"]["nbtf"]);
-    mpNBTFInt8->bindShaderData(mpBindInputPass->getRootVar()["CB"]["nbtfInt8"]);
+    // mpNBTF->bindShaderData(mpBindInputPass->getRootVar()["CB"]["nbtf"]);
+    // mpNBTFInt8->bindShaderData(mpBindInputPass->getRootVar()["CB"]["nbtfInt8"]);
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
     mpPixelDebug->prepareProgram(mpBindInputPass->getProgram(), mpBindInputPass->getRootVar());

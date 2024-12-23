@@ -57,5 +57,13 @@ void MLPCuda::loadInt8(ref<Device> pDevice, std::string networkPath)
 void MLPCuda::inferInt8(int* packedInput, float* output, int width, int height, int* valid, float scale)
 {
     launchInferInt8Tex((int*)mpInt8Buffer->getGpuAddress(), packedInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, valid, scale);
-} // namespace Falcor
+}
+void MLPCuda::inferInt8Test(float* testInput, float* output, int width, int height, float scale)
+{
+    launchInferInt8TexTest((int*)mpInt8Buffer->getGpuAddress(), testInput, mHTexObj, mDTexObj, mUTexObj, output, width, height,  scale);
+}
+
+
+
+
 }

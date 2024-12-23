@@ -314,15 +314,8 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
     cudaEventRecord(mCudaStart, NULL);
     for (int i = 0; i < cudaInferTimes; i++)
     {
-        // if (mInferType == InferType::CUDAINT8)
-            // launchInferInt8(
-            //     (int*)mpQInt8Buffer->getGpuAddress(),
-            //     (int*)mpInputBuffer->getGpuAddress(),
-            //     (float*)mpOutputBuffer->getGpuAddress(),
-            //     targetDim.x,
-            //     targetDim.y,
-            //     (int*)mpVaildBuffer->getGpuAddress()
-            // );
+        if (mInferType == InferType::CUDAINT8)
+
             // launchInferInt8Tex(
             //     (int*)mpQInt8Buffer->getGpuAddress(),
             //     (int*)mpPackedInputBuffer->getGpuAddress(),
@@ -344,18 +337,7 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
                 mCurvatureParas.z * 10
             );
 
-            // launchInferInt8Tex(
-            //     (int*)mpNBTFInt8->mpMLPCuda->mpInt8Buffer->getGpuAddress(),
-            //     (int*)mpPackedInputBuffer->getGpuAddress(),
-            //     mpNBTFInt8->mpMLPCuda->mHTexObj,
-            //     mpNBTFInt8->mpMLPCuda->mDTexObj,
-            //     mpNBTFInt8->mpMLPCuda->mUTexObj,
-            //     (float*)mpOutputBuffer->getGpuAddress(),
-            //     targetDim.x,
-            //     targetDim.y,
-            //     (int*)mpVaildBuffer->getGpuAddress(),
-            //      mCurvatureParas.z * 10
-            // );
+
 
         // else if (mInferType == InferType::CUDAFP16)
 

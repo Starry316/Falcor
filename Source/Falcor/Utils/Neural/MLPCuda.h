@@ -21,6 +21,7 @@ public:
     // void loadTex(ref<Device> pDevice, std::string featurePath);
 
     void inferInt8(int* packedInput, float* output, int width, int height, int* valid, float scale);
+    void inferInt8Test(float* testInput, float* output, int width, int height, float scale);
 
     ref<Buffer> mpInt8Buffer;
     ref<Buffer> mpFp32Buffer;

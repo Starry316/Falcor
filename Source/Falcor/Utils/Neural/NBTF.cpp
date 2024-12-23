@@ -31,26 +31,16 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
 
     ResourceBindFlags bindFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
 
-    if (mHistogram)
-    {
-        mpTextureSynthesis->precomputeFeatureData(UPlaneBuffer, mUP.texDim, pDevice);
-    }
+    // if (mHistogram)
+    // {
+    //     mpTextureSynthesis->precomputeFeatureData(UPlaneBuffer, mUP.texDim, pDevice);
+    // }
 
     // Save for cuda
     mUP.featureData = UPlaneBuffer;
     mHP.featureData = HPlaneBuffer;
     mDP.featureData = DPlaneBuffer;
 
-    // if (mBuildCuda)
-    // {
-    //     bindFlags |= ResourceBindFlags::Shared;
-    //     mUP.featureBuffer =
-    //         pDevice->createBuffer(UPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, UPlaneBuffer.data());
-    //     mHP.featureBuffer =
-    //         pDevice->createBuffer(HPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, HPlaneBuffer.data());
-    //     mDP.featureBuffer =
-    //         pDevice->createBuffer(DPlaneBuffer.size() * sizeof(float), bindFlags, MemoryType::DeviceLocal, DPlaneBuffer.data());
-    // }
 
     mUP.featureTex = pDevice->createTexture2D(
         mUP.texDim.x, mUP.texDim.x, ResourceFormat::RGBA32Float, mUP.texDim.y, Resource::kMaxPossible, UPlaneBuffer.data(), bindFlags

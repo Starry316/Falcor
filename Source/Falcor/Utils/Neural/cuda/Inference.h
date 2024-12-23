@@ -11,15 +11,16 @@ extern void launchInferFP32(
     int* validMask
 );
 
-extern void launchInferInt8(int* weight, int* input, float* output, unsigned int width, unsigned int height, int* validMask);
-extern void launchInferFP16(
-    __half* weighth,
-    __half* biash,
-    int* input,
+extern void launchInferInt8TexTest(
+    int* weight,
+    float* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
     float* output,
     unsigned int width,
     unsigned int height,
-    int* validMask
+     float uvScale
 );
 void launchInferInt8Tex(
     int* weight,
