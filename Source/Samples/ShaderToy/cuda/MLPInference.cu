@@ -1,8 +1,8 @@
 #include "MLPInference.h"
 #include "cudaUtils.h"
 #define IN_NUM 24
-#define HIDDEN_NUM 24
-#define OUT_NUM 24
+#define HIDDEN_NUM 32
+#define OUT_NUM 32
 #define HALF_ACC 1
 
 __global__ void inferInt8(int* weight, int* input, float* output, unsigned int width, unsigned int height, int debugOffset)
@@ -521,13 +521,22 @@ __global__ void testTex(
     unsigned int height
 )
 {
-    __shared__ int W[450];
+    __shared__ int W[768];
     unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
-    if (localIdx < 225)
+    // if (localIdx < 256)
+    // {
+    //     W[2 * localIdx] = weight[2 * localIdx];
+    //     W[2 * localIdx + 1] = weight[2 * localIdx + 1];
+    // }
+
+    if (localIdx < 256)
     {
-        W[2 * localIdx] = weight[2 * localIdx];
-        W[2 * localIdx + 1] = weight[2 * localIdx + 1];
+        for(int i = 0; i<3; i++)
+        {
+            W[3 * localIdx + i] = weight[3 * localIdx + i];
+        }
     }
+    // int* W = weight;
     __syncthreads();
 
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -538,8 +547,10 @@ __global__ void testTex(
     float u = (float)x / (float)height;
     float v = (float)y / (float)height;
 
-    int val1[24];
-    int val2[6];
+    int val1[32];
+    int val2[8];
+
+
 
     // val2[1] = quantizeInt8x4_safe( 0.0200, 0.9998, 0.0025, 0.0025, scaleIn1);
     int inputOffset = 0;
@@ -548,23 +559,45 @@ __global__ void testTex(
     float d1 = testInput[4 * (y * width + x) + 2];
     float d2 = testInput[4 * (y * width + x) + 3];
 
-    float4 val = tex2DLayered<float4>(HP, h1, h2, 0);
-    val2[0] = quantizeInt8x4f_safe(val, scaleIn1);
+    for (int i = 0; i < 8; i++)
+    {
+        val2[i] = i;
+    }
 
-    val = tex2DLayered<float4>(HP, h1, h2, 1);
-    val2[1] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    val = tex2DLayered<float4>(UP, u, v, 0);
-    val2[2] = quantizeInt8x4f_safe(val, scaleIn1);
+    // float4 val = tex2DLayered<float4>(HP, h1, h2, 0);
+    // val2[0] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    val = tex2DLayered<float4>(UP, u, v, 1);
-    val2[3] = quantizeInt8x4f_safe(val, scaleIn1);
+    // val = tex2DLayered<float4>(HP, h1, h2, 1);
+    // val2[1] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    val = tex2DLayered<float4>(DP, d1, d2, 0);
-    val2[4] = quantizeInt8x4f_safe(val, scaleIn1);
+    // val = tex2DLayered<float4>(UP, u, v, 0);
+    // val2[2] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    val = tex2DLayered<float4>(DP, d1, d2, 1);
-    val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
+    // val = tex2DLayered<float4>(UP, u, v, 1);
+    // val2[3] = quantizeInt8x4f_safe(val, scaleIn1);
+
+    // // val = tex2DLayered<float4>(UP, u, v, 2);
+    // // val2[4] = quantizeInt8x4f_safe(val, scaleIn1);
+
+    // // val = tex2DLayered<float4>(UP, u, v, 3);
+    // // val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
+
+
+
+    // val = tex2DLayered<float4>(DP, d1, d2, 0);
+    // val2[4] = quantizeInt8x4f_safe(val, scaleIn1);
+
+    // val = tex2DLayered<float4>(DP, d1, d2, 1);
+    // val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
+
+
+    // output[4 * (y * width + x) + 0] = dequantizeInt8h_relu(val2[0], scaleIn1);
+    // output[4 * (y * width + x) + 1] = dequantizeInt8h_relu(val2[1], scaleIn1);
+    // output[4 * (y * width + x) + 2] = dequantizeInt8h_relu(val2[2], scaleIn1);
+
+
+
 
     int offset = 0;
     int hiddenNum = HIDDEN_NUM;

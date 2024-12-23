@@ -4,6 +4,8 @@
 #include "Core/Platform/OS.h"
 #include "Core/API/Device.h"
 #include "Utils/Math/FormatConversion.h"
+#include "IOHelper.h"
+#include "cuda/TextureHelper.h"
 #include <fstream>
 namespace Falcor
 {
@@ -70,13 +72,39 @@ NBTF::NBTF(ref<Device> pDevice, std::string networkName, bool buildCuda)
     mNetworkName = networkName;
     mBuildCuda = buildCuda;
     mHistogram = true;
-    mpMLP = std::make_unique<MLP>(pDevice, networkName);
+
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
     loadFeature(pDevice, networkName);
+
+
+    if (buildCuda)
+    {
+        mpMLPCuda = std::make_unique<MLPCuda>();
+        mpMLPCuda->loadInt8(pDevice, fmt::format("{}/media/BTF/networks/Weight_int8_{}.bin", getProjectDirectory(), networkName));
+        mpMLPCuda->loadFP32(pDevice, fmt::format("{}/media/BTF/networks/Weight_fp32_{}.bin", getProjectDirectory(), networkName));
+
+        mpMLPCuda->mUTexObj = createCudaTextureArray(
+            mUP.featureData, mUP.texDim.x,mUP.texDim.x, mUP.texDim.y
+        );
+        mpMLPCuda->mHTexObj = createCudaTextureArray(
+            mHP.featureData, mHP.texDim.x, mHP.texDim.x,mHP.texDim.y
+        );
+        mpMLPCuda->mDTexObj = createCudaTextureArray(
+           mDP.featureData, mDP.texDim.x, mDP.texDim.x, mDP.texDim.y
+        );
+    }
+    else
+    {
+        mpMLP = std::make_unique<MLP>(pDevice, networkName);
+    }
+
 }
 
 void NBTF::bindShaderData(const ShaderVar& var) const
 {
+    if (mBuildCuda)
+        return;
+
     mpMLP->bindShaderData(var["mlp"]);
     if (mHistogram)
         mpTextureSynthesis->bindFeatureData(var["histoFeatureData"]);

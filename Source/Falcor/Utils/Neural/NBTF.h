@@ -5,6 +5,7 @@
 #include <memory>
 #include <random>
 #include "MLP.h"
+#include "MLPCuda.h"
 #include "Utils/Texture/Synthesis.h"
 namespace Falcor
 {
@@ -35,6 +36,7 @@ public:
     FeatureTex mTPInv;
 
     std::unique_ptr<MLP> mpMLP;
+    std::unique_ptr<MLPCuda> mpMLPCuda;
 
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
     std::string mNetworkName;

@@ -1,20 +1,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
-#define CUDART_ZERO_FP16 __ushort_as_half((unsigned short)0x0000U)
-#define CUDART_ONE_FP16 __ushort_as_half((unsigned short)0x3C00U)
+#include "CUDAConstant.h"
 
-__constant__ float scaleIn1 = 0.0010155849158763885;
-__constant__ float scaleOut1 = 0.002965300576761365;
-__constant__ float dequantizeScale1 = 3.0115145364106866e-06;
-__constant__ float scaleIn2 = 0.0007379016024060547;
-__constant__ float scaleOut2 = 0.0030863999854773283;
-__constant__ float dequantizeScale2 = 2.2774595436203526e-06;
-__constant__ float scaleIn3 = 0.0007874887087382376;
-__constant__ float scaleOut3 = 0.0036407688166946173;
-__constant__ float dequantizeScale3 = 2.8670642677752767e-06;
-__constant__ float scaleIn4 = 0.0010824678465723991;
-// __constantfloat scaleOut4 = 0.0035632268991321325;
-__constant__ float dequantizeScale4 = 3.857078354485566e-06;
 
 // =====================================================================================================================
 // Activation Functions
@@ -33,8 +20,6 @@ int __device__ __forceinline__ relu(int x)
 }
 float __device__ __forceinline__ leakyrelu(float x)
 {
-    // return relu(x);
-    // return max(x, 0.0f) + min(x, 0.0f) * 0.01f;
     return max(x, 0.0f) + min(x, 0.0f) * 0.01f;
 }
 __half __device__ __forceinline__ leakyrelu(__half x)
@@ -53,6 +38,13 @@ inline __device__ void unpackSnorm2x16(unsigned int packed, float& a, float& b)
     a = __int2float_rd((int)(packed << 16) >> 16) / 32767.f;
     b = __int2float_rd((int)packed >> 16) / 32767.f;
 }
+
+inline __device__ void unpackUnorm2x16(unsigned int packed, float& a, float& b)
+{
+    a = __uint2float_rd((unsigned int)(packed << 16) >> 16) / 65535.f;
+    b = __uint2float_rd((unsigned int)packed >> 16) / 65535.f;
+}
+
 
 inline __device__ void unpackSnorm2x16(unsigned int packed, __half& a, __half& b)
 {
@@ -81,7 +73,6 @@ inline __device__ int quantizeInt8x4f_safe(float a, float b, float c, float d, c
     return (clampInt8(__float2int_rn((a / scale))) & 0x000000ff) | (clampInt8(__float2int_rn(b / scale)) << 8) & 0x0000ff00 |
            (clampInt8(__float2int_rn(c / scale)) << 16) & 0x00ff0000 | (clampInt8(__float2int_rn(d / scale)) << 24) & 0xff000000;
 }
-
 inline __device__ int quantizeInt8x4f_safe(float4 v, const float scale)
 {
     return (clampInt8(__float2int_rn((v.x / scale))) & 0x000000ff) | (clampInt8(__float2int_rn(v.y / scale)) << 8) & 0x0000ff00 |

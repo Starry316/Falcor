@@ -6,7 +6,6 @@ cbuffer PerFrameCB
     uint2 gRenderTargetDim;
     bool gApplySyn;
     NBTF nbtf;
-    NBTF nbtfInt8;
     float4 gCurvatureParas;
 
 }
@@ -23,23 +22,23 @@ RWBuffer<int> cudaInputIntBuffer;
 RWBuffer<int> cudaVaildBuffer;
 RWBuffer<float> cudaInputBuffer;
 #define UV_SCALING gCurvatureParas.z * 10
-void bindInputInt8(uint2 pixel, float2 uv, float2 h, float2 d, float2 ddx, float2 ddy)
-{
-    uint offset = 6 * (pixel.y * gRenderTargetDim.x + pixel.x);
-    nbtfInt8.bindInputInt8(cudaInputUIntBuffer, offset, h, d, uv, ddx, ddy, gApplySyn);
-}
-void bindInput(uint2 pixel, float2 uv, float2 h, float2 d, float2 ddx, float2 ddy)
-{
-    uint offset = 24 * (pixel.y * gRenderTargetDim.x + pixel.x);
-    nbtf.bindInput(cudaInputBuffer, offset, h, d, uv, ddx, ddy, gApplySyn);
-}
+// void bindInputInt8(uint2 pixel, float2 uv, float2 h, float2 d, float2 ddx, float2 ddy)
+// {
+//     uint offset = 6 * (pixel.y * gRenderTargetDim.x + pixel.x);
+//     nbtfInt8.bindInputInt8(cudaInputUIntBuffer, offset, h, d, uv, ddx, ddy, gApplySyn);
+// }
+// void bindInput(uint2 pixel, float2 uv, float2 h, float2 d, float2 ddx, float2 ddy)
+// {
+//     uint offset = 24 * (pixel.y * gRenderTargetDim.x + pixel.x);
+//     nbtf.bindInput(cudaInputBuffer, offset, h, d, uv, ddx, ddy, gApplySyn);
+// }
 
-void bindInputFP16(uint2 pixel, float2 uv, float2 h, float2 d, float2 ddx, float2 ddy)
-{
-    uint offset = 16 * (pixel.y * gRenderTargetDim.x + pixel.x);
+// void bindInputFP16(uint2 pixel, float2 uv, float2 h, float2 d, float2 ddx, float2 ddy)
+// {
+//     uint offset = 16 * (pixel.y * gRenderTargetDim.x + pixel.x);
 
-    // nbtf.bindInputFP16(cudaInputUIntBuffer, offset, h, d, uv, ddx, ddy, gApplySyn);
-}
+//     // nbtf.bindInputFP16(cudaInputUIntBuffer, offset, h, d, uv, ddx, ddy, gApplySyn);
+// }
 
 [numthreads(16, 16, 1)]
 void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)

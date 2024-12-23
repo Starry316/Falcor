@@ -1,4 +1,4 @@
-#include "cudaTextureHelper.h"
+#include "TextureHelper.h"
 #include <iostream>
 cudaTextureObject_t createCudaTextureArray(std::vector<float> data, int width, int height, int layers)
 {

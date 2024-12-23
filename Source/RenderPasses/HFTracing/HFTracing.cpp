@@ -279,7 +279,6 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
 
     mpNBTF->bindShaderData(var["PerFrameCB"]["nbtf"]);
     mpNBTF->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpWeightBuffer, mpBiasBuffer);
-    mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtfInt8"]);
 
     if (mInferType == InferType::CUDAINT8 || mInferType == InferType::CUDAFP16)
         var["cudaInputUIntBuffer"].setUav(mpInputBuffer->getUAV());
@@ -315,7 +314,7 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
     cudaEventRecord(mCudaStart, NULL);
     for (int i = 0; i < cudaInferTimes; i++)
     {
-        if (mInferType == InferType::CUDAINT8)
+        // if (mInferType == InferType::CUDAINT8)
             // launchInferInt8(
             //     (int*)mpQInt8Buffer->getGpuAddress(),
             //     (int*)mpInputBuffer->getGpuAddress(),
@@ -324,41 +323,64 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
             //     targetDim.y,
             //     (int*)mpVaildBuffer->getGpuAddress()
             // );
-            launchInferInt8Tex(
-                (int*)mpQInt8Buffer->getGpuAddress(),
+            // launchInferInt8Tex(
+            //     (int*)mpQInt8Buffer->getGpuAddress(),
+            //     (int*)mpPackedInputBuffer->getGpuAddress(),
+            //     mHTexObj,
+            //     mDTexObj,
+            //     mUTexObj,
+            //     (float*)mpOutputBuffer->getGpuAddress(),
+            //     targetDim.x,
+            //     targetDim.y,
+            //     (int*)mpVaildBuffer->getGpuAddress(),
+            //      mCurvatureParas.z * 10
+            // );
+            mpNBTFInt8->mpMLPCuda->inferInt8(
                 (int*)mpPackedInputBuffer->getGpuAddress(),
-                mHTexObj,
-                mDTexObj,
-                mUTexObj,
                 (float*)mpOutputBuffer->getGpuAddress(),
                 targetDim.x,
                 targetDim.y,
-                (int*)mpVaildBuffer->getGpuAddress()
+                (int*)mpVaildBuffer->getGpuAddress(),
+                mCurvatureParas.z * 10
             );
-        else if (mInferType == InferType::CUDAFP16)
 
-            launchInferFP16(
-                (__half*)mpWeightFP16Buffer->getGpuAddress(),
-                (__half*)mpBiasFP16Buffer->getGpuAddress(),
-                (int*)mpInputBuffer->getGpuAddress(),
-                (float*)mpOutputBuffer->getGpuAddress(),
-                targetDim.x,
-                targetDim.y,
-                (int*)mpVaildBuffer->getGpuAddress()
-            );
-        else
-            launchInferFP32Tex(
-                (float*)mpWeightBuffer->getGpuAddress(),
-                (float*)mpBiasBuffer->getGpuAddress(),
-                (int*)mpPackedInputBuffer->getGpuAddress(),
-                mHFP32TexObj,
-                mDFP32TexObj,
-                mUFP32TexObj,
-                (float*)mpOutputBuffer->getGpuAddress(),
-                targetDim.x,
-                targetDim.y,
-                (int*)mpVaildBuffer->getGpuAddress()
-            );
+            // launchInferInt8Tex(
+            //     (int*)mpNBTFInt8->mpMLPCuda->mpInt8Buffer->getGpuAddress(),
+            //     (int*)mpPackedInputBuffer->getGpuAddress(),
+            //     mpNBTFInt8->mpMLPCuda->mHTexObj,
+            //     mpNBTFInt8->mpMLPCuda->mDTexObj,
+            //     mpNBTFInt8->mpMLPCuda->mUTexObj,
+            //     (float*)mpOutputBuffer->getGpuAddress(),
+            //     targetDim.x,
+            //     targetDim.y,
+            //     (int*)mpVaildBuffer->getGpuAddress(),
+            //      mCurvatureParas.z * 10
+            // );
+
+        // else if (mInferType == InferType::CUDAFP16)
+
+        //     launchInferFP16(
+        //         (__half*)mpWeightFP16Buffer->getGpuAddress(),
+        //         (__half*)mpBiasFP16Buffer->getGpuAddress(),
+        //         (int*)mpInputBuffer->getGpuAddress(),
+        //         (float*)mpOutputBuffer->getGpuAddress(),
+        //         targetDim.x,
+        //         targetDim.y,
+        //         (int*)mpVaildBuffer->getGpuAddress()
+        //     );
+        // else
+        //     launchInferFP32Tex(
+        //         (float*)mpWeightBuffer->getGpuAddress(),
+        //         (float*)mpBiasBuffer->getGpuAddress(),
+        //         (int*)mpPackedInputBuffer->getGpuAddress(),
+        //         mHFP32TexObj,
+        //         mDFP32TexObj,
+        //         mUFP32TexObj,
+        //         (float*)mpOutputBuffer->getGpuAddress(),
+        //         targetDim.x,
+        //         targetDim.y,
+        //         (int*)mpVaildBuffer->getGpuAddress()
+        //     );
 
         // launchInferFP32(
         //     (float*)mpWeightBuffer->getGpuAddress(),
@@ -502,7 +524,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gRenderTargetDim"] = targetDim;
 
     mpNBTF->bindShaderData(var["CB"]["nbtf"]);
-    mpNBTFInt8->bindShaderData(var["CB"]["nbtfInt8"]);
     mpTextureSynthesis->bindHFData(var["CB"]["hfData"]);
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["envMapSampler"]);
@@ -577,10 +598,10 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
         return;
     }
 
-    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
-    {
-        nnInferPass(pRenderContext, renderData);
-    }
+    // if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
+    // {
+    //     nnInferPass(pRenderContext, renderData);
+    // }
 
     if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
     {
@@ -732,7 +753,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     // Read in textures, we use a constant texture now
     mpHF = Texture::createFromFile(
         mpDevice,
-        fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mHFFileName).c_str(),
+        fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mHFFileName).c_str(),
         // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
         // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
         true,
@@ -744,7 +765,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         mpDevice,
         // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
         // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
-        fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mShellHFFileName).c_str(),
+        fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(),
         true,
         false,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
@@ -753,7 +774,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         mpDevice,
         // fmt::format("{}/media/BTF/scene/textures/{}.jpg", mMediaPath, mColorFileName).c_str(),
         // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
-        fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mShellHFFileName).c_str(),
+        fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(),
         // fmt::format("D:/textures/synthetic/{}.jpg", mColorFileName).c_str(),
         true,
         true,
@@ -771,8 +792,8 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     // mpMaxSampler->breakStrongReferenceToDevice();
 
     std::vector<float> cudaWeight =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_flatten_{}.bin", mMediaPath, mNetName).c_str());
-    std::vector<float> cudaBias = readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", mMediaPath, mNetName).c_str());
+        readBinaryFile(fmt::format("{}/media/BTF/networks/Weight_fp32_{}.bin", mMediaPath, mNetInt8Name).c_str());
+    // std::vector<float> cudaBias = readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", mMediaPath, mNetName).c_str());
 
     mpWeightBuffer = mpDevice->createBuffer(
         cudaWeight.size() * sizeof(float),
@@ -781,48 +802,33 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         cudaWeight.data()
     );
 
-    mpBiasBuffer = mpDevice->createBuffer(
-        cudaBias.size() * sizeof(float),
-        ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-        MemoryType::DeviceLocal,
-        cudaBias.data()
-    );
     logInfo("Weight buffer size: " + std::to_string(cudaWeight.size()));
-    logInfo("Bias buffer size: " + std::to_string(cudaBias.size()));
 
     std::vector<__half> cudaWeightFP16(cudaWeight.size());
     for (size_t i = 0; i < cudaWeight.size(); i++)
     {
         cudaWeightFP16[i] = __float2half(cudaWeight[i]);
     }
-    std::vector<__half> cudaBiasFP16(cudaBias.size());
-    for (size_t i = 0; i < cudaBias.size(); i++)
-    {
-        cudaBiasFP16[i] = __float2half(cudaBias[i]);
-    }
 
     mpWeightFP16Buffer = mpDevice->createBuffer(
         cudaWeightFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaWeightFP16.data()
     );
 
-    mpBiasFP16Buffer = mpDevice->createBuffer(
-        cudaBiasFP16.size() * sizeof(__half), ResourceBindFlags::Shared, MemoryType::DeviceLocal, cudaBiasFP16.data()
-    );
+
 
     std::vector<float>().swap(cudaWeight);
-    std::vector<float>().swap(cudaBias);
-
     std::vector<__half>().swap(cudaWeightFP16);
-    std::vector<__half>().swap(cudaBiasFP16);
 
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
 
-    mpTextureSynthesis->readHFData(fmt::format("{}/media/BTF/scene/textures/ubo/{}", mMediaPath, mShellHFFileName).c_str(), mpDevice);
+    mpTextureSynthesis->readHFData(fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(), mpDevice);
     generateMaxMip(pRenderContext, mpTextureSynthesis->mpHFT);
 
     mpMLP = std::make_unique<MLP>(mpDevice, mNetName);
-    mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, true);
+    mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, false);
     mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
+
+
 
     DefineList defines = mpScene->getSceneDefines();
     mpVisualizeMapsPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/VisualizeMaps.cs.slang", "csMain", defines);

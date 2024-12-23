@@ -273,31 +273,31 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     for (size_t i = 0; i < 10; i++)
     {
         if (mRenderType == RenderType::CUDAINT8)
-            launchInferInt8(
-                (int*)mpQInt8Buffer->getGpuAddress(), (int*)mpInputBuffer->getGpuAddress(), output, targetDim.x, targetDim.y, mDebugOffset
-            );
+        //     launchInferInt8(
+        //         (int*)mpQInt8Buffer->getGpuAddress(), (int*)mpInputBuffer->getGpuAddress(), output, targetDim.x, targetDim.y, mDebugOffset
+        //     );
 
-        else if (mRenderType == RenderType::CUDAFP16)
-        {
-            launchInferFP16(
-                (__half*)mpWeightFP16Buffer->getGpuAddress(),
-                (__half*)mpBiasFP16Buffer->getGpuAddress(),
-                (int*)mpInputBuffer->getGpuAddress(),
-                output,
-                targetDim.x,
-                targetDim.y
-            );
-        }
-        else if (mRenderType == RenderType::CUDA)
-            launchInferFP32(
-                (float*)mpWeightBuffer->getGpuAddress(),
-                (float*)mpBiasBuffer->getGpuAddress(),
-                (float*)mpInputBuffer->getGpuAddress(),
-                output,
-                targetDim.x,
-                targetDim.y
-            );
-        else
+        // else if (mRenderType == RenderType::CUDAFP16)
+        // {
+        //     launchInferFP16(
+        //         (__half*)mpWeightFP16Buffer->getGpuAddress(),
+        //         (__half*)mpBiasFP16Buffer->getGpuAddress(),
+        //         (int*)mpInputBuffer->getGpuAddress(),
+        //         output,
+        //         targetDim.x,
+        //         targetDim.y
+        //     );
+        // }
+        // else if (mRenderType == RenderType::CUDA)
+        //     launchInferFP32(
+        //         (float*)mpWeightBuffer->getGpuAddress(),
+        //         (float*)mpBiasBuffer->getGpuAddress(),
+        //         (float*)mpInputBuffer->getGpuAddress(),
+        //         output,
+        //         targetDim.x,
+        //         targetDim.y
+        //     );
+        // else
             testTexture((int*)mpQInt8Buffer->getGpuAddress(), (float*)mpTestInput->getGpuAddress(),mHTexObj, mDTexObj, mUTexObj, output, targetDim.x, targetDim.y);
 
         // testTextureFP32(

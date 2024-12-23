@@ -33,6 +33,7 @@
 #include "Utils/Texture/Synthesis.h"
 #include "Utils/Neural/MLP.h"
 #include "Utils/Neural/NBTF.h"
+#include "Utils/Neural/MLPCuda.h"
 #include "Rendering/Lights/EnvMapSampler.h"
 #include "cuda/MLPInference.h"
 
@@ -170,13 +171,15 @@ private:
     // Texture inputs
     std::string mMediaPath =getProjectDirectory().string();
     // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
-    std::string mHFFileName = "leather11.png";
-    std::string mShellHFFileName = "leather11.png";
+    std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
+    // std::string mShellHFFileName = "ubo/leather11.png";
+    std::string mShellHFFileName = "ganges_river_pebbles_disp_4k.png";
     std::string mColorFileName = "RoofTilesTerracotta005_COL_6K";
     std::string mNetName = "leather11_m24u8h8d8";
     // std::string mNetName = "leather11_dim16_32_cos300";
 
-    std::string mNetInt8Name = "leather11_m24u8h8d8_int8";
+    // std::string mNetInt8Name = "leather11_m24u8h8d8_int8";
+    std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
 
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;
@@ -230,6 +233,7 @@ private:
     std::unique_ptr<MLP> mpMLP;
     std::unique_ptr<NBTF> mpNBTF;
     std::unique_ptr<NBTF> mpNBTFInt8;
+    std::unique_ptr<MLPCuda> mpMLPCuda;
 
     std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;
 

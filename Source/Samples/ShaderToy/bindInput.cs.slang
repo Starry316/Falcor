@@ -110,11 +110,11 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
     testInput[4 * (pixel.y * iResolution.x + pixel.x) + 2] = d.x;
     testInput[4 * (pixel.y * iResolution.x + pixel.x) + 3] = d.y;
 
-    if (gRenderType == 1)
-        bindInput(uv, pixel);
-    else if (gRenderType == 2)
-        bindInputFP16(uv, pixel);
-    else
-        bindInputInt8(uv, pixel);
+    // if (gRenderType == 1)
+    //     bindInput(uv, pixel);
+    // else if (gRenderType == 2)
+    //     bindInputFP16(uv, pixel);
+    // else
+    //     bindInputInt8(uv, pixel);
 
 }

@@ -1,8 +1,10 @@
 #include "MLPInference.h"
 #include "cudaUtils.h"
 #define IN_NUM 24
-#define HIDDEN_NUM 24
-#define OUT_NUM 24
+#define IN_PACKED_NUM IN_NUM / 4
+#define HIDDEN_NUM 32
+#define HIDDEN_PACKED_NUM HIDDEN_NUM / 4
+// #define OUT_NUM 24
 #define HALF_ACC 1
 
 __global__ void inferInt8(int* weight, int* input, float* output, unsigned int width, unsigned int height, int* validMask)
@@ -380,15 +382,16 @@ __global__ void inferInt8Tex(
     float* output,
     unsigned int width,
     unsigned int height,
-    int* validMask
+    int* validMask, float uvScale
 )
 {
-    __shared__ int W[450];
+    __shared__ int W[768];
     unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
-    if (localIdx < 225)
+    if (localIdx < 256)
     {
-        W[2 * localIdx] = weight[2 * localIdx];
-        W[2 * localIdx + 1] = weight[2 * localIdx + 1];
+        W[3 * localIdx] = weight[3 * localIdx];
+        W[3 * localIdx + 1] = weight[3 * localIdx + 1];
+        W[3 * localIdx + 2] = weight[3 * localIdx + 2];
     }
     __syncthreads();
 
@@ -398,8 +401,15 @@ __global__ void inferInt8Tex(
         return;
     if (validMask[y * width + x] == 0)
         return;
-    int val1[24];
-    int val2[6];
+
+    int offset = 0;
+    int hiddenNum = HIDDEN_NUM;
+    int hiddenPackedNum = HIDDEN_PACKED_NUM;
+    int inPackedNum = IN_PACKED_NUM;
+    int outNum = 3;
+
+    int val1[HIDDEN_NUM];
+    int val2[HIDDEN_PACKED_NUM];
 
     float h1, h2;
     float d1, d2;
@@ -414,10 +424,10 @@ __global__ void inferInt8Tex(
     val = tex2DLayered<float4>(HP, h1, h2, 1);
     val2[1] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    val = tex2DLayered<float4>(UP, u * 6.5, v * 6.5, 0);
+    val = tex2DLayered<float4>(UP, v * uvScale, u * uvScale, 0);
     val2[2] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    val = tex2DLayered<float4>(UP, u * 6.5, v * 6.5, 1);
+    val = tex2DLayered<float4>(UP, v *uvScale, u * uvScale, 1);
     val2[3] = quantizeInt8x4f_safe(val, scaleIn1);
 
     val = tex2DLayered<float4>(DP, d1, d2, 0);
@@ -426,22 +436,18 @@ __global__ void inferInt8Tex(
     val = tex2DLayered<float4>(DP, d1, d2, 1);
     val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    int offset = 0;
-    int hiddenNum = HIDDEN_NUM;
-    int hiddenPackedNum = hiddenNum / 4;
-    int inNum = IN_NUM / 4;
-    int outNum = 3;
+
 
     // layer 1
     for (int k = 0; k < hiddenNum; k++)
     {
         val1[k] = 0;
-        for (int j = 0; j < inNum; j++)
+        for (int j = 0; j < inPackedNum; j++)
         {
-            val1[k] = __dp4a(val2[j], W[offset + k * inNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[offset + k * inPackedNum + j], val1[k]);
         }
     }
-    offset += hiddenNum * inNum;
+    offset += hiddenNum * inPackedNum;
 
     for (int k = 0; k < hiddenPackedNum; k++)
     {
@@ -557,12 +563,12 @@ void launchInferInt8Tex(
     float* output,
     unsigned int width,
     unsigned int height,
-    int* validMask
+    int* validMask,    float uvScale
 )
 {
     dim3 dimBlock(16, 16);
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-    inferInt8Tex<<<dimGrid, dimBlock>>>(weight, packedInput, HP, DP, UP, output, width, height, validMask);
+    inferInt8Tex<<<dimGrid, dimBlock>>>(weight, packedInput, HP, DP, UP, output, width, height, validMask, uvScale);
 }
 
 __global__ void inferFP32Tex(
@@ -722,6 +728,7 @@ void launchInferFP32Tex(
     unsigned int width,
     unsigned int height,
     int* validMask
+
 )
 {
     dim3 dimBlock(16, 16);

@@ -94,7 +94,7 @@ private:
     std::unique_ptr<NBTF> mpNBTFInt8;
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
     std::string mNetName = "leather11_m24u8h8d8";
-    std::string mNetInt8Name = "leather11_m24u8h8d8_int8";
+    std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
     uint mFrames = 1;
 
     bool mSynthesis = false;

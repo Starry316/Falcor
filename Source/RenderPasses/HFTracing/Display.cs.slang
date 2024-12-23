@@ -24,6 +24,10 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
         gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2],
         1.0
     );
+
+    if (any(isnan(btfVal)) || any(isinf(btfVal)))
+        btfVal = float4(0);
+
     // print("Li", uvWoyz[pixel]);
     // if (showCUDA) gOutputColor[pixel].xyz = uvWoyz[pixel].xyz * gOutputColor[pixel].xyz;
     // else gOutputColor[pixel].xyz = uvWoyz[pixel].xyz * btfVal.xyz;
