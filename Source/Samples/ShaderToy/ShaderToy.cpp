@@ -132,9 +132,9 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     mpDisplayPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/display.ps.slang");
     mpBindInputPass = ComputePass::create(getDevice(), "Samples/ShaderToy/bindInput.cs.slang", "csMain");
 
-    mpTextureSynthesis = std::make_unique<TextureSynthesis>();
+    // mpTextureSynthesis = std::make_unique<TextureSynthesis>();
 
-    mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
+    // mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
 
 
     mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
