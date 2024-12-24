@@ -251,11 +251,18 @@ __global__ void inferInt8Tex(
     val = tex2DLayered<float4>(HP, h1, h2, 1);
     val2[1] = quantizeInt8x4f_safe(val, scaleIn1);
 
+    // ======================================
+    // edit here!!
+    // val is float4
+    // val2 is int
+    // synthesize on val
     val = tex2DLayered<float4>(UP, v * uvScale, u * uvScale, 0);
     val2[2] = quantizeInt8x4f_safe(val, scaleIn1);
 
     val = tex2DLayered<float4>(UP, v * uvScale, u * uvScale, 1);
     val2[3] = quantizeInt8x4f_safe(val, scaleIn1);
+    // =======================================
+
 
     val = tex2DLayered<float4>(DP, d1, d2, 0);
     val2[4] = quantizeInt8x4f_safe(val, scaleIn1);
