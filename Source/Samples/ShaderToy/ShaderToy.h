@@ -33,7 +33,7 @@
 #include "Utils/Texture/Synthesis.h"
 #include "Utils/Neural/NBTF.h"
 #include "Utils/Debug/PixelDebug.h"
-#include "cuda/MLPInference.h"
+#include "Utils/Neural/cuda/CUDADefines.h"
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
@@ -92,7 +92,15 @@ private:
     float mUVScale = 1.0f;
     std::unique_ptr<NBTF> mpNBTFInt8;
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
+
+#ifdef PEBBLE
     std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
+#endif
+#ifdef LEATHER
+    std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
+#endif
+
+
     uint mFrames = 1;
 
     bool mSynthesis = false;
@@ -108,25 +116,11 @@ private:
     cudaEvent_t mCudaStart, mCudaStop;
     ref<Texture> mpOutColor;
     ref<Buffer> mpTestInput;
-    ref<Buffer> mpInputBuffer;
     ref<Buffer> mpOutputBuffer;
 
-    ref<Buffer> mpWeightBuffer;
-    ref<Buffer> mpBiasBuffer;
 
 
-    ref<Buffer> mpWeightFP16Buffer;
-    ref<Buffer> mpBiasFP16Buffer;
 
-    cudaTextureObject_t mTexObj;
-    cudaTextureObject_t mHTexObj;
-    cudaTextureObject_t mUTexObj;
-    cudaTextureObject_t mDTexObj;
-
-
-    ref<Buffer> mpQInt8Buffer;
-
-    int mDebugOffset = 0;
     int mCudaInferTimes = 1;
     Falcor::float2 mWo = { 0.0f, 0.0f };
     Falcor::float2 mWi = { 0.0f, 0.0f };

@@ -34,8 +34,8 @@
 #include "Utils/Neural/MLP.h"
 #include "Utils/Neural/NBTF.h"
 #include "Utils/Neural/MLPCuda.h"
+#include "Utils/Neural/cuda/CUDADefines.h"
 #include "Rendering/Lights/EnvMapSampler.h"
-#include "cuda/MLPInference.h"
 
 // #include "NvInfer.h"
 // #include "NvOnnxParser.h"
@@ -73,22 +73,22 @@ FALCOR_ENUM_REGISTER(InferType);
 enum class RenderType : uint32_t
 {
     RT,
-    WAVEFRONT_SHADER_NN,
-    SHADER_NN,
-    CUDA,
-    TRT,
-    DEBUG_MIP
+    WAVEFRONT_SHADER_NN
+    // SHADER_NN,
+    // CUDA,
+    // TRT,
+    // DEBUG_MIP
 };
 
 FALCOR_ENUM_INFO(
     RenderType,
     {
         { RenderType::RT, "RT" },
-        { RenderType::WAVEFRONT_SHADER_NN, "Wavefront Inference" },
-        { RenderType::SHADER_NN, "Shader Inference" },
-        { RenderType::CUDA, "CUDA Inference" },
-        { RenderType::TRT, "TensorRT Inference" },
-        { RenderType::DEBUG_MIP, "DEBUG MIP" }
+        { RenderType::WAVEFRONT_SHADER_NN, "Wavefront Inference" }
+        // { RenderType::SHADER_NN, "Shader Inference" },
+        // { RenderType::CUDA, "CUDA Inference" },
+        // { RenderType::TRT, "TensorRT Inference" },
+        // { RenderType::DEBUG_MIP, "DEBUG MIP" }
     }
 );
 FALCOR_ENUM_REGISTER(RenderType);
@@ -170,16 +170,18 @@ private:
     ref<ComputePass> mpDisplayPass ;
     // Texture inputs
     std::string mMediaPath =getProjectDirectory().string();
-    // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
-    std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
-    // std::string mShellHFFileName = "ubo/leather11.png";
-    std::string mShellHFFileName = "ganges_river_pebbles_disp_4k.png";
-    std::string mColorFileName = "RoofTilesTerracotta005_COL_6K";
-    std::string mNetName = "leather11_m24u8h8d8";
-    // std::string mNetName = "leather11_dim16_32_cos300";
 
-    // std::string mNetInt8Name = "leather11_m24u8h8d8_int8";
+#ifdef PEBBLE
     std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ganges_river_pebbles_disp_4k.png";
+    std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
+#endif
+
+#ifdef LEATHER
+    std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ubo/leather11.png";
+    std::string mHFFileName = "ubo/leather11.png";
+#endif
 
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;
@@ -187,20 +189,13 @@ private:
     ref<Texture> mpColor;
 
 
-    ref<Texture> mpBTFInput1;
-    ref<Texture> mpUVWoyz;
-    ref<Texture> mpDfDxy;
-
     ref<Sampler> mpMaxSampler;
 
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
     Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.085);
-    // Falcor::float4 mCurvatureParas = Falcor::float4(0.056, 1, 0.65, 0.3);
-    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 1, 0.65, 0.3);
+    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 1, 10, 0.3);
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
-
-
 
     RenderType mRenderType = RenderType::WAVEFRONT_SHADER_NN;
     InferType mInferType = InferType::CUDA;
@@ -218,22 +213,14 @@ private:
     ref<Fence> mpFence;
     ref<Fence> mpFence1;
     ref<Fence> mpFence2;
-    /// Buffer for data for the selected pixel.
-    ref<Buffer> mpPixelDataBuffer;
-    /// Staging buffer for readback of pixel data.
-    ref<Buffer> mpPixelStagingBuffer;
-    /// Pixel data for the selected pixel (if valid).
-    // PixelData mPixelData;
-    bool mPixelDataValid = false;
-    bool mPixelDataAvailable = false;
+
+
 
 
 
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
-    std::unique_ptr<MLP> mpMLP;
-    std::unique_ptr<NBTF> mpNBTF;
     std::unique_ptr<NBTF> mpNBTFInt8;
-    std::unique_ptr<MLPCuda> mpMLPCuda;
+
 
     std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;
 
@@ -249,25 +236,10 @@ private:
     int cudaInferTimes = 1;
     cudaEvent_t mCudaStart, mCudaStop;
     ref<Buffer> mpOutputBuffer;
-    ref<Texture> mpOutputTex;
-    ref<Buffer> mpInputBuffer;
     ref<Buffer> mpVaildBuffer;
     ref<Buffer> mpPackedInputBuffer;
 
-    ref<Buffer> mpWeightBuffer;
-    ref<Buffer> mpBiasBuffer;
-
-    ref<Buffer> mpWeightFP16Buffer;
-    ref<Buffer> mpBiasFP16Buffer;
-
-
-    ref<Buffer> mpQInt8Buffer;
     uint mCudaAccumulatedFrames = 1;
-    cudaTextureObject_t mHTexObj;
-    cudaTextureObject_t mHFP32TexObj;
-    cudaTextureObject_t mUTexObj;
-    cudaTextureObject_t mUFP32TexObj;
-    cudaTextureObject_t mDTexObj;
-    cudaTextureObject_t mDFP32TexObj;
+
 
 };

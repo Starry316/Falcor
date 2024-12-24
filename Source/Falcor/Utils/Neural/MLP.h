@@ -16,6 +16,7 @@ public:
 
     void bindShaderData(const ShaderVar& var) const;
     void bindDebugData(const ShaderVar& var, ref<Buffer> w, ref<Buffer> b) const;
+    void bindDebugData(const ShaderVar& var, ref<Buffer> w) const;
 
 
 private:

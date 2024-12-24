@@ -6,6 +6,8 @@ float MISWeight(float p0, float p1) {
     return q0 / (q0 + q1);
 }
 
+
+// pack inputs into one uint4 using float16
 inline uint4 packInput(float3 wi, float3 wo, float2 uv, float2 ddx, float2 ddy)
 {
     uint4 ret;
@@ -27,6 +29,7 @@ inline uint4 packInput(float3 wi, float3 wo, float2 uv, float2 ddx, float2 ddy)
     return ret;
 }
 
+// unpack input from the packed uint4
 inline void unpackInput(uint4 packed, out float2 h, out float2 d, out float2 uv, out float2 ddx, out float2 ddy)
 {
     float2 ddxy;

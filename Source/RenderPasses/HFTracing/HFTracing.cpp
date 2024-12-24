@@ -32,7 +32,7 @@
 #include "Utils/CudaUtils.h"
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-#include "cuda/cudaTextureHelper.h"
+
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
     registry.registerClass<RenderPass, HFTracing>();
@@ -259,9 +259,9 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
     var["PerFrameCB"]["gDebugMLP"] = mMLPDebug;
     var["cudaVaildBuffer"] = mpVaildBuffer;
     var["gOutputColor"] = renderData.getTexture("color");
-    var["btfInput"] = mpPackedInputBuffer,
+    var["btfInput"] = mpPackedInputBuffer;
     mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtf"]);
-    mpNBTFInt8->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpWeightBuffer, mpBiasBuffer);
+    mpNBTFInt8->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
 
     mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
     mpPixelDebug->prepareProgram(mpInferPass->getProgram(), mpInferPass->getRootVar());
@@ -287,7 +287,7 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
                 targetDim.x,
                 targetDim.y,
                 (int*)mpVaildBuffer->getGpuAddress(),
-                mCurvatureParas.z * 10
+                mCurvatureParas.z
             );
 
         else if (mInferType == InferType::CUDAFP16)
@@ -298,7 +298,7 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
                 targetDim.x,
                 targetDim.y,
                 (int*)mpVaildBuffer->getGpuAddress(),
-                mCurvatureParas.z * 10
+                mCurvatureParas.z
             );
         else
             mpNBTFInt8->mpMLPCuda->inferFp32(
@@ -307,7 +307,7 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
                 targetDim.x,
                 targetDim.y,
                 (int*)mpVaildBuffer->getGpuAddress(),
-                mCurvatureParas.z * 10
+                mCurvatureParas.z
             );
     }
 
@@ -326,11 +326,9 @@ void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& ren
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
     auto var = mpDisplayPass->getRootVar();
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
-    var["PerFrameCB"]["showCUDA"] = mUseFP16;
     var["gOutputColor"] = renderData.getTexture("color");
     var["gInputColor"] = mpOutputBuffer;
     var["cudaVaildBuffer"] = mpVaildBuffer;
-    var["uvWoyz"] = mpUVWoyz;
     // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
     // mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, targetDim.x, targetDim.y);
@@ -365,11 +363,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         }
     }
 
-    createTex(mpBTFInput1, mpDevice, targetDim, false, true);
-    createTex(mpUVWoyz, mpDevice, targetDim);
-    createTex(mpDfDxy, mpDevice, targetDim);
     createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
-    createBuffer(mpInputBuffer, mpDevice, targetDim, 24);
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
 
     // Request the light collection if emissive lights are enabled.
@@ -403,15 +397,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     else
         mTracer.pProgram->removeDefine("WAVEFRONT_SHADER_NN");
 
-    if (mRenderType == RenderType::CUDA || mRenderType == RenderType::TRT)
-        mTracer.pProgram->addDefine("CUDA_INFER");
-    else
-        mTracer.pProgram->removeDefine("CUDA_INFER");
 
-    if (mRenderType == RenderType::SHADER_NN)
-        mTracer.pProgram->addDefine("SHADER_NN");
-    else
-        mTracer.pProgram->removeDefine("SHADER_NN");
     if (mContactRefinement)
         mTracer.pProgram->addDefine("CONTACT_REFINEMENT");
     else
@@ -434,14 +420,11 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gControlParas"] = mControlParas;
     var["CB"]["gCurvatureParas"] = mCurvatureParas;
     var["CB"]["gApplySyn"] = mApplySyn;
-    // var["CB"]["gUseFP16"] = mUseFP16;
-    // var["CB"]["gInvFrameDim"] = 1.0f / Falcor::float2(targetDim);
     var["CB"]["gDebugPrism"] = mDebugPrism;
     var["CB"]["gShowTracedHF"] = mShowTracedHF;
     var["CB"]["gTracedShadowRay"] = mTracedShadowRay;
     var["CB"]["gRenderTargetDim"] = targetDim;
 
-    mpNBTF->bindShaderData(var["CB"]["nbtf"]);
     mpTextureSynthesis->bindHFData(var["CB"]["hfData"]);
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["envMapSampler"]);
@@ -460,18 +443,11 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         bind(channel);
 
     // Bind textures
-    var["gColor"].setSrv(mpColor->getSRV());
     var["gHF"].setSrv(mpHF->getSRV());
     var["gShellHF"].setSrv(mpShellHF->getSRV());
-    // var["gHFMaxMip"].setSrv(mpHFMaxMip->getSRV());
-
-    var["btfInput"].setUav(mpBTFInput1->getUAV());
-    var["uvWoyz"].setUav(mpUVWoyz->getUAV());
-    var["ddxy"].setUav(mpDfDxy->getUAV());
     var["cudaVaildBuffer"] = mpVaildBuffer;
-    var["cudaInputBuffer"].setUav(mpInputBuffer->getUAV());
-    var["gMaxSampler"] = mpMaxSampler;
     var["packedInput"] = mpPackedInputBuffer;
+    var["gMaxSampler"] = mpMaxSampler;
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
     pRenderContext->submit(false);
     pRenderContext->signal(mpFence2.get());
@@ -501,21 +477,13 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     }
     mFrameCount++;
 
-    // if (!mMipGenerated)
-    // {
-    //     createMaxMip(pRenderContext, renderData);
-    //     // mpShellHF->generateMips(pRenderContext, true);
-    //     mMipGenerated = true;
-    // }
-
-    // Real rendering starts here
+    // ======================================================================================================
+    // Step 1: Trace HF to get BTF input, the input data is packed into mpPackedInputBuffer.
+    // A valid hit mask mpVaildBuffer stores the screen space valid hits (1: valid, 0: invalid)
     renderHF(pRenderContext, renderData);
 
-    // if (mMLPDebug)
-    // {
-    //     return;
-    // }
-
+    // ======================================================================================================
+    // Step 2: Inference the BTF input to get the output color
     if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
     {
         nnInferPass(pRenderContext, renderData);
@@ -547,39 +515,36 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
     widget.tooltip("Increse = less marching steps", true);
     dirty |= widget.slider("LoD Scale", mControlParas.y, 1.0f, 100.0f);
+    widget.tooltip("Scale the LoD", true);
     dirty |= widget.slider("HF Offset", mControlParas.z, 0.0f, 1.0f);
     widget.tooltip("height = Scale * h + Offset", true);
     dirty |= widget.slider("HF Scale", mControlParas.w, 0.0f, 1.0f);
     widget.tooltip("height = Scale * h + Offset", true);
 
     dirty |= widget.slider("D", mCurvatureParas.x, 0.0f, 1.0f);
-    widget.tooltip("Distance to mesh surface", true);
-    dirty |= widget.slider("UV Scale", mCurvatureParas.z, 0.0f, 1.0f);
-    dirty |= widget.slider("shadow ray offset", mCurvatureParas.y, 0.0f, 1.0f);
-    dirty |= widget.slider("mip scale", mCurvatureParas.w, 0.0f, 11.0f);
-
-    dirty |= widget.checkbox("Contact Refinement", mContactRefinement);
-    dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
+    widget.tooltip("Max height to mesh surface, i.e., the HF tracing starting height", true);
+    dirty |= widget.slider("UV Scale", mCurvatureParas.z, 0.0f, 50.0f);
+    widget.tooltip("Scale the uv coords", true);
 
     dirty |= widget.checkbox("Traced Shadow Ray", mTracedShadowRay);
+    dirty |= widget.slider("Shadow ray offset", mCurvatureParas.y, 0.0f, 1.0f);
+    widget.tooltip("Position offset along with the normal dir. To avoid self-occlusion", true);
+    // dirty |= widget.slider("mip scale", mCurvatureParas.w, 0.0f, 11.0f);
+
+    dirty |= widget.checkbox("Contact Refinement", mContactRefinement);
+    widget.tooltip("use contact refinement tracing", true);
+    dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
 
     dirty |= widget.checkbox("Show Traced HF", mShowTracedHF);
-    dirty |= widget.checkbox("Show Cuda", mUseFP16);
-    dirty |= widget.checkbox("Cancel NN", mMLPDebug);
-
-    // if (widget.button("Save"))
-    // {
-    //     dirty = true;
-    //     mMLPDebug = true;
-    // }
-    // dirty |= widget.var("debug", mDebugPrism);
-    // widget.tooltip("0: top, 1 bot, 234 slab and fin", true);
+    dirty |= widget.checkbox("Use float4", mMLPDebug);
+    widget.tooltip("Use float4 in shader inference (debug only)", true);
 
     dirty |= widget.slider("CUDA infer times", cudaInferTimes, 1, 20);
+    widget.tooltip("For speed test, run cuda infer multiple times to get the avg running time.", true);
     widget.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
     widget.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
     widget.text("CUDA real avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames / cudaInferTimes) + " ms");
-    // widget.text("frames: " + std::to_string(mCudaAccumulatedFrames) );
+    widget.tooltip("This is the real cuda running time", true);
 
     if (widget.button("Reset Timer"))
     {
@@ -672,8 +637,6 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpHF = Texture::createFromFile(
         mpDevice,
         fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mHFFileName).c_str(),
-        // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
-        // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
         true,
         false,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
@@ -681,23 +644,18 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     // Read in textures, we use a constant texture now
     mpShellHF = Texture::createFromFile(
         mpDevice,
-        // fmt::format("D:/textures/synthetic/{}", mShellHFFileName).c_str(),
-        // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
         fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(),
         true,
         false,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
     );
-    mpColor = Texture::createFromFile(
-        mpDevice,
-        // fmt::format("{}/media/BTF/scene/textures/{}.jpg", mMediaPath, mColorFileName).c_str(),
-        // fmt::format("D:/textures/ubo/{}", mShellHFFileName).c_str(),
-        fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(),
-        // fmt::format("D:/textures/synthetic/{}.jpg", mColorFileName).c_str(),
-        true,
-        true,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
-    );
+    // mpColor = Texture::createFromFile(
+    //     mpDevice,
+    //     fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(),
+    //     true,
+    //     true,
+    //     ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
+    // );
     generateMaxMip(pRenderContext, mpShellHF);
     generateMaxMip(pRenderContext, mpHF);
 
@@ -709,26 +667,10 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpMaxSampler = mpDevice->createSampler(samplerDesc);
     // mpMaxSampler->breakStrongReferenceToDevice();
 
-    std::vector<float> cudaWeight =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Weight_fp32_{}.bin", mMediaPath, mNetInt8Name).c_str());
-    // std::vector<float> cudaBias = readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", mMediaPath, mNetName).c_str());
-
-    mpWeightBuffer = mpDevice->createBuffer(
-        cudaWeight.size() * sizeof(float),
-        ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-        MemoryType::DeviceLocal,
-        cudaWeight.data()
-    );
-
-    logInfo("==============Weight buffer size: " + std::to_string(cudaWeight.size()));
-    std::vector<float>().swap(cudaWeight);
-
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
-
     mpTextureSynthesis->readHFData(fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(), mpDevice);
     generateMaxMip(pRenderContext, mpTextureSynthesis->mpHFT);
 
-    mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, false);
     mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
 
     DefineList defines = mpScene->getSceneDefines();

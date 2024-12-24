@@ -30,7 +30,6 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "Utils/UI/TextRenderer.h"
 #include "Utils/CudaUtils.h"
-#include "cuda/cudaTextureHelper.h"
 FALCOR_EXPORT_D3D12_AGILITY_SDK
 
 void createTex(ref<Texture>& tex, ref<Device> device, Falcor::uint2 targetDim, bool buildCuda = false, bool isUint = false)
@@ -137,15 +136,7 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
 
-    std::vector<float> cudaWeight =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Weight_fp32_{}.bin", getProjectDirectory(), mNetInt8Name).c_str());
-    mpWeightBuffer = getDevice()->createBuffer(
-        cudaWeight.size() * sizeof(float),
-        ResourceBindFlags::Shared | ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-        MemoryType::DeviceLocal,
-        cudaWeight.data()
-    );
-    std::vector<float>().swap(cudaWeight);
+
     mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
 
     cudaEventCreate(&mCudaStart);
@@ -177,7 +168,7 @@ void ShaderToy::shaderInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarg
     mpDebugPass->getRootVar()["ouputColor"] = mpOutColor;
     // mpTextureSynthesis->bindHFData(mpDebugPass->getRootVar()["ToyCB"]["hfData"]);
     mpNBTFInt8->bindShaderData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]);
-    mpNBTFInt8->mpMLP->bindDebugData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]["mlp"], mpWeightBuffer, mpBiasBuffer);
+    mpNBTFInt8->mpMLP->bindDebugData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
     mpPixelDebug->prepareProgram(mpDebugPass->getProgram(), mpDebugPass->getRootVar());

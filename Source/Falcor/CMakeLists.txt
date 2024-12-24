@@ -767,6 +767,7 @@ target_sources(Falcor PRIVATE
     Utils/Neural/cuda/Inference.h
     Utils/Neural/cuda/TextureHelper.cpp
     Utils/Neural/cuda/TextureHelper.h
+    Utils/Neural/cuda/CUDADefines.h
 
 
 

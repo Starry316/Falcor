@@ -26,33 +26,7 @@
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
 
-/**
- * Minimal path tracer.
- *
- * The purpose is to use it for validation of more complex renderers.
- * The implementation here should be kept as simple/naive as possible.
- *
- * At each hit point (including the primary hit loaded from the V-buffer),
- * analytic light sources (point, directional) are sampled uniformly using
- * 1 shadow ray, and 1 scatter ray is traced to sample the hemisphere.
- * At hit/miss the scatter ray includes light from emissive surface and
- * the environment map, respectively. Traversal stops at a fixed path length.
- *
- * Each type of light (analytic, emissive, env map) can be individually
- * enabled/disabled from the host. This clutters the code a bit, but it is
- * important as not all other renderes may support all three light types.
- *
- * The host sets the following defines:
- *
- * MAX_BOUNCES             Maximum number of indirect bounces (0 means no indirect).
- * COMPUTE_DIRECT          Nonzero if direct illumination should be included.
- * USE_IMPORTANCE_SAMPLING Nonzero if importance sampling should be used for sampling materials.
- * USE_ANALYTIC_LIGHTS     Nonzero if Falcor's analytic lights should be used.
- * USE_EMISSIVE_LIGHTS     Nonzero if emissive geometry should be used as lights.
- * USE_ENV_LIGHT           Nonzero if env map is available and should be used as light source.
- * USE_ENV_BACKGROUND      Nonzero if env map is available and should be used as background.
- * is_valid_<name>         1 if optional I/O buffer with this name should be used.
- */
+
 
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"
@@ -81,7 +55,6 @@ cbuffer CB
     bool gApplySyn;
     bool gUseFP16;
     EnvMapSampler envMapSampler;
-    NBTF nbtf;
     uint gDebugPrism;
     bool gShowTracedHF;
     bool gTracedShadowRay;
@@ -92,18 +65,12 @@ cbuffer CB
 
 // Outputs
 RWTexture2D<float4> gOutputColor;
-// Texture Inputs
-Texture2D<float3> gColor;
 
 Texture2D<float> gHF;
 Texture2D<float4> gShellHF;
 Texture2D<float> gHFMaxMip;
 
-RWTexture2D<uint4> btfInput;
-RWTexture2D<float4> uvWoyz;
-RWTexture2D<float4> ddxy;
 
-RWBuffer<float> cudaInputBuffer;
 RWBuffer<uint4> packedInput;
 RWBuffer<int> cudaVaildBuffer;
 
@@ -127,7 +94,7 @@ static const float kRayTMax = FLT_MAX;
 #define HF_OFFSET gControlParas.z
 #define HF_SCALING gControlParas.w
 
-#define UV_SCALING gCurvatureParas.z * 10
+#define UV_SCALE gCurvatureParas.z
 #define MAX_HEIGHT gCurvatureParas.x
 float MISWeight(float p0, float p1)
 {
@@ -505,7 +472,9 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     {
         traceScatterRay(rayData);
     }
-
+    // =================================================================================================
+    // I used rayData.terminated to determine if the ray is terminated.
+    // There can be a better way to do this.
     cudaVaildBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] = rayData.terminated ? 0 : 1;
 
     return float4(rayData.radiance, 1.0f);
@@ -585,10 +554,9 @@ bool traceSynthesizedHeightMapEstimated(
     float entryHeightData;
     if (gApplySyn)
         entryHeightData =
-            // HexTilingHeight(gShellHF, gSampler, ddx, ddy, startPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
-            HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(startPoint.xy)) * UV_SCALING) * HF_SCALING + HF_OFFSET;
+            HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(startPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
     else
-        entryHeightData = gShellHF.SampleGrad(gSampler, frac(abs(startPoint.xy))* UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+        entryHeightData = gShellHF.SampleGrad(gSampler, frac(abs(startPoint.xy))* UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
 
     if (startPoint.z < entryHeightData)
     {
@@ -615,10 +583,10 @@ bool traceSynthesizedHeightMapEstimated(
         currentTestPoint += incrementUnit;
         float heightData;
         if (gApplySyn)
-            // heightData = HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
-            heightData = HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALING) * HF_SCALING + HF_OFFSET;
+            // heightData = HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPoint.xy * UV_SCALE) * HF_SCALING + HF_OFFSET;
+            heightData = HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
         else
-            heightData = gShellHF.SampleGrad(gSampler, frac(abs(currentTestPoint.xy))* UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+            heightData = gShellHF.SampleGrad(gSampler, frac(abs(currentTestPoint.xy))* UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         //
         // if (currentHeightDelta < 0.f)
@@ -655,10 +623,10 @@ bool traceSynthesizedHeightMapEstimated_CR(
 
     float entryHeightData;
     if (gApplySyn)
-        // entryHeightData = HexTilingHeight(gShellHF, gSampler, ddx, ddy, startPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
-        entryHeightData = HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(startPoint.xy)) * UV_SCALING) * HF_SCALING + HF_OFFSET;
+        // entryHeightData = HexTilingHeight(gShellHF, gSampler, ddx, ddy, startPoint.xy * UV_SCALE) * HF_SCALING + HF_OFFSET;
+        entryHeightData = HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(startPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
     else
-        entryHeightData = gShellHF.SampleGrad(gSampler, frac(abs(startPoint.xy)) * UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+        entryHeightData = gShellHF.SampleGrad(gSampler, frac(abs(startPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
 
     // if (startPoint.z < entryHeightData)
     // {
@@ -702,11 +670,11 @@ bool traceSynthesizedHeightMapEstimated_CR(
         float heightData;
         if (gApplySyn)
             // heightData =
-            //     HexTilingHeight(gShellHF, gSampler, coarseDdx, coarseDdy, currentTestPoint.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+            //     HexTilingHeight(gShellHF, gSampler, coarseDdx, coarseDdy, currentTestPoint.xy * UV_SCALE) * HF_SCALING + HF_OFFSET;
             heightData =
-                HistorgramBlending(hfData, gSampler, coarseDdx, coarseDdy, frac(abs(currentTestPoint.xy)) * UV_SCALING) * HF_SCALING + HF_OFFSET;
+                HistorgramBlending(hfData, gSampler, coarseDdx, coarseDdy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
         else
-            heightData = gShellHF.SampleGrad(gSampler, frac(abs(currentTestPoint.xy)) * UV_SCALING, coarseDdx, coarseDdy).x * HF_SCALING + HF_OFFSET;
+            heightData = gShellHF.SampleGrad(gSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, coarseDdx, coarseDdy).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         if (currentHeightDelta <= 0.f)
         {
@@ -731,12 +699,12 @@ bool traceSynthesizedHeightMapEstimated_CR(
                     float heightFine;
                     if (gApplySyn)
                         // heightFine =
-                        // HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPointFine.xy * UV_SCALING) * HF_SCALING + HF_OFFSET;
+                        // HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPointFine.xy * UV_SCALE) * HF_SCALING + HF_OFFSET;
                         heightFine =
-                            HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(currentTestPointFine.xy)) * UV_SCALING) * HF_SCALING + HF_OFFSET;
+                            HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(currentTestPointFine.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
                     else
                         heightFine =
-                            gShellHF.SampleGrad(gSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALING, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+                            gShellHF.SampleGrad(gSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
                     const float currentFineHeightDelta = currentTestPointFine.z - heightFine;
                     if (currentFineHeightDelta <= 0.f)
                     {
@@ -1138,26 +1106,6 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     ddx *= FOOTPRINT_SCALING;
     ddy *= FOOTPRINT_SCALING;
 
-// #ifdef RT
-
-//     rayData.radiance = float3(0, 0, 0);
-//     float3 newPos = sd.posW + sd.frame.N * gCurvatureParas.y;
-//     if (generateEnvMapSample(newPos, rayData.sg, envLi, envDir, envPdf))
-//     {
-
-//         float3 wi = sd.frame.toLocal(envDir);
-//         float NdotL = wi.z > 0 ? wi.z : 0;
-//         rayData.origin = newPos;
-//         rayData.radiance = rayData.thp * envLi * NdotL * nbtf.evalDebug(wi, wo, frac(abs(sd.uv)), ddx, ddy, gApplySyn);
-//     }
-
-//     // if (gApplySyn)
-//     //     rayData.radiance = HexTiling(gColor, gSampler, float2(0.0001), float2(0.0001), UV_SCALING * (sd.uv));
-//     // else
-//     //     rayData.radiance = gColor.SampleLevel(gSampler, sd.uv * UV_SCALING, 0);
-//     rayData.terminated = true;
-//     return;
-// #else
 
     rayData.radiance = float3(0, 0, 0);
     float3 newPos = sd.posW + sd.frame.N * gCurvatureParas.y;
@@ -1167,8 +1115,7 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         float3 wi = sd.frame.toLocal(envDir);
         float NdotL = wi.z > 0 ? wi.z : 0;
         uint4 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
-        // btfInput[pixel] = packedData;
-        // uvWoyz[pixel] = float4(rayData.thp * envLi * NdotL, 1 );
+
         packedInput[4 *(pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
         packedInput[4 *(pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
         packedInput[4 *(pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
@@ -1176,7 +1123,6 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
 
         rayData.origin = newPos;
         rayData.radiance = rayData.thp * envLi * NdotL;
-        // rayData.radiance = 1;
     }
 // #endif
 
@@ -1191,7 +1137,7 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     // float3 scatterDir = sample_cosine_hemisphere_concentric(sampleNext2D(rayData.sg), pdf);
     // rayData.origin = sd.computeRayOrigin();
     // rayData.direction = sd.frame.fromLocal(scatterDir);
-    // rayData.thp *= nbtf.evalDebug(scatterDir, wo, sd.uv * UV_SCALING, ddx, ddy, gApplySyn) / pdf;
+    // rayData.thp *= nbtf.evalDebug(scatterDir, wo, sd.uv * UV_SCALE, ddx, ddy, gApplySyn) / pdf;
     // rayData.BRDFPdf = pdf;
     // if (all(rayData.thp == 0.f))
     // {

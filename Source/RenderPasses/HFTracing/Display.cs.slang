@@ -2,10 +2,9 @@ import Utils.Debug.PixelDebug;
 cbuffer PerFrameCB
 {
     uint2 gRenderTargetDim;
-    bool showCUDA;
 }
 RWTexture2D<float4> gOutputColor;
-Texture2D<float4> uvWoyz;
+
 Buffer<float> gInputColor;
 Buffer<int> cudaVaildBuffer;
 [numthreads(16, 16, 1)]
@@ -29,7 +28,6 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
         btfVal = float4(0);
 
     // print("Li", uvWoyz[pixel]);
-    // if (showCUDA) gOutputColor[pixel].xyz = uvWoyz[pixel].xyz * gOutputColor[pixel].xyz;
-    // else gOutputColor[pixel].xyz = uvWoyz[pixel].xyz * btfVal.xyz;
+
     gOutputColor[pixel] *= btfVal;
 }

@@ -14,7 +14,7 @@ add_plugin(HFTracing)
 
 # target_include_directories(HFTracing PUBLIC ${TensorRT_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
 target_include_directories(HFTracing PUBLIC  ${CUDA_INCLUDE_DIRS})
-target_link_libraries(HFTracing PUBLIC  ${CUDA_LIBRARIES} nvrtc)
+target_link_libraries(HFTracing PUBLIC  ${CUDA_LIBRARIES} )
 
 target_sources(HFTracing PRIVATE
     HFTracing.cpp
@@ -26,17 +26,10 @@ target_sources(HFTracing PRIVATE
     CreateMaxMip.cs.slang
     Inference.cs.slang
     Display.cs.slang
-    cuda/MLPInference.cu
-    cuda/MLPInference.h
-    cuda/cudaUtils.h
     Tools/Utils.cpp
     Tools/Utils.h
-    Tools/CommonNvrtc.hpp
     Tracing/MyIntersection.slang
     BTFUtils.slang
-    cuda/cudaTextureHelper.cpp
-    cuda/cudaTextureHelper.h
-
 )
 set_target_properties(HFTracing PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 target_copy_shaders(HFTracing RenderPasses/HFTracing)

@@ -13,7 +13,7 @@ RWTexture2D<float4> gOutputColor;
 Buffer<uint> btfInput;
 RWBuffer<int> cudaVaildBuffer;
 
-#define UV_SCALING gCurvatureParas.z * 10
+#define UV_SCALE gCurvatureParas.z
 
 [numthreads(16, 16, 1)]
 void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
@@ -30,15 +30,13 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
                              btfInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3]);
         float2 h, d, uv, ddx, ddy;
         unpackInput(packed, h, d, uv, ddx, ddy);
-        uv = uv.yx * UV_SCALING;
+        uv = uv.yx * UV_SCALE;
         if (gDebugMLP)
             gOutputColor[pixel].xyz *= nbtf.evalDebug(h, d, uv, ddx, ddy, gApplySyn).xyz;
         else
             gOutputColor[pixel].xyz *= nbtf.evalDebugFP32(h, d, uv, ddx, ddy, gApplySyn).xyz;
-        // gOutputColor[pixel].xyz *= nbtf.evalDebug(h, d, uv, ddx, ddy, gApplySyn).xyz;
-        // gOutputColor[pixel].xyz *= nbtf.evalDebugFP32(h, d, uv, ddx, ddy, gApplySyn).xyz;
 
-        // print("val", val);
+
         print("uv", uv);
         print("h", h);
         print("d", d);
