@@ -23,16 +23,16 @@ __constant__ float dequantizeScale4 = 1.4493975868390407e-05;
 #endif
 
 #ifdef LEATHER
-__constant__ float scaleIn1 = 0.0029792573768645525;
-__constant__ float scaleOut1 = 0.003814279567450285;
-__constant__ float dequantizeScale1 = 1.1363720659574028e-05;
-__constant__ float scaleIn2 = 0.002033429918810725;
-__constant__ float scaleOut2 = 0.004576520062983036;
-__constant__ float dequantizeScale2 = 9.306032552558463e-06;
-__constant__ float scaleIn3 = 0.0020841280929744244;
-__constant__ float scaleOut3 = 0.007710449397563934;
-__constant__ float dequantizeScale3 = 1.6069563571363688e-05;
-__constant__ float scaleIn4 = 0.0025302129797637463;
-__constant__ float scaleOut4 = 0.009046046994626522;
-__constant__ float dequantizeScale4 = 2.288842551934067e-05;
+__constant__ float scaleIn1 = 0.003400295041501522;
+__constant__ float scaleOut1 = 0.0033392827026546;
+__constant__ float dequantizeScale1 = 1.1354546586517245e-05;
+__constant__ float scaleIn2 = 0.0024283595848828554;
+__constant__ float scaleOut2 = 0.004313669633120298;
+__constant__ float dequantizeScale2 = 1.047514069796307e-05;
+__constant__ float scaleIn3 = 0.0021721271332353354;
+__constant__ float scaleOut3 = 0.009137849323451519;
+__constant__ float dequantizeScale3 = 1.9848570445901714e-05;
+__constant__ float scaleIn4 = 0.0016346105840057135;
+__constant__ float scaleOut4 = 0.009822787716984749;
+__constant__ float dequantizeScale4 = 1.605643228685949e-05;
 #endif

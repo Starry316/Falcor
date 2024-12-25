@@ -1124,6 +1124,15 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.origin = newPos;
         rayData.radiance = rayData.thp * envLi * NdotL;
     }
+
+#ifdef RT
+    let lod = ExplicitLodTextureSampler(0.f);
+    sd.uv = frac(abs(sd.uv)) * UV_SCALE;
+    let mi = gScene.materials.getMaterialInstance(sd, lod);
+    rayData.radiance *= mi.eval(sd, envDir, rayData.sg);
+#endif
+
+
 // #endif
 
 

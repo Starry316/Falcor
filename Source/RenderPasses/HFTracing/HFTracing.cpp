@@ -527,7 +527,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     widget.tooltip("Scale the uv coords", true);
 
     dirty |= widget.checkbox("Traced Shadow Ray", mTracedShadowRay);
-    dirty |= widget.slider("Shadow ray offset", mCurvatureParas.y, 0.0f, 1.0f);
+    dirty |= widget.slider("Shadow ray offset", mCurvatureParas.y, 0.0f, 0.2f);
     widget.tooltip("Position offset along with the normal dir. To avoid self-occlusion", true);
     // dirty |= widget.slider("mip scale", mCurvatureParas.w, 0.0f, 11.0f);
 
