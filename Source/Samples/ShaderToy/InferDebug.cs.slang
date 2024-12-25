@@ -19,7 +19,6 @@ cbuffer ToyCB
 RWTexture2D<float4> ouputColor;
 SamplerState gSampler;
 
-
 [numthreads(16, 16, 1)]
 void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 {
@@ -39,10 +38,7 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 
     h = hemisphereDirToDiskSquare(vh);
     d = hemisphereDirToDiskSquare(vd);
-    if (!gDebugMLP)
-        ouputColor[pixel] = float4(nbtf.evalDebug(h, d, uv.yx * gUVScaling, ddx, ddy, gSynthesis), 1.0);
-    else ouputColor[pixel] = nbtf.evalDebugFP32(h, d, uv.yx * gUVScaling, ddx, ddy, gSynthesis);
-
-
-
+    // if (!gDebugMLP)
+    ouputColor[pixel] = float4(nbtf.evalDebug(h, d, uv.yx * gUVScaling, ddx, ddy, gSynthesis), 1.0);
+    // else ouputColor[pixel] = nbtf.evalDebugFP32(h, d, uv.yx * gUVScaling, ddx, ddy, gSynthesis);
 }

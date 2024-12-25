@@ -91,6 +91,7 @@ private:
     ref<ComputePass> mpDebugPass;
     float mUVScale = 1.0f;
     std::unique_ptr<NBTF> mpNBTFInt8;
+    std::unique_ptr<NBTF> mpNBTF;
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
 
 #ifdef PEBBLE
@@ -100,13 +101,14 @@ private:
     std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
 #endif
 
-
+    std::string mNetName = "leather11_m32u16h8d8";
     uint mFrames = 1;
 
+    bool mUseTP = false;
     bool mSynthesis = false;
     bool mFP16 = true;
     bool mShowShader = false;
-    bool mDebugMLP = true;
+    bool mDebugMLP = false;
 
     RenderType mRenderType = RenderType::CUDA;
 

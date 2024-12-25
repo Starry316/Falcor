@@ -260,8 +260,14 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
     var["cudaVaildBuffer"] = mpVaildBuffer;
     var["gOutputColor"] = renderData.getTexture("color");
     var["btfInput"] = mpPackedInputBuffer;
-    mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtf"]);
-    mpNBTFInt8->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
+    if (!mUseTP)
+    {
+        mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtf"]);
+        mpNBTFInt8->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
+    }
+
+    else
+        mpNBTF->bindShaderData(var["PerFrameCB"]["nbtf"]);
 
     mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
     mpPixelDebug->prepareProgram(mpInferPass->getProgram(), mpInferPass->getRootVar());
@@ -365,7 +371,10 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
 
     createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
-
+    createTex(mpGTInferInputWi, mpDevice, targetDim, false, false);
+    createTex(mpGTInferInputWo, mpDevice, targetDim, false, false);
+    createTex(mpGTInferInputUV, mpDevice, targetDim, false, false);
+    createTex(mpGTInferInputColor, mpDevice, targetDim, false, false);
     // Request the light collection if emissive lights are enabled.
     if (mpScene->getRenderSettings().useEmissiveLights)
     {
@@ -396,7 +405,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         mTracer.pProgram->addDefine("WAVEFRONT_SHADER_NN");
     else
         mTracer.pProgram->removeDefine("WAVEFRONT_SHADER_NN");
-
 
     if (mContactRefinement)
         mTracer.pProgram->addDefine("CONTACT_REFINEMENT");
@@ -442,12 +450,21 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     for (auto channel : kOutputChannels)
         bind(channel);
 
+    pRenderContext->clearUAV(mpGTInferInputWi->getUAV().get(), Falcor::float4(0));
+    pRenderContext->clearUAV(mpGTInferInputWo->getUAV().get(), Falcor::float4(0));
+    pRenderContext->clearUAV(mpGTInferInputUV->getUAV().get(), Falcor::float4(0));
+    pRenderContext->clearUAV(mpGTInferInputColor->getUAV().get(), Falcor::float4(0));
+
     // Bind textures
     var["gHF"].setSrv(mpHF->getSRV());
     var["gShellHF"].setSrv(mpShellHF->getSRV());
     var["cudaVaildBuffer"] = mpVaildBuffer;
     var["packedInput"] = mpPackedInputBuffer;
     var["gMaxSampler"] = mpMaxSampler;
+    var["gGTInferInputWi"] = mpGTInferInputWi;
+    var["gGTInferInputWo"] = mpGTInferInputWo;
+    var["gGTInferInputUV"] = mpGTInferInputUV;
+    var["gGTInferInputColor"] = mpGTInferInputColor;
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
     pRenderContext->submit(false);
     pRenderContext->signal(mpFence2.get());
@@ -537,6 +554,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.checkbox("Show Traced HF", mShowTracedHF);
     dirty |= widget.checkbox("Use float4", mMLPDebug);
+    dirty |= widget.checkbox("Use TP", mUseTP);
     widget.tooltip("Use float4 in shader inference (debug only)", true);
 
     dirty |= widget.slider("CUDA infer times", cudaInferTimes, 1, 20);
@@ -550,6 +568,49 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     {
         mCudaAvgTime = mCudaTime;
         mCudaAccumulatedFrames = 1;
+    }
+
+    if (widget.button("Output"))
+    {
+        mOutputing = true;
+        mOutputCount = 0;
+    }
+
+    if (mOutputing)
+    {
+        if (mOutputCount > 10)
+        {
+            mOutputing = false;
+            mOutputCount = 0;
+        }
+        else
+        {
+            mpGTInferInputWi->captureToFile(
+                0,
+                0,
+                fmt::format("D:/BTFGTInput/w{}.exr", mOutputCount).c_str(),
+                Bitmap::FileFormat::ExrFile,
+                Bitmap::ExportFlags::Lossy | Bitmap::ExportFlags::ExportAlpha,
+                0
+            );
+            mpGTInferInputUV->captureToFile(
+                0,
+                0,
+                fmt::format("D:/BTFGTInput/uv{}.exr", mOutputCount).c_str(),
+                Bitmap::FileFormat::ExrFile,
+                Bitmap::ExportFlags::Lossy,
+                0
+            );
+            mpGTInferInputColor->captureToFile(
+                0,
+                0,
+                fmt::format("D:/BTFGTInput/rad{}.exr", mOutputCount).c_str(),
+                Bitmap::FileFormat::ExrFile,
+                Bitmap::ExportFlags::Lossy,
+                0
+            );
+        }
+        mOutputCount++;
     }
 
     mpPixelDebug->renderUI(widget);
@@ -672,6 +733,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     generateMaxMip(pRenderContext, mpTextureSynthesis->mpHFT);
 
     mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
+    mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, false);
 
     DefineList defines = mpScene->getSceneDefines();
     mpVisualizeMapsPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/VisualizeMaps.cs.slang", "csMain", defines);

@@ -183,10 +183,15 @@ private:
     std::string mHFFileName = "ubo/leather11.png";
 #endif
 
+    std::string mNetName = "leather11_m32u16h8d8";
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;
     ref<Texture> mpHFMaxMip;
     ref<Texture> mpColor;
+    ref<Texture> mpGTInferInputWi;
+    ref<Texture> mpGTInferInputWo;
+    ref<Texture> mpGTInferInputUV;
+    ref<Texture> mpGTInferInputColor;
 
 
     ref<Sampler> mpMaxSampler;
@@ -207,8 +212,11 @@ private:
     bool mHFBound = true;
     bool mLocalFrame = true;
     bool mCudaInfer = true;
-    bool mUseFP16 = false;
+    bool mUseTP = false;
     bool mMLPDebug = false;
+
+    bool mOutputing = false;
+    int mOutputCount = 0;
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
     ref<Fence> mpFence1;
@@ -220,6 +228,7 @@ private:
 
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
     std::unique_ptr<NBTF> mpNBTFInt8;
+    std::unique_ptr<NBTF> mpNBTF;
 
 
     std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;
@@ -238,6 +247,7 @@ private:
     ref<Buffer> mpOutputBuffer;
     ref<Buffer> mpVaildBuffer;
     ref<Buffer> mpPackedInputBuffer;
+
 
     uint mCudaAccumulatedFrames = 1;
 

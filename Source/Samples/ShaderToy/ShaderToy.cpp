@@ -136,8 +136,8 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     // mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
 
-
     mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
+    mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, false);
 
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
@@ -167,8 +167,14 @@ void ShaderToy::shaderInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarg
     var["gWi"] = mWi;
     mpDebugPass->getRootVar()["ouputColor"] = mpOutColor;
     // mpTextureSynthesis->bindHFData(mpDebugPass->getRootVar()["ToyCB"]["hfData"]);
-    mpNBTFInt8->bindShaderData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]);
-    mpNBTFInt8->mpMLP->bindDebugData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
+    if (!mUseTP)
+    {
+        mpNBTFInt8->bindShaderData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]);
+        mpNBTFInt8->mpMLP->bindDebugData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
+    }
+
+    else
+        mpNBTF->bindShaderData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]);
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
     mpPixelDebug->prepareProgram(mpDebugPass->getProgram(), mpDebugPass->getRootVar());
@@ -284,6 +290,7 @@ void ShaderToy::onGuiRender(Gui* pGui)
     dirty |= w.checkbox("Enable Synthesis", mSynthesis);
     dirty |= w.checkbox("Show shader", mShowShader);
     dirty |= w.checkbox("debug mlp", mDebugMLP);
+    dirty |= w.checkbox("Use TP", mUseTP);
     dirty |= w.button("Reset Timer");
     dirty |= w.slider("CUDA infer times", mCudaInferTimes, 1, 20);
     if (dirty)
