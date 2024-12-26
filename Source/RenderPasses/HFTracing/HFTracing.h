@@ -175,12 +175,29 @@ private:
     std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
     std::string mShellHFFileName = "ganges_river_pebbles_disp_4k.png";
     std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
+    bool mHDRBTF = false;
 #endif
 
 #ifdef LEATHER
     std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
     std::string mShellHFFileName = "ubo/leather11.png";
     std::string mHFFileName = "ubo/leather11.png";
+    bool mHDRBTF = false;
+#endif
+
+#ifdef METAL
+    std::string mNetInt8Name = "metal_m32u8h8d8_int8";
+    std::string mShellHFFileName = "metal_grate_rusty_disp_4k.png";
+    std::string mHFFileName = "metal_grate_rusty_disp_4k.png";
+    bool mHDRBTF = true;
+#endif
+
+
+#ifdef BRICK
+    std::string mNetInt8Name = "brick_m32u8h8d8_int8";
+    std::string mShellHFFileName = "castle_brick_02_red_disp_4k.png";
+    std::string mHFFileName = "castle_brick_02_red_disp_4k.png";
+    bool mHDRBTF = false;
 #endif
 
     ref<Texture> mpHF;
@@ -209,6 +226,8 @@ private:
     bool mCudaInfer = true;
     bool mUseFP16 = false;
     bool mMLPDebug = false;
+
+
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
     ref<Fence> mpFence1;

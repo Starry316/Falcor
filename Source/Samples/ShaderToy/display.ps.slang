@@ -60,7 +60,7 @@ float4 mainImage(float2 fragCoord, uint2 pixel)
     if (gShowShader)
         return ouputColor[pixel];
 
-    return cudaRet;
+    return 100*cudaRet;
 }
 
 float4 main(float2 texC: TEXCOORD) : SV_TARGET

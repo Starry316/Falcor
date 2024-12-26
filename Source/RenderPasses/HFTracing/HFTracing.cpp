@@ -329,6 +329,11 @@ void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& ren
     var["gOutputColor"] = renderData.getTexture("color");
     var["gInputColor"] = mpOutputBuffer;
     var["cudaVaildBuffer"] = mpVaildBuffer;
+    if (mHDRBTF)
+        mTracer.pProgram->addDefine("HDR_COMPRESSED");
+    else
+        mTracer.pProgram->removeDefine("HDR_COMPRESSED");
+
     // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
     // mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, targetDim.x, targetDim.y);

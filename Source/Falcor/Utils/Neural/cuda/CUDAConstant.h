@@ -36,3 +36,33 @@ __constant__ float scaleIn4 = 0.0016346105840057135;
 __constant__ float scaleOut4 = 0.009822787716984749;
 __constant__ float dequantizeScale4 = 1.605643228685949e-05;
 #endif
+
+#ifdef BRICK
+__constant__ float scaleIn1 = 0.0015997408190742135;
+__constant__ float scaleOut1 = 0.0030100212898105383;
+__constant__ float dequantizeScale1 = 4.81525376017089e-06;
+__constant__ float scaleIn2 = 0.0012171040289103985;
+__constant__ float scaleOut2 = 0.002856734674423933;
+__constant__ float dequantizeScale2 = 3.4769432204484474e-06;
+__constant__ float scaleIn3 = 0.000973439309746027;
+__constant__ float scaleOut3 = 0.004938448779284954;
+__constant__ float dequantizeScale3 = 4.807280220120447e-06;
+__constant__ float scaleIn4 = 0.00084302929462865;
+__constant__ float scaleOut4 = 0.006031387019902468;
+__constant__ float dequantizeScale4 = 5.084636086394312e-06;
+#endif
+
+#ifdef METAL
+__constant__ float scaleIn1 = 0.001956135965883732;
+__constant__ float scaleOut1 = 0.004767794162034988;
+__constant__ float dequantizeScale1 = 9.32645343709737e-06;
+__constant__ float scaleIn2 = 0.0014222803292796016;
+__constant__ float scaleOut2 = 0.005467925686389208;
+__constant__ float dequantizeScale2 = 7.776922757329885e-06;
+__constant__ float scaleIn3 = 0.0015256208134815097;
+__constant__ float scaleOut3 = 0.0069251591339707375;
+__constant__ float dequantizeScale3 = 1.0565167031018063e-05;
+__constant__ float scaleIn4 = 0.002577820559963584;
+__constant__ float scaleOut4 = 0.019315816462039948;
+__constant__ float dequantizeScale4 = 4.979271034244448e-05;
+#endif

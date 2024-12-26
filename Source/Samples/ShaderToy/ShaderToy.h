@@ -99,7 +99,9 @@ private:
 #ifdef LEATHER
     std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
 #endif
-
+#ifdef METAL
+    std::string mNetInt8Name = "metal_m32u8h8d8_int8";
+#endif
 
     uint mFrames = 1;
 

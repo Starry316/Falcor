@@ -26,8 +26,8 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 
     if (any(isnan(btfVal)) || any(isinf(btfVal)))
         btfVal = float4(0);
-
-    // print("Li", uvWoyz[pixel]);
-
+#ifdef HDR_COMPRESSED
+    btfVal = exp(btfVal) - 1;
+#endif
     gOutputColor[pixel] *= btfVal;
 }
