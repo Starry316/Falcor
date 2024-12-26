@@ -1058,11 +1058,11 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
             gGTInferInputWi[pixel].xy = cartesian_to_spherical_unorm(wi);
             gGTInferInputWi[pixel].zw = cartesian_to_spherical_unorm(wo);
-            gGTInferInputUV[pixel].xy = frac(abs(sd.uv));
+            gGTInferInputUV[pixel].xy = frac(abs(sd.uv) * UV_SCALE);
             gGTInferInputUV[pixel].zw = 1;
-
-
             rayData.radiance = rayData.thp * envLi * NdotL;
+
+            if (all(rayData.radiance == 0)) gGTInferInputUV[pixel].zw = 0;
             rayData.terminated = false;
             return;
         }

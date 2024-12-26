@@ -574,11 +574,12 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     {
         mOutputing = true;
         mOutputCount = 0;
+        dirty = true;
     }
 
     if (mOutputing)
     {
-        if (mOutputCount > 10)
+        if (mOutputCount > 2000)
         {
             mOutputing = false;
             mOutputCount = 0;
