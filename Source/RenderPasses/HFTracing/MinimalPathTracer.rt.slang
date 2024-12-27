@@ -1063,8 +1063,31 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     float envPdf;
     if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, envDir, envPdf))
     {
+        if (sd.materialID == 1) {
+            float2 ddx, ddy;
+            float hitT = length(sd.posW - gScene.camera.getPosition());
+            computeRayDifferentials(hit.getTriangleHit(), -sd.V, hitT, gScene.camera, 1.0f / float2(gRenderTargetDim), ddx, ddy);
+            ddx *= FOOTPRINT_SCALING;
+            ddy *= FOOTPRINT_SCALING;
+
+            uint2 pixel = DispatchRaysIndex().xy;
+            float3 wi = sd.frame.toLocal(envDir);
+            float NdotL = wi.z > 0 ? wi.z : 0;
+            uint4 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+
+            rayData.radiance = rayData.thp * envLi * NdotL;
+            rayData.terminated = false;
+            return;
+        }
+
         // rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg) * MISWeight(envPdf, mi.evalPdf(sd, envDir));
-        rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg);
+        else
+            rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg);
     }
 
     // Generate scatter ray for the next path segment.

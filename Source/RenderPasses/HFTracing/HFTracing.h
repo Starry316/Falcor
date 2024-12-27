@@ -185,6 +185,16 @@ private:
     bool mHDRBTF = false;
 #endif
 
+
+#ifdef LEATHER_04R
+    std::string mNetInt8Name = "leather04r_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ubo/leather04.png";
+    std::string mHFFileName = "ubo/leather04.png";
+    bool mHDRBTF = false;
+#endif
+
+
+
 #ifdef METAL
     std::string mNetInt8Name = "metal_m32u8h8d8_int8";
     std::string mShellHFFileName = "metal_grate_rusty_disp_4k.png";
@@ -197,6 +207,14 @@ private:
     std::string mNetInt8Name = "brick_m32u8h8d8_int8";
     std::string mShellHFFileName = "castle_brick_02_red_disp_4k.png";
     std::string mHFFileName = "castle_brick_02_red_disp_4k.png";
+    bool mHDRBTF = false;
+#endif
+
+
+#ifdef TILE
+    std::string mNetInt8Name = "tile_m32u8h8d8_int8";
+    std::string mShellHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
+    std::string mHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
     bool mHDRBTF = false;
 #endif
 

@@ -31,10 +31,10 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
 
     ResourceBindFlags bindFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
 
-    // if (mHistogram)
-    // {
-    //     mpTextureSynthesis->precomputeFeatureData(UPlaneBuffer, mUP.texDim, pDevice);
-    // }
+    if (mHistogram)
+    {
+        mpTextureSynthesis->precomputeFeatureData(UPlaneBuffer, mUP.texDim, pDevice);
+    }
 
     // Save for cuda
     mUP.featureData = UPlaneBuffer;
