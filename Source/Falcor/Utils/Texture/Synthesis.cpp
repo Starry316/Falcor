@@ -139,17 +139,12 @@ void TextureSynthesis::precomputeFeatureData(std::vector<float> data, uint2 data
             // writeToBinaryFile(acfWeight, "D:/acf_TILE2.bin");
         }
     }
-
-    acfWeight = readBinaryFile("D:/acf_TILE2.bin");
+    acfWeight.reserve(dataDim.x * dataDim.x );
+    mpACFBuffer->getBlob(acfWeight.data(), 0, dataDim.x * dataDim.x * 1 * sizeof(float));
+    // acfWeight = readBinaryFile("D:/acf_TILE2.bin");
     logInfo("[Synthesis] Precomputing ACF done! {} {}", acfWeight[0], acfWeight[1]);
 
-    mpACFBuffer->getBlob(acfWeight.data(), 0, dataDim.x * dataDim.x * 1 * sizeof(float));
-
-    writeToBinaryFile(acfWeight, "D:/acf_TILE2test.bin");
-
-    logInfo("[Synthesis] Precomputing ACF  test! {} {}", acfWeight[0], acfWeight[1]);
     logInfo("[Synthesis] Precomputation done!");
-
     sample_uv_list.reserve(2048 * 2);
     updateMap(dataDim.x, pDevice);
 

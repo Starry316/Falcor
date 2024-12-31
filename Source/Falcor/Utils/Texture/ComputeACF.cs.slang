@@ -28,15 +28,6 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
         }
     }
     gACF[offset] = sum / (gTargetDim.x * gTargetDim.y);
-    // gACF[offset] = gInput[offset].x;
 
 }
 
-// void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
-// {
-//     if (any(dispatchThreadId.xy >= gRenderTargetDim))
-//         return;
-//     const uint2 pixelPos = dispatchThreadId.xy;
-//     gOutputHeightMap[pixelPos] = gInputHeightMap[pixelPos];
-//
-// }
