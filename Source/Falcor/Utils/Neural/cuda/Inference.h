@@ -57,6 +57,48 @@ void launchInferInt8Tex(
     unsigned int height,
     int* validMask, float uvScale
 );
+void launchInferInt8TexHisto(
+    int* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask, float uvScale
+);
+void launchInferInt8TexAutocov(
+    int* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* sampleList,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask, float uvScale
+);
+void launchInferInt8TexHashed(
+    int* weight,
+    int* packedInput,
+    float* hashedUV,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* sampleList,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask, float uvScale
+);
 void launchInferFP32Tex(
     float* weight,
     int* packedInput,

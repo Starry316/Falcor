@@ -65,7 +65,6 @@ cbuffer CB
 
 Texture2D<PackedHitInfo> gVBuffer;
 Texture2D<float4> gViewW; // Optional
-RWTexture2D<PackedHitInfo> gHitBuffer;
 
 // Outputs
 RWTexture2D<float4> gOutputColor;
@@ -543,8 +542,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
     float3 wo = sd.frame.toLocal(sd.V);
     exitPosW = sd.posW;
     // Compute LoD
-    float2 dfdx = float2(0.f);
-    float2 dfdy = float2(0.f);
+    float2 dfdx, dfdy;
     float hitT = length(sd.posW - gScene.camera.getPosition());
     computeRayDifferentials(hit.getTriangleHit(), -sd.V, hitT, gScene.camera, invFrameDim, dfdx, dfdy);
     dfdx *= gControlParas.y;
@@ -565,7 +563,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
     float3 previousPos = curPos;
     for (uint coarseStep = 0; coarseStep < maxCoarseStep; coarseStep++)
     {
-        float coarseHeight = 0.f;
+        float coarseHeight;
         if (gApplySyn)
             //coarseHeight = HexTiling(gHFMaxMip, gSampler, dfdx, dfdy, (curPos.xy) * UV_SCALE) * HF_SCALING + HF_OFFSET;
             coarseHeight = AutocovarianceBlendingDual(hfData, gSampler, dfdx, dfdy, (curPos.xy) * UV_SCALE) * HF_SCALING + HF_OFFSET;
@@ -578,7 +576,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
             for (uint step = 0; step < 32; step++)
             {
                 // fine level ray marching
-                float height = 0.f;
+                float height;
                 if (gApplySyn)
                     //height = HexTiling(gHF, gSampler, dfdx, dfdy, (curFinePos.xy) * UV_SCALE) * HF_SCALING + HF_OFFSET;
                     height = AutocovarianceBlendingDual(hfData, gSampler, dfdx, dfdy, (curPos.xy) * UV_SCALE) * HF_SCALING + HF_OFFSET;
@@ -601,7 +599,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
                 else
                 {
                     // keep marching
-                    bool dummyB = false;
+                    bool dummyB;
                     float4 tangentW = gTangentMap.SampleLevel(gSampler, curFinePos.xy, 0);
                     float3 N = gNormalMap.SampleLevel(gSampler, curFinePos.xy, 0).xyz;
                     ShadingFrame sf = ShadingFrame.createSafe(N, tangentW, dummyB);
@@ -624,7 +622,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
         else
         {
             // keep marching
-            bool dummyB = false;
+            bool dummyB;
             float4 tangentW = gTangentMap.SampleLevel(gSampler, curPos.xy, 0);
             float3 N = gNormalMap.SampleLevel(gSampler, curPos.xy, 0).xyz;
             ShadingFrame sf = ShadingFrame.createSafe(N, tangentW, dummyB);
@@ -637,7 +635,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
     // raymarching
     for (uint step = 0; step < maxFinestStep; step++)
     {
-        float height = 0.f;
+        float height;
         if (gApplySyn)
             // height = HexTiling(gHF, gSampler, dfdx, dfdy, (curPos.xy) * UV_SCALE) * HF_SCALING + HF_OFFSET;
             height = AutocovarianceBlendingDual(hfData, gSampler, dfdx, dfdy, (curPos.xy) * UV_SCALE) * HF_SCALING + HF_OFFSET;
@@ -659,7 +657,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
         else
         {
             // keep marching
-            bool dummyB = false;
+            bool dummyB;
             float4 tangentW = gTangentMap.SampleLevel(gSampler, curPos.xy, 0);
             float3 N = gNormalMap.SampleLevel(gSampler, curPos.xy, 0).xyz;
             ShadingFrame sf = ShadingFrame.createSafe(N, tangentW, dummyB);
@@ -678,13 +676,13 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
             return true;
         }
 
-        float3 envLi = float3(0.f);
-        float3 envDir = float3(0.f);
-        float envPdf = 0.f;
+        float3 envLi;
+        float3 envDir;
+        float envPdf;
 
         if (generateEnvMapSamplePrism(sg, envLi, envDir, envPdf))
         {
-            bool dummyB = false;
+            bool dummyB;
             float4 tangentW = gTangentMap.SampleLevel(gSampler, curPos.xy, 0);
             float3 N = gNormalMap.SampleLevel(gSampler, curPos.xy, 0).xyz;
             ShadingFrame sf = ShadingFrame.createSafe(N, tangentW, dummyB);
@@ -712,7 +710,7 @@ bool raySurfaceMarching(ShadingData sd, HitInfo hit, inout SampleGenerator sg, f
             cudaVaildBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] = 1;
         }
 
-        exitPosW = gPosMap.Sample(gSampler, curPos.xy).xyz + gNormalMap.Sample(gSampler, curPos.xy).xyz * 0.0001f;
+        // exitPosW = gPosMap.Sample(gSampler, curPos.xy).xyz + gNormalMap.Sample(gSampler, curPos.xy).xyz * 0.0001f;
     }
     return flagFound;
 }
@@ -762,7 +760,6 @@ float4 tracePathPrism(const uint2 pixel, const uint2 frameDim)
         let lod = ExplicitLodTextureSampler(0.f);
         // Load shading data.
         ShadingData sd = loadShadingData(hit, primaryRayOrigin, primaryRayDir, lod);
-        const float3 viewDir = sd.V;
 
         // Create material instance at shading point.
         let mi = gScene.materials.getMaterialInstance(sd, lod);
@@ -777,8 +774,9 @@ float4 tracePathPrism(const uint2 pixel, const uint2 frameDim)
 
         // Compute ray origin for new rays spawned from the G-buffer.
 
-        float3 exitPosW = float3(0.f);
-        float3 HFColor = float3(0.f);
+        float3 exitPosW;
+        float3 HFColor;
+        outColor = 0.1;
         bool hitHF = raySurfaceMarching(sd, hit, sg, 1.f / frameDim, pixel, exitPosW, HFColor);
         if (hitHF)
         {
@@ -787,30 +785,7 @@ float4 tracePathPrism(const uint2 pixel, const uint2 frameDim)
         }
         else
         {
-            ScatterRayData rayData = ScatterRayData(sg);
-            for (uint depth = 0; depth < 1 && !rayData.terminated; depth++)
-            {
-                rayData.origin = exitPosW;
-                rayData.direction = -viewDir;
-                //traceScatterRay(rayData);
-            
-                //const HitInfo hitCont = HitInfo(gHitBuffer[pixel]);
-                //if (hitCont.isValid())
-                //{
-                //    ShadingData sdCont = loadShadingData(hitCont, rayData.origin, rayData.direction, lod);
-                //
-                //    // Compute ray origin for new rays spawned from the G-buffer.
-                //    bool hitContHF = raySurfaceMarching(sdCont, hitCont, rayData.sg, 1.f / frameDim, pixel, exitPosW, HFColor);
-                //    if (hitContHF)
-                //    {
-                //        outColor.xyz = HFColor;
-                //        outColor.w = 1;
-                //        break;
-                //    }
-                //}
-            }
-            if(cudaVaildBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] == 0)
-                outColor.xyz = kUseEnvBackground ? gScene.envMap.eval(primaryRayDir) : kDefaultBackgroundColor;
+            outColor.xyz = kUseEnvBackground ? gScene.envMap.eval(primaryRayDir) : kDefaultBackgroundColor;
         }
 
     }
@@ -832,9 +807,6 @@ void scatterMiss(inout ScatterRayData rayData)
 {
     // Ray missed the scene. Mark the ray as terminated.
     rayData.terminated = true;
-
-    uint2 pixel = DispatchRaysIndex().xy;
-    gHitBuffer[pixel] = {};
 
     // Add contribution from distant light (env map) in this direction.
     if (kUseEnvLight && (kComputeDirect || rayData.pathLength == 0))
@@ -873,8 +845,7 @@ void scatterTriangleMeshClosestHit(inout ScatterRayData rayData, BuiltInTriangle
     triangleHit.instanceID = getGeometryInstanceID();
     triangleHit.primitiveIndex = PrimitiveIndex();
     triangleHit.barycentrics = attribs.barycentrics;
-    //handleHit(HitInfo(triangleHit), rayData);
-    handleHitPrism(HitInfo(triangleHit), rayData);
+    handleHit(HitInfo(triangleHit), rayData);
 }
 
 [shader("anyhit")]
@@ -902,8 +873,8 @@ bool traceSynthesizedHeightMapEstimated(
 
     float entryHeightData;
     if (gApplySyn)
-        //entryHeightData = HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(startPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
-        entryHeightData = AutocovarianceBlendingDual(hfData, gSampler, ddx, ddy, frac(abs(startPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
+        entryHeightData =
+            HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(startPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
     else
         entryHeightData = gShellHF.SampleGrad(gSampler, frac(abs(startPoint.xy))* UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
 
@@ -933,8 +904,7 @@ bool traceSynthesizedHeightMapEstimated(
         float heightData;
         if (gApplySyn)
             // heightData = HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPoint.xy * UV_SCALE) * HF_SCALING + HF_OFFSET;
-            //heightData = HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
-            heightData = AutocovarianceBlendingDual(hfData, gSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
+            heightData = HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
         else
             heightData = gShellHF.SampleGrad(gSampler, frac(abs(currentTestPoint.xy))* UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
@@ -1377,8 +1347,8 @@ void rayGen()
     uint2 frameDim = DispatchRaysDimensions().xy;
     // printSetPixel(pixel);
 
-    float4 outputColor = tracePath(pixel, frameDim);
-    //float4 outputColor = tracePathPrism(pixel, frameDim);
+    //float4 outputColor = tracePath(pixel, frameDim);
+    float4 outputColor = tracePathPrism(pixel, frameDim);
     gOutputColor[pixel] = outputColor;
 }
 void handleHit(const HitInfo hit, inout ScatterRayData rayData)
@@ -1425,13 +1395,6 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         return;
     }
 
-    rayData.pathLength++;
-}
-
-void handleHitPrism(const HitInfo hit, inout ScatterRayData rayData)
-{
-    uint2 pixel = DispatchRaysIndex().xy;
-    gHitBuffer[pixel] = hit.pack();
     rayData.pathLength++;
 }
 

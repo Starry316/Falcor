@@ -54,6 +54,63 @@ void MLPCuda::loadInt8(ref<Device> pDevice, std::string networkPath)
     logInfo("QINT8 buffer  {} {} {} {}", int8Weight[0], int8Weight[1], int8Weight[2], int8Weight[3]);
 }
 
+void MLPCuda::inferInt8Histo(int* packedInput, float* output, int width, int height, int* valid, float scale)
+{
+    launchInferInt8TexHisto(
+        (int*)mpInt8Buffer->getGpuAddress(),
+        packedInput,
+        mHTexObj,
+        mDTexObj,
+        mUTexObj,
+        mTTexObj,
+        mInvTexObj,
+        output,
+        width,
+        height,
+        valid,
+        scale
+    );
+}
+
+void MLPCuda::inferInt8Autocov(int* packedInput, float* output, int width, int height, int* valid, float scale)
+{
+    launchInferInt8TexAutocov(
+        (int*)mpInt8Buffer->getGpuAddress(),
+        packedInput,
+        mHTexObj,
+        mDTexObj,
+        mUTexObj,
+        mTTexObj,
+        mInvTexObj,
+        (float*)mpSampleBuffer->getGpuAddress(),
+        output,
+        width,
+        height,
+        valid,
+        scale
+    );
+}
+
+void MLPCuda::inferInt8Hashed(int* packedInput, float* hashedUV, float* output, int width, int height, int* valid, float scale)
+{
+    launchInferInt8TexHashed(
+        (int*)mpInt8Buffer->getGpuAddress(),
+        packedInput,
+        hashedUV,
+        mHTexObj,
+        mDTexObj,
+        mUTexObj,
+        mTTexObj,
+        mInvTexObj,
+        (float*)mpSampleBuffer->getGpuAddress(),
+        output,
+        width,
+        height,
+        valid,
+        scale
+    );
+}
+
 void MLPCuda::inferInt8(int* packedInput, float* output, int width, int height, int* valid, float scale)
 {
     launchInferInt8Tex((int*)mpInt8Buffer->getGpuAddress(), packedInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, valid, scale);

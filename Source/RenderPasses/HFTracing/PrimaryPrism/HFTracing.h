@@ -185,8 +185,6 @@ private:
     std::string mHFFileName = "ubo/leather11.png";
 #endif
 
-    ref<Texture> mpHitBuffer;
-
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;
     ref<Texture> mpHFMaxMip;

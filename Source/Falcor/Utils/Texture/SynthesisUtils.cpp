@@ -1,6 +1,7 @@
 #include "SynthesisUtils.h"
 #include "Core/Error.h"
 #include "Core/API/Device.h"
+#include <random>
 namespace Falcor
 {
 
@@ -431,7 +432,7 @@ float calculateMean(TextureDataFloat& image)
     return sum / (image.width * image.height);
 }
 
-void calculateAutocovariance(TextureDataFloat& image, TextureDataFloat& acf)
+void calculateAutocovariance(TextureDataFloat& image, TextureDataFloat& acf, std::vector<float>& acf_weight)
 {
     float mean = calculateMean(image);
 
@@ -452,6 +453,41 @@ void calculateAutocovariance(TextureDataFloat& image, TextureDataFloat& acf)
             }
             acf.SetPixel(i, j, 0, sum / (image.width * image.height));
         }
+    }
+
+    acf_weight.reserve(image.height * image.width);
+    for (int i = 0; i < image.height; ++i)
+    {
+        for (int j = 0; j < image.width; ++j)
+        {
+            acf_weight.push_back(acf.GetPixel(i, j, 0));
+        }
+    }
+}
+
+void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_list, uint dim)
+{
+    std::vector<float> acf_pdf;
+    acf_pdf.reserve(acf_weight.size());
+    for (int i = 0; i < acf_weight.size(); ++i)
+    {
+        float val = acf_weight[i];
+        val = val > 0 ? val : 0;
+        acf_pdf.push_back(val);
+    }
+
+    // std::random_device rd;
+    // std::default_random_engine rng{rd()};
+    std::default_random_engine rng;
+    std::discrete_distribution<> d(acf_pdf.begin(), acf_pdf.end());
+
+    for (int i = 0; i < sample_uv_list.capacity() / 2; i++)
+    {
+        int id = d(rng);
+        // sample_uv_list.push_back(float2((id / input.width) / float(input.height), (id % input.width) / float(input.width)));
+        //sample_uv_list.push_back(float2((id / dim) / float(dim), (id % dim) / float(dim)));
+        sample_uv_list.push_back((id / dim) / float(dim));
+        sample_uv_list.push_back((id % dim) / float(dim));
     }
 }
 

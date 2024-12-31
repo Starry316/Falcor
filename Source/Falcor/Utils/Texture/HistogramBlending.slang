@@ -4,6 +4,8 @@ struct HistogramBlendingHFData
 {
     Texture2D<float> tex;
     Texture2D<float> invTex;
+
+    Buffer<float> sampleMap;
 };
 
 struct HistogramBlendingColorData
@@ -160,3 +162,86 @@ float3 HistorgramBlending(
 
 //     return res;
 // }
+
+float AutocovarianceBlendingDual(
+    HistogramBlendingHFData data,
+    SamplerState sampler,
+    float2 ddx,
+    float2 ddy,
+    float2 uv
+)
+{
+    float G;
+	float3 b;
+    float bSum;
+    
+    b = float3(B0cos(uv), 
+               B1cos(uv), 
+               BSingularity(uv));
+    bSum = b.x + b.y + b.z;
+    b /= bSum;
+    float2 t0 = floor(uv) * 2.0f;
+    float2 t1 = floor(uv + float2(0.5f, 0.5f)) * 2.0f + 1.0f;
+
+    int id0 = floor(rnd21(t0) * 2048);
+    int id1 = floor(rnd21(t1) * 2048);
+
+    G = (data.tex.SampleGrad(sampler, uv - float2(data.sampleMap[2 * id0], data.sampleMap[2 * id0 + 1]), ddx, ddy) - 0.5f) * b.x
+      + (data.tex.SampleGrad(sampler, uv - float2(data.sampleMap[2 * id1], data.sampleMap[2 * id1 + 1]), ddx, ddy) - 0.5f) * b.y;
+    
+    G = 0.5f + G / length(b);
+    G = clamp(G, 0.0001, 0.999);
+
+    float res;
+    res = data.invTex.SampleLevel(sampler, float2(G, 0.0f), 0.f);
+    return res;
+}
+
+float AutocovarianceBlendingTriangle(
+    HistogramBlendingHFData data,
+    SamplerState sampler,
+    float2 ddx,
+    float2 ddy,
+    float2 uv
+)
+{
+    float w1, w2, w3;
+    int2 vertex1, vertex2, vertex3;
+    TriangleGrid(w1, w2, w3, vertex1, vertex2, vertex3, uv);
+    
+    int id1 = floor(rnd21(vertex1) * 2048);
+    int id2 = floor(rnd21(vertex2) * 2048);
+    int id3 = floor(rnd21(vertex3) * 2048);
+    float g1 = data.tex.SampleGrad(sampler, uv - float2(data.sampleMap[2 * id1], data.sampleMap[2 * id1 + 1]), ddx, ddy);
+    float g2 = data.tex.SampleGrad(sampler, uv - float2(data.sampleMap[2 * id2], data.sampleMap[2 * id2 + 1]), ddx, ddy);
+    float g3 = data.tex.SampleGrad(sampler, uv - float2(data.sampleMap[2 * id3], data.sampleMap[2 * id3 + 1]), ddx, ddy);
+    //float g1 = data.tex.SampleGrad(sampler, uv - data.sampleMap[floor(rnd21(vertex1) * 2048)].xy, ddx, ddy);
+    //float g2 = data.tex.SampleGrad(sampler, uv - data.sampleMap[floor(rnd21(vertex2) * 2048)].xy, ddx, ddy);
+    //float g3 = data.tex.SampleGrad(sampler, uv - data.sampleMap[floor(rnd21(vertex3) * 2048)].xy, ddx, ddy);
+
+    float G = w1 * g1 + w2 * g2 + w3 * g3;
+    G -= 0.5f;
+    G *= inversesqrt(w1 * w1 + w2 * w2 + w3 * w3);
+    G += 0.5f;
+    G = abs(G);
+    G = clamp(G, 0.0001, 0.999);
+
+    float res;
+    res = data.invTex.SampleLevel(sampler, float2(G, 0.0f), 0.f);
+    return res;
+}
+
+float4 getHashUV(HistogramBlendingHFData data, float2 uv)
+{
+
+    float2 t0 = floor(uv) * 2.0f;
+    float2 t1 = floor(uv + float2(0.5f, 0.5f)) * 2.0f + 1.0f;
+
+    int id0 = floor(rnd21(t0) * 2048);
+    int id1 = floor(rnd21(t1) * 2048);
+
+    float2 uv_hash0 = uv - float2(data.sampleMap[2 * id0], data.sampleMap[2 * id0 + 1]);
+    float2 uv_hash1 = uv - float2(data.sampleMap[2 * id1], data.sampleMap[2 * id1 + 1]);
+
+    return float4(uv_hash0.x ,uv_hash0.y, uv_hash1.x, uv_hash1.y);
+}

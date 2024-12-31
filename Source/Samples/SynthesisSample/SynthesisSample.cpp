@@ -37,8 +37,8 @@ uint32_t mSampleGuiPositionY = 40;
 
 SynthesisSample::SynthesisSample(const SampleAppConfig& config) : SampleApp(config)
 {
-    //
-     auto textureSynthesis = std::make_unique<TextureSynthesis>(getDevice());
+    // auto textureSynthesis = std::make_unique<TextureSynthesis>(getDevice());
+    auto textureSynthesis = std::make_unique<TextureSynthesis>();
 }
 
 SynthesisSample::~SynthesisSample()

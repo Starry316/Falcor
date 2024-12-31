@@ -409,8 +409,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         }
     }
 
-    mpHitBuffer =
-        mpDevice->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Uint, 1, 1, nullptr, ResourceBindFlags::UnorderedAccess);
     createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
     createBuffer(mpHashedUVBuffer, mpDevice, targetDim, 4);
@@ -502,7 +500,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["gShellHF"].setSrv(mpShellHF->getSRV());
     var["gHFMaxMip"].setSrv(mpHFMaxMip->getSRV());
     var["cudaVaildBuffer"] = mpVaildBuffer;
-    var["gHitBuffer"] = mpHitBuffer;
     var["packedInput"] = mpPackedInputBuffer;
     var["hashedUV"] = mpHashedUVBuffer;
     var["gMaxSampler"] = mpMaxSampler;

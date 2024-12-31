@@ -70,8 +70,8 @@ const char kInputViewDir[] = "viewW";
 
 const ChannelList kInputChannels = {
     // clang-format off
-    { "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
-    { kInputViewDir,    "gViewW",       "World-space view direction (xyz float format)", true /* optional */ },
+    // { "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
+    // { kInputViewDir,    "gViewW",       "World-space view direction (xyz float format)", true /* optional */ },
     // clang-format on
 };
 
@@ -210,51 +210,6 @@ void generateMaxMip(RenderContext* pRenderContext, ref<Texture> pTex)
     }
 }
 
-void HFTracing::generateGeometryMap(RenderContext* pRenderContext, const RenderData& renderData)
-{
-    // If we have no scene, just clear the outputs and return.
-    if (!mpScene)
-    {
-        for (auto it : kOutputChannels)
-        {
-            Texture* pDst = renderData.getTexture(it.name).get();
-            if (pDst)
-                pRenderContext->clearTexture(pDst);
-        }
-        return;
-    }
-
-    mMaxTriCount = mpScene->getMesh(MeshID{0}).getTriangleCount();
-
-    // Get dimensions of ray dispatch.
-    Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
-    targetDim = Falcor::uint2(2048);
-    FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-
-    auto precomputeVar = mpGenerateGeometryMapPass->getRootVar();
-
-    // set mesh data
-    const auto& meshDesc = mpScene->getMesh(MeshID{0});
-    precomputeVar["PerFrameCB"]["vertexCount"] = meshDesc.vertexCount;
-    precomputeVar["PerFrameCB"]["vbOffset"] = meshDesc.vbOffset;
-    precomputeVar["PerFrameCB"]["triangleCount"] = meshDesc.getTriangleCount();
-    precomputeVar["PerFrameCB"]["ibOffset"] = meshDesc.ibOffset;
-    precomputeVar["PerFrameCB"]["use16BitIndices"] = meshDesc.use16BitIndices();
-    precomputeVar["PerFrameCB"]["gTriID"] = mTriID;
-
-    // mpScene->getMesh(0)->setIntoConstantBuffer(precomputeVar["PerFrameCB"]["gMeshData"]);
-    precomputeVar["PerFrameCB"]["gRenderTargetDim"] = targetDim;
-    precomputeVar["PerFrameCB"]["gControlParas"] = mControlParas;
-    precomputeVar["gOutputNormalMap"].setUav(mpNormalMap->getUAV());
-    precomputeVar["gOutputTangentMap"].setUav(mpTangentMap->getUAV());
-    precomputeVar["gOutputPosMap"].setUav(mpPosMap->getUAV());
-    precomputeVar["gOutputColor"] = renderData.getTexture("color");
-    mpScene->bindShaderData(precomputeVar["scene"]);
-
-    mpGenerateGeometryMapPass->execute(pRenderContext, targetDim.x, targetDim.y);
-    mTriID++;
-}
-
 void HFTracing::createMaxMip(RenderContext* pRenderContext, const RenderData& renderData)
 {
     // If we have no scene, just clear the outputs and return.
@@ -266,8 +221,8 @@ void HFTracing::createMaxMip(RenderContext* pRenderContext, const RenderData& re
     {
         return;
     }
-    int windowSize = pow(2, 5);
-    // int windowSize = 1;
+    // int windowSize = pow(2, 5);
+    int windowSize = 1;
     int mipHeight = mpHF->getHeight() / windowSize;
     int mipWidth = mpHF->getWidth() / windowSize;
     mpHFMaxMip = mpDevice->createTexture2D(
@@ -286,8 +241,8 @@ void HFTracing::createMaxMip(RenderContext* pRenderContext, const RenderData& re
     var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
     var["PerFrameCB"]["gLod"] = 5;
     var["gInputHeightMap"].setSrv(mpHF->getSRV());
-    var["gOutputHeightMap"].setUav(mpHFMaxMip->getUAV());
-    // var["gOutputHeightMap"].setUav(mpShellHF->getUAV());
+    // var["gOutputHeightMap"].setUav(mpHFMaxMip->getUAV());
+    var["gOutputHeightMap"].setUav(mpShellHF->getUAV());
 
     mpCreateMaxMipPass->execute(pRenderContext, targetDim.x, targetDim.y);
 }
@@ -409,8 +364,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         }
     }
 
-    mpHitBuffer =
-        mpDevice->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Uint, 1, 1, nullptr, ResourceBindFlags::UnorderedAccess);
     createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
     createBuffer(mpHashedUVBuffer, mpDevice, targetDim, 4);
@@ -437,11 +390,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     mTracer.pProgram->addDefine("USE_EMISSIVE_LIGHTS", mpScene->useEmissiveLights() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_LIGHT", mpScene->useEnvLight() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
-    if (mHFBound)
-        mTracer.pProgram->addDefine("HF_BOUND");
-    else
-        mTracer.pProgram->removeDefine("HF_BOUND");
-
     if (mRenderType == RenderType::RT)
         mTracer.pProgram->addDefine("RT");
     else
@@ -500,15 +448,10 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     // Bind textures
     var["gHF"].setSrv(mpHF->getSRV());
     var["gShellHF"].setSrv(mpShellHF->getSRV());
-    var["gHFMaxMip"].setSrv(mpHFMaxMip->getSRV());
     var["cudaVaildBuffer"] = mpVaildBuffer;
-    var["gHitBuffer"] = mpHitBuffer;
     var["packedInput"] = mpPackedInputBuffer;
     var["hashedUV"] = mpHashedUVBuffer;
     var["gMaxSampler"] = mpMaxSampler;
-    var["gNormalMap"].setSrv(mpNormalMap->getSRV());
-    var["gTangentMap"].setSrv(mpTangentMap->getSRV());
-    var["gPosMap"].setSrv(mpPosMap->getSRV());
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
     pRenderContext->submit(false);
     pRenderContext->signal(mpFence2.get());
@@ -538,53 +481,23 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     }
     mFrameCount++;
 
-    if (mTriID < mMaxTriCount)
+    // ======================================================================================================
+    // Step 1: Trace HF to get BTF input, the input data is packed into mpPackedInputBuffer.
+    // A valid hit mask mpVaildBuffer stores the screen space valid hits (1: valid, 0: invalid)
+    renderHF(pRenderContext, renderData);
+
+    // ======================================================================================================
+    // Step 2: Inference the BTF input to get the output color
+    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
     {
-        if (mTriID == 1)
-            logInfo("[HF Tracing] Start to generate normal, tangent and position maps");
-        generateGeometryMap(pRenderContext, renderData);
-    }
-    else
-    {
-        if (!mMipGenerated)
-        {
-            mpNormalMap->generateMips(pRenderContext);
-            mpTangentMap->generateMips(pRenderContext);
-            createMaxMip(pRenderContext, renderData);
-            mMipGenerated = true;
-        }
-
-        renderHF(pRenderContext, renderData);
-
-        if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
-        {
-            nnInferPass(pRenderContext, renderData);
-        }
-
-        if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
-        {
-            cudaInferPass(pRenderContext, renderData);
-            displayPass(pRenderContext, renderData);
-        }
+        nnInferPass(pRenderContext, renderData);
     }
 
-    // // ======================================================================================================
-    // // Step 1: Trace HF to get BTF input, the input data is packed into mpPackedInputBuffer.
-    // // A valid hit mask mpVaildBuffer stores the screen space valid hits (1: valid, 0: invalid)
-    // renderHF(pRenderContext, renderData);
-    // 
-    // // ======================================================================================================
-    // // Step 2: Inference the BTF input to get the output color
-    // if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
-    // {
-    //     nnInferPass(pRenderContext, renderData);
-    // }
-    // 
-    // if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
-    // {
-    //     cudaInferPass(pRenderContext, renderData);
-    //     displayPass(pRenderContext, renderData);
-    // }
+    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
+    {
+        cudaInferPass(pRenderContext, renderData);
+        displayPass(pRenderContext, renderData);
+    }
 }
 
 void HFTracing::renderUI(Gui::Widgets& widget)
@@ -750,34 +663,6 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     generateMaxMip(pRenderContext, mpShellHF);
     generateMaxMip(pRenderContext, mpHF);
 
-    mpNormalMap = mpDevice->createTexture2D(
-        2048,
-        2048,
-        ResourceFormat::RGBA32Float,
-        1,
-        Resource::kMaxPossible,
-        nullptr,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
-    );
-    mpTangentMap = mpDevice->createTexture2D(
-        2048,
-        2048,
-        ResourceFormat::RGBA32Float,
-        1,
-        Resource::kMaxPossible,
-        nullptr,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
-    );
-    mpPosMap = mpDevice->createTexture2D(
-        2048,
-        2048,
-        ResourceFormat::RGBA32Float,
-        1,
-        1,
-        nullptr,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
-    );
-
     // Create max sampler for texel fetch.
     Sampler::Desc samplerDesc = Sampler::Desc();
     // Max reductions.
@@ -793,7 +678,6 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
 
     DefineList defines = mpScene->getSceneDefines();
-    mpGenerateGeometryMapPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/GenerateGeometryMap.cs.slang", "csMain", defines);
     mpVisualizeMapsPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/VisualizeMaps.cs.slang", "csMain", defines);
     mpCreateMaxMipPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/CreateMaxMip.cs.slang", "csMain", defines);
     mpInferPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/Inference.cs.slang", "csMain", defines);

@@ -68,6 +68,45 @@ void TriangleGrid(out float w1, out float w2, out float w3, out int2 vertex1, ou
 }
 float2 hash(float2 p)
 {
-    float2 r = mul(float2x2(127.1, 311.7, 269.5, 183.3), p);
-    return frac(sin(r) * 43758.5453);
+    //float2 r = mul(float2x2(127.1, 311.7, 269.5, 183.3), p);
+    float2 r = float2(127.1f * p.x + 311.7f * p.y, 269.5f * p.x + 183.3f * p.y);
+    float2 temp = sin(r) * 43758.5453f;
+    return (temp - floor(temp));
+}
+
+#define PI 3.14159265f
+
+float B0cos(float2 uv)
+{
+    float cosu = sin(uv.x * PI);
+    float cosv = sin(uv.y * PI);
+    return pow(cosu * cosv * cosu * cosv, 0.5f);
+}
+
+float B1cos(float2 uv)
+{
+    uv += float2(0.5f, 0.5f);
+    float cosu = sin(uv.x * PI);
+    float cosv = sin(uv.y * PI);
+    return pow(cosu * cosv * cosu * cosv, 0.5f);
+}
+
+float BSingularity(float2 uv)
+{
+    uv -= float2(0.5f, 0.5f);
+    uv *= 1.41421356237f;
+    const float a = 0.78539816f; // PI / 4.0;
+    float cosA = cos(a);
+    float sinA = sin(a);
+    float4 rotateA = float4(cosA, sinA, -sinA, cosA);
+    float2 V = float2(rotateA.x * uv.x + rotateA.y * uv.y, rotateA.z * uv.x + rotateA.w * uv.y);
+    float cosu = sin(V.x * PI);
+    float cosv = sin(V.y * PI);
+    return 0.02f * cosu * cosv * cosu * cosv;
+}
+
+float rnd21(float2 p)
+{
+    float temp = sin(12.9898f * p.x + 78.233f * p.y) * 43758.5453f;
+    return (temp - floor(temp));
 }

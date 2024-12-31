@@ -162,7 +162,8 @@ void PrefilterLUT(TextureDataFloat& image_T_Input, TextureDataFloat& LUT_Tinv, i
 
 
 float calculateMean( TextureDataFloat& image);
-void calculateAutocovariance(TextureDataFloat& image, TextureDataFloat& acf);
+void calculateAutocovariance(TextureDataFloat& image, TextureDataFloat& acf, std::vector<float>& acf_weight);
+void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_list, uint dim);
 
 
 

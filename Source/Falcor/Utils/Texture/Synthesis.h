@@ -26,8 +26,15 @@ public:
 
     void readHFData(std::string hfPath, ref<Device> pDevice) ;
     void bindHFData(const ShaderVar& var);
+    void bindMap(const ShaderVar& var);
+    void updateMap(uint dim, ref<Device> pDevice);
     void precomputeFeatureData(std::vector<float> data, uint2 dataDim, ref<Device> pDevice);
     void bindFeatureData(const ShaderVar& var);
+
+    std::vector<float> getTData() { return TData; }
+    std::vector<float> getInvTData() { return invTData; }
+    std::vector<float> getAcfWeight() { return acfWeight; }
+    std::vector<float> getSampleUV() { return sample_uv_list; }
 
     ref<Texture> mpHFT;
 private:
@@ -38,6 +45,11 @@ private:
     ref<Texture> mpFeatureInvT;
     ref<Texture> mpACF;
 
+    std::vector<float> TData;
+    std::vector<float> invTData;
+    std::vector<float> acfWeight;
+    std::vector<float> sample_uv_list;
+    ref<Buffer> mpMap;
 };
 
 }

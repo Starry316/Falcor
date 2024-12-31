@@ -31,15 +31,38 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
 
     ResourceBindFlags bindFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
 
-    // if (mHistogram)
+    if (mHistogram)
+    {
+        mpTextureSynthesis->precomputeFeatureData(UPlaneBuffer, mUP.texDim, pDevice);
+    }
+
+    // std::vector<float> temp;
+    // temp.resize(UPlaneBuffer.size());
+    // for (int j = 0; j < mUP.texDim.y; j++)
     // {
-    //     mpTextureSynthesis->precomputeFeatureData(UPlaneBuffer, mUP.texDim, pDevice);
+    //     uint offset = j * mUP.texDim.x * mUP.texDim.x * 4;
+    //     for (uint i = 0; i < UPlaneBuffer.size() / (4 * mUP.texDim.y); i++)
+    //     {
+    //         uint id = i / mUP.texDim.x + (i % mUP.texDim.x) * mUP.texDim.x;
+    //         temp[offset + i * 4] = UPlaneBuffer[offset + id * 4];
+    //         temp[offset + i * 4 + 1] = UPlaneBuffer[offset + id * 4 + 1];
+    //         temp[offset + i * 4 + 2] = UPlaneBuffer[offset + id * 4 + 2];
+    //         temp[offset + i * 4 + 3] = UPlaneBuffer[offset + id * 4 + 3];
+    //     }
     // }
+    // UPlaneBuffer = temp;
 
     // Save for cuda
     mUP.featureData = UPlaneBuffer;
     mHP.featureData = HPlaneBuffer;
     mDP.featureData = DPlaneBuffer;
+
+    mTP.featureData = mpTextureSynthesis->getTData();
+    mTPInv.featureData = mpTextureSynthesis->getInvTData();
+    mTP.texDim = int2(PlaneMetaBuffer[0], PlaneMetaBuffer[1]);
+    mTPInv.texDim = int2(mTPInv.featureData.size() / (4 * int(PlaneMetaBuffer[1])), PlaneMetaBuffer[1]);
+    //mTPInv.texDim = int2(8192, PlaneMetaBuffer[1]);
+    logInfo("[NBTF] T: {}, InvT: {}", mTP.texDim, mTPInv.texDim);
 
     mUP.featureTex = pDevice->createTexture2D(
         mUP.texDim.x, mUP.texDim.x, ResourceFormat::RGBA32Float, mUP.texDim.y, Resource::kMaxPossible, UPlaneBuffer.data(), bindFlags
@@ -74,6 +97,13 @@ NBTF::NBTF(ref<Device> pDevice, std::string networkName, bool buildCuda)
         mpMLPCuda->mUTexObj = createCudaTextureArray(mUP.featureData, mUP.texDim.x, mUP.texDim.x, mUP.texDim.y);
         mpMLPCuda->mHTexObj = createCudaTextureArray(mHP.featureData, mHP.texDim.x, mHP.texDim.x, mHP.texDim.y);
         mpMLPCuda->mDTexObj = createCudaTextureArray(mDP.featureData, mDP.texDim.x, mDP.texDim.x, mDP.texDim.y);
+
+        mpMLPCuda->mTTexObj = createCudaTextureArray(mTP.featureData, mTP.texDim.x, mTP.texDim.x, mTP.texDim.y);
+        mpMLPCuda->mInvTexObj = createCudaTextureArray(mTPInv.featureData, mTPInv.texDim.x, 1, mTPInv.texDim.y);
+        std::vector<float> sample_data = mpTextureSynthesis->getSampleUV();
+        mpMLPCuda->mpSampleBuffer = pDevice->createBuffer(
+            sample_data.size() * sizeof(float), ResourceBindFlags::Shared, MemoryType::DeviceLocal, sample_data.data()
+        );
     }
     // else
     // {

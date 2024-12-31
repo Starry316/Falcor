@@ -29,12 +29,3 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
     }
 
 }
-
-// void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
-// {
-//     if (any(dispatchThreadId.xy >= gRenderTargetDim))
-//         return;
-//     const uint2 pixelPos = dispatchThreadId.xy;
-//     gOutputHeightMap[pixelPos] = gInputHeightMap[pixelPos];
-// 
-// }

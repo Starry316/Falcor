@@ -119,7 +119,6 @@ public:
     virtual Properties getProperties() const override;
     virtual RenderPassReflection reflect(const CompileData& compileData) override;
     virtual void execute(RenderContext* pRenderContext, const RenderData& renderData) override;
-    void generateGeometryMap(RenderContext* pRenderContext, const RenderData& renderData);
     void renderHF(RenderContext* pRenderContext, const RenderData& renderData);
     void createMaxMip(RenderContext* pRenderContext, const RenderData& renderData);
     void nnInferPass(RenderContext* pRenderContext, const RenderData& renderData);
@@ -169,7 +168,6 @@ private:
     ref<ComputePass> mpCreateMaxMipPass;
     ref<ComputePass> mpInferPass ;
     ref<ComputePass> mpDisplayPass ;
-    ref<ComputePass> mpGenerateGeometryMapPass;
     // Texture inputs
     std::string mMediaPath =getProjectDirectory().string();
 
@@ -185,15 +183,10 @@ private:
     std::string mHFFileName = "ubo/leather11.png";
 #endif
 
-    ref<Texture> mpHitBuffer;
-
     ref<Texture> mpHF;
     ref<Texture> mpShellHF;
     ref<Texture> mpHFMaxMip;
     ref<Texture> mpColor;
-    ref<Texture> mpNormalMap;
-    ref<Texture> mpTangentMap;
-    ref<Texture> mpPosMap;
 
 
     ref<Sampler> mpMaxSampler;
@@ -203,9 +196,6 @@ private:
     Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.085);
     Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 1, 1, 0.3);  // z - 10
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
-    uint mTriID = 0;
-    uint mMaxSteps = 1000;
-    uint mMaxTriCount = 1000;
 
     RenderType mRenderType = RenderType::WAVEFRONT_SHADER_NN;
     InferType mInferType = InferType::CUDA;

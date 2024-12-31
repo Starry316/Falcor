@@ -33,66 +33,13 @@
 #include "Utils/Texture/Synthesis.h"
 #include "Utils/Neural/MLP.h"
 #include "Utils/Neural/NBTF.h"
-#include "Utils/Neural/MLPCuda.h"
-#include "Utils/Neural/cuda/CUDADefines.h"
 #include "Rendering/Lights/EnvMapSampler.h"
 
-// #include "NvInfer.h"
-// #include "NvOnnxParser.h"
-
-#include <cuda_runtime.h>
-#include <cuda_fp16.h>
-// #include <nvrtc.h>
-
-// using namespace nvinfer1;
-// using namespace nvonnxparser;
 using namespace Falcor;
-
-
-enum class InferType : uint32_t
-{
-
-    SHADER,
-    CUDA,
-    CUDAFP16,
-    CUDAINT8
+enum class RenderType {
+    HF,
+    MAP
 };
-
-
-FALCOR_ENUM_INFO(
-    InferType,
-    {
-        { InferType::SHADER, "Shader Inference" },
-        { InferType::CUDA, "CUDA FP32 Inference" },
-        { InferType::CUDAFP16, "CUDA FP16 Inference" },
-        { InferType::CUDAINT8, "CUDA INT8 Inference" }
-    }
-);
-FALCOR_ENUM_REGISTER(InferType);
-
-enum class RenderType : uint32_t
-{
-    RT,
-    WAVEFRONT_SHADER_NN
-    // SHADER_NN,
-    // CUDA,
-    // TRT,
-    // DEBUG_MIP
-};
-
-FALCOR_ENUM_INFO(
-    RenderType,
-    {
-        { RenderType::RT, "RT" },
-        { RenderType::WAVEFRONT_SHADER_NN, "Wavefront Inference" }
-        // { RenderType::SHADER_NN, "Shader Inference" },
-        // { RenderType::CUDA, "CUDA Inference" },
-        // { RenderType::TRT, "TensorRT Inference" },
-        // { RenderType::DEBUG_MIP, "DEBUG MIP" }
-    }
-);
-FALCOR_ENUM_REGISTER(RenderType);
-
 
 /**
  * Minimal path tracer.
@@ -121,11 +68,9 @@ public:
     virtual void execute(RenderContext* pRenderContext, const RenderData& renderData) override;
     void generateGeometryMap(RenderContext* pRenderContext, const RenderData& renderData);
     void renderHF(RenderContext* pRenderContext, const RenderData& renderData);
+    void visualizeMaps(RenderContext* pRenderContext, const RenderData& renderData);
     void createMaxMip(RenderContext* pRenderContext, const RenderData& renderData);
     void nnInferPass(RenderContext* pRenderContext, const RenderData& renderData);
-    void cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData);
-
-    void displayPass(RenderContext* pRenderContext, const RenderData& renderData);
     virtual void renderUI(Gui::Widgets& widget) override;
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) override {   return mpPixelDebug->onMouseEvent(mouseEvent); }
@@ -165,50 +110,38 @@ private:
         ref<RtProgramVars> pVars;
     } mTracer;
 
+    ref<ComputePass> mpGenerateGeometryMapPass;
     ref<ComputePass> mpVisualizeMapsPass;
     ref<ComputePass> mpCreateMaxMipPass;
     ref<ComputePass> mpInferPass ;
-    ref<ComputePass> mpDisplayPass ;
-    ref<ComputePass> mpGenerateGeometryMapPass;
     // Texture inputs
-    std::string mMediaPath =getProjectDirectory().string();
-
-#ifdef PEBBLE
-    std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
-    std::string mShellHFFileName = "ganges_river_pebbles_disp_4k.png";
-    std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
-#endif
-
-#ifdef LEATHER
-    std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
-    std::string mShellHFFileName = "ubo/leather11.png";
-    std::string mHFFileName = "ubo/leather11.png";
-#endif
-
-    ref<Texture> mpHitBuffer;
-
+    std::string mTexturePath =getProjectDirectory().string();
+    // std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
+    std::string mHFFileName = "castle_brick_02_red_cut_disp_4k";
+    // std::string mHFFileName = "dirty_carpet_cut_disp_4k";
+    // std::string mColorFileName = "ganges_river_pebbles_diff_4k.jpg";
+    std::string mColorFileName = "castle_brick_02_red_cut_diff_4k";
+    // std::string mColorFileName = "dirty_carpet_cut_diff_4k.jpg";
     ref<Texture> mpHF;
-    ref<Texture> mpShellHF;
     ref<Texture> mpHFMaxMip;
     ref<Texture> mpColor;
     ref<Texture> mpNormalMap;
     ref<Texture> mpTangentMap;
     ref<Texture> mpPosMap;
 
-
-    ref<Sampler> mpMaxSampler;
+    ref<Texture> mpWiWox;
+    ref<Texture> mpUVWoyz;
+    ref<Texture> mpDfDxy;
 
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
-    Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.085);
-    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 1, 1, 0.3);  // z - 10
-    Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
+    float4 mControlParas = float4(1, 0.6, 0, 0.045);
+    float4 mCurvatureParas = float4(0.056, 1, 0.65, 0.6);
+    float4 mLightZPR = float4(0.056, 1, 0.15, 0.1);
     uint mTriID = 0;
     uint mMaxSteps = 1000;
     uint mMaxTriCount = 1000;
-
-    RenderType mRenderType = RenderType::WAVEFRONT_SHADER_NN;
-    InferType mInferType = InferType::CUDA;
+    RenderType mRenderType = RenderType::HF;
 
     bool mContactRefinement = true;
     bool mMipGenerated = false;
@@ -216,41 +149,23 @@ private:
     bool mNNInfer = true;
     bool mHFBound = true;
     bool mLocalFrame = true;
-    bool mCudaInfer = true;
-    bool mUseFP16 = false;
-    bool mMLPDebug = false;
+
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
-    ref<Fence> mpFence1;
-    ref<Fence> mpFence2;
-
-
-
+    /// Buffer for data for the selected pixel.
+    ref<Buffer> mpPixelDataBuffer;
+    /// Staging buffer for readback of pixel data.
+    ref<Buffer> mpPixelStagingBuffer;
+    /// Pixel data for the selected pixel (if valid).
+    // PixelData mPixelData;
+    bool mPixelDataValid = false;
+    bool mPixelDataAvailable = false;
 
 
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
-    std::unique_ptr<NBTF> mpNBTFInt8;
+    std::unique_ptr<MLP> mpMLP;
+    std::unique_ptr<NBTF> mpNBTF;
 
 
     std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;
-
-    uint mDebugPrism = 0;
-    bool mShowTracedHF = false;
-    bool mTracedShadowRay = true;
-    bool mUseMIS = false;
-
-
-    // cuda
-    float mCudaTime = 0.0;
-    double mCudaAvgTime = 0.0;
-    int cudaInferTimes = 1;
-    cudaEvent_t mCudaStart, mCudaStop;
-    ref<Buffer> mpOutputBuffer;
-    ref<Buffer> mpVaildBuffer;
-    ref<Buffer> mpPackedInputBuffer;
-    ref<Buffer> mpHashedUVBuffer;
-
-    uint mCudaAccumulatedFrames = 1;
-
-
 };
