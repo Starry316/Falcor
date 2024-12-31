@@ -2,6 +2,7 @@
 #include "SynthesisUtils.h"
 #include "Core/Error.h"
 #include "Core/API/Device.h"
+#include "Utils/Neural/IOHelper.h"
 namespace Falcor
 {
 TextureSynthesis::TextureSynthesis()
@@ -67,43 +68,86 @@ void TextureSynthesis::precomputeFeatureData(std::vector<float> data, uint2 data
     logInfo("[Synthesis] Input Feature Dim: {}", dataDim);
     logInfo("[Synthesis] Input Feature Size:  {}", data.size());
 
-    //std::vector<float> temp;
-    //temp.resize(data.size());
-    //for (uint j = 0; j < dataDim.y; j++)
+    // std::vector<float> temp;
+    // temp.resize(data.size());
+    // for (uint j = 0; j < dataDim.y; j++)
     //{
-    //    uint offset = j * dataDim.x * dataDim.x * 4;
-    //    for (uint i = 0; i < data.size() / (4 * dataDim.y); i++)
-    //    {
-    //        uint id = i / dataDim.x + (i % dataDim.x) * dataDim.x;
-    //        temp[offset + i * 4] = data[offset + id * 4];
-    //        temp[offset + i * 4 + 1] = data[offset + id * 4 + 1];
-    //        temp[offset + i * 4 + 2] = data[offset + id * 4 + 2];
-    //        temp[offset + i * 4 + 3] = data[offset + id * 4 + 3];
-    //    }
-    //}
-    //data = temp;
+    //     uint offset = j * dataDim.x * dataDim.x * 4;
+    //     for (uint i = 0; i < data.size() / (4 * dataDim.y); i++)
+    //     {
+    //         uint id = i / dataDim.x + (i % dataDim.x) * dataDim.x;
+    //         temp[offset + i * 4] = data[offset + id * 4];
+    //         temp[offset + i * 4 + 1] = data[offset + id * 4 + 1];
+    //         temp[offset + i * 4 + 2] = data[offset + id * 4 + 2];
+    //         temp[offset + i * 4 + 3] = data[offset + id * 4 + 3];
+    //     }
+    // }
+    // data = temp;
 
     TData.resize(data.size());
     invTData.resize(LUT_WIDTH * 4 * dataDim.y);
     TextureDataFloat acf = TextureDataFloat(dataDim.x, dataDim.x, 1);
     logInfo("[Synthesis] Precomputing Feature Gaussian T and Inv.");
-    for(uint i = 0; i < dataDim.y; i++)
+    for (uint i = 0; i < dataDim.y; i++)
     {
         uint offset = i * dataDim.x * dataDim.x * 4;
         uint singleDataSize = dataDim.x * dataDim.x * 4;
         TextureDataFloat input(dataDim.x, dataDim.x, 4);
-        std::copy(data.begin()+ offset, data.begin()+ offset + singleDataSize, input.data.begin());
+        std::copy(data.begin() + offset, data.begin() + offset + singleDataSize, input.data.begin());
 
         TextureDataFloat Tinput;
         TextureDataFloat lut;
         Precomputations(input, Tinput, lut);
-        std::copy(Tinput.data.begin(), Tinput.data.end(), TData.begin()+offset);
+        std::copy(Tinput.data.begin(), Tinput.data.end(), TData.begin() + offset);
         std::copy(lut.data.begin(), lut.data.end(), invTData.begin() + LUT_WIDTH * i * 4);
 
         if (i == 0)
-            calculateAutocovariance(input, acf, acfWeight);
+        {
+            mpComputeACFPass = ComputePass::create(pDevice, "Utils/Texture/ComputeACF.cs.slang", "csMain");
+            mpACFBuffer = pDevice->createBuffer(
+                dataDim.x * dataDim.x * 1 * sizeof(float),
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal,
+                nullptr
+            );
+
+            std::vector<float> acfInput(dataDim.x * dataDim.x);
+            for (uint m = 0; m < dataDim.x; m++)
+            {
+                for (uint n = 0; n < dataDim.x; n++)
+                {
+                    acfInput[m * dataDim.x + n] = input.GetPixel(m, n, 0);
+                }
+            }
+
+            mpACFInputBuffer = pDevice->createBuffer(
+                dataDim.x * dataDim.x * 1 * sizeof(float),
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal,
+                acfInput.data()
+            );
+            float mean = calculateMean(input);
+
+            auto vars = mpComputeACFPass->getRootVar();
+            vars["PerFrameCB"]["gTargetDim"] = uint2(dataDim.x, dataDim.x);
+            vars["PerFrameCB"]["gMean"] = mean;
+            vars["gInput"] = mpACFInputBuffer;
+            vars["gACF"] = mpACFBuffer;
+            mpComputeACFPass->execute(pDevice->getRenderContext(), dataDim.x, dataDim.x);
+
+            // calculateAutocovariance(input, acf, acfWeight);
+            // writeToBinaryFile(acfWeight, "D:/acf_TILE2.bin");
+        }
     }
 
+    acfWeight = readBinaryFile("D:/acf_TILE2.bin");
+    logInfo("[Synthesis] Precomputing ACF done! {} {}", acfWeight[0], acfWeight[1]);
+
+    mpACFBuffer->getBlob(acfWeight.data(), 0, dataDim.x * dataDim.x * 1 * sizeof(float));
+
+    writeToBinaryFile(acfWeight, "D:/acf_TILE2test.bin");
+
+    logInfo("[Synthesis] Precomputing ACF  test! {} {}", acfWeight[0], acfWeight[1]);
     logInfo("[Synthesis] Precomputation done!");
 
     sample_uv_list.reserve(2048 * 2);
@@ -114,21 +158,18 @@ void TextureSynthesis::precomputeFeatureData(std::vector<float> data, uint2 data
     //     dataDim.x,  dataDim.x, ResourceFormat::RGBA32Float, dataDim.y, 1, TData.data(), ResourceBindFlags::ShaderResource
     // );
     // mpFeatureInvT =
-    //     pDevice->createTexture2D(LUT_WIDTH, 1, ResourceFormat::RGBA32Float, dataDim.y, 1, invTData.data(), ResourceBindFlags::ShaderResource);
+    //     pDevice->createTexture2D(LUT_WIDTH, 1, ResourceFormat::RGBA32Float, dataDim.y, 1, invTData.data(),
+    //     ResourceBindFlags::ShaderResource);
     // mpACF =
-    //     pDevice->createTexture2D(dataDim.x, dataDim.x, ResourceFormat::R32Float, 1, 1, acf.data.data(), ResourceBindFlags::ShaderResource);
-
+    //     pDevice->createTexture2D(dataDim.x, dataDim.x, ResourceFormat::R32Float, 1, 1, acf.data.data(),
+    //     ResourceBindFlags::ShaderResource);
 }
 
 void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice)
 {
     updateSample(acfWeight, sample_uv_list, dim);
     mpMap = pDevice->createTypedBuffer(
-        ResourceFormat::R32Float,
-        sample_uv_list.size(),
-        ResourceBindFlags::ShaderResource,
-        MemoryType::DeviceLocal,
-        sample_uv_list.data()
+        ResourceFormat::R32Float, sample_uv_list.size(), ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, sample_uv_list.data()
     );
 }
 
@@ -140,11 +181,11 @@ void TextureSynthesis::bindHFData(const ShaderVar& var)
 void TextureSynthesis::bindMap(const ShaderVar& var)
 {
     var["sampleMap"] = mpMap;
-    //std::vector<float> test;
-    //test.resize(2);
-    //mpMap->getBlob(test.data(), 0, 8);
-    //std::cout << sample_uv_list.size() << " " << sample_uv_list[0] << " " << sample_uv_list[1] << std::endl;
-    //std::cout << test[0] << " " << test[1] << std::endl;
+    // std::vector<float> test;
+    // test.resize(2);
+    // mpMap->getBlob(test.data(), 0, 8);
+    // std::cout << sample_uv_list.size() << " " << sample_uv_list[0] << " " << sample_uv_list[1] << std::endl;
+    // std::cout << test[0] << " " << test[1] << std::endl;
 }
 void TextureSynthesis::bindFeatureData(const ShaderVar& var)
 {

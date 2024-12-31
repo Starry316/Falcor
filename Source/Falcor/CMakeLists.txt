@@ -781,6 +781,7 @@ target_sources(Falcor PRIVATE
     Utils/Texture/SynthesisUtils.cpp
     Utils/Texture/external/jacobi.h
     Utils/Texture/HistogramBlending.slang
+    Utils/Texture/ComputeACF.cs.slang
 )
 
 

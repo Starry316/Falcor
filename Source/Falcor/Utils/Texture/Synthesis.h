@@ -44,6 +44,10 @@ private:
     ref<Texture> mpFeatureT;
     ref<Texture> mpFeatureInvT;
     ref<Texture> mpACF;
+    ref<Buffer> mpACFBuffer;
+    ref<Buffer> mpACFInputBuffer;
+
+    ref<ComputePass> mpComputeACFPass;
 
     std::vector<float> TData;
     std::vector<float> invTData;
