@@ -13,7 +13,7 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
     if (any(dispatchThreadId.xy >= gRenderTargetDim))
         return;
     uint2 pixel = dispatchThreadId.xy;
-    // printSetPixel(pixel);
+    printSetPixel(pixel);
 
     if (cudaVaildBuffer[pixel.y * gRenderTargetDim.x + pixel.x] == 0)
         return;
@@ -29,5 +29,6 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 #ifdef HDR_COMPRESSED
     btfVal = exp(btfVal) - 1;
 #endif
+    print("btf", btfVal);
     gOutputColor[pixel] *= btfVal;
 }

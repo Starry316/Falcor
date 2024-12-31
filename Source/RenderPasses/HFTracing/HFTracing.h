@@ -203,6 +203,14 @@ private:
 #endif
 
 
+#ifdef METAL2
+    std::string mNetInt8Name = "metal2_m32u8h8d8_int8";
+    std::string mShellHFFileName = "MetalGoldHammered001_DISP_6K.png";
+    std::string mHFFileName = "MetalGoldHammered001_DISP_6K.png";
+    bool mHDRBTF = true;
+#endif
+
+
 #ifdef BRICK
     std::string mNetInt8Name = "brick_m32u8h8d8_int8";
     std::string mShellHFFileName = "castle_brick_02_red_disp_4k.png";
@@ -215,6 +223,15 @@ private:
     std::string mNetInt8Name = "tile_m32u8h8d8_int8";
     std::string mShellHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
     std::string mHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
+    bool mHDRBTF = false;
+#endif
+
+
+
+#ifdef TILE2
+    std::string mNetInt8Name = "tile2_m32u8h8d8_int8";
+    std::string mShellHFFileName = "roof_tiles_14_disp_1k.png";
+    std::string mHFFileName = "roof_tiles_14_disp_1k.png";
     bool mHDRBTF = false;
 #endif
 

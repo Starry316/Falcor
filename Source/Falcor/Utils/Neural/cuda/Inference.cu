@@ -5,7 +5,7 @@
 #define IN_PACKED_NUM IN_NUM / 4
 #define HIDDEN_NUM 32
 #define HIDDEN_PACKED_NUM HIDDEN_NUM / 4
-#define HALF_ACC 1
+#define HALF_ACC 0
 __global__ void inferInt8TexTest(
     int* weight,
     float* testInput,
@@ -66,6 +66,11 @@ __global__ void inferInt8TexTest(
 
     val = tex2DLayered<float4>(DP, d1, d2, 1);
     val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
+
+    // for (size_t i = 0; i < HIDDEN_PACKED_NUM; i++)
+    // {
+    //     val2[i] = 0;
+    // }
 
     // layer 1
     for (int k = 0; k < hiddenNum; k++)

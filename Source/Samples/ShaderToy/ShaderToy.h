@@ -95,12 +95,49 @@ private:
 
 #ifdef PEBBLE
     std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
+    bool mHDRBTF = false;
 #endif
+
 #ifdef LEATHER
     std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
+    bool mHDRBTF = false;
 #endif
+
+
+#ifdef LEATHER_04R
+    std::string mNetInt8Name = "leather04r_m32u8h8d8_int8";
+    bool mHDRBTF = false;
+#endif
+
+#ifdef METAL2
+    std::string mNetInt8Name = "metal2_m32u8h8d8_int8";
+    bool mHDRBTF = true;
+#endif
+
+
 #ifdef METAL
     std::string mNetInt8Name = "metal_m32u8h8d8_int8";
+
+    bool mHDRBTF = true;
+#endif
+
+
+#ifdef BRICK
+    std::string mNetInt8Name = "brick_m32u8h8d8_int8";
+    bool mHDRBTF = false;
+#endif
+
+
+#ifdef TILE
+    std::string mNetInt8Name = "tile_m32u8h8d8_int8";
+    bool mHDRBTF = false;
+#endif
+
+
+
+#ifdef TILE2
+    std::string mNetInt8Name = "tile2_m32u8h8d8_int8";
+    bool mHDRBTF = false;
 #endif
 
     uint mFrames = 1;

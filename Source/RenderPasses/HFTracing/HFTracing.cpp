@@ -334,10 +334,10 @@ void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& ren
     else
         mTracer.pProgram->removeDefine("HDR_COMPRESSED");
 
-    // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
-    // mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
+    mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
+    mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, targetDim.x, targetDim.y);
-    // mpPixelDebug->endFrame(pRenderContext);
+    mpPixelDebug->endFrame(pRenderContext);
     // pRenderContext->submit(false);
     // pRenderContext->signal(mpFence2.get());
     // mpFence2->wait();

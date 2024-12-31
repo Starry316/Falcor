@@ -2,5 +2,7 @@
 // #define LEATHER
 // #define LEATHER_04R
 // #define TILE
-#define BRICK
+// #define TILE2
+// #define BRICK
 // #define METAL
+#define METAL2

@@ -83,6 +83,23 @@ __constant__ float scaleIn4 = 0.002577820559963584;
 __constant__ float scaleOut4 = 0.019315816462039948;
 __constant__ float dequantizeScale4 = 4.979271034244448e-05;
 #endif
+
+
+#ifdef METAL2
+__constant__ float scaleIn1 = 0.001367884804494679;
+__constant__ float scaleOut1 = 0.0039396765641868114;
+__constant__ float dequantizeScale1 = 5.389023499446921e-06;
+__constant__ float scaleIn2 = 0.0010591872269287705;
+__constant__ float scaleOut2 = 0.004096920136362314;
+__constant__ float dequantizeScale2 = 4.339405677455943e-06;
+__constant__ float scaleIn3 = 0.001176882884465158;
+__constant__ float scaleOut3 = 0.004328439012169838;
+__constant__ float dequantizeScale3 = 5.094065727462294e-06;
+__constant__ float scaleIn4 = 0.0026517880614846945;
+__constant__ float scaleOut4 = 0.005094780120998621;
+__constant__ float dequantizeScale4 = 1.351027731288923e-05;
+#endif
+
 #ifdef TILE
 __constant__ float scaleIn1 = 0.001563933095894754;
 __constant__ float scaleOut1 = 0.002727729035541415;
@@ -96,4 +113,19 @@ __constant__ float dequantizeScale3 = 4.481165888137184e-06;
 __constant__ float scaleIn4 = 0.0020106337033212185;
 __constant__ float scaleOut4 = 0.0022378810681402683;
 __constant__ float dequantizeScale4 = 4.499559054238489e-06;
+#endif
+
+#ifdef TILE2
+__constant__ float scaleIn1 = 0.0021086351480334997;
+__constant__ float scaleOut1 = 0.0029193938244134188;
+__constant__ float dequantizeScale1 = 6.1559362620755564e-06;
+__constant__ float scaleIn2 = 0.0015336197102442384;
+__constant__ float scaleOut2 = 0.003363907802850008;
+__constant__ float dequantizeScale2 = 5.158955445949687e-06;
+__constant__ float scaleIn3 = 0.0009424724266864359;
+__constant__ float scaleOut3 = 0.0051096538081765175;
+__constant__ float dequantizeScale3 = 4.815707598027075e-06;
+__constant__ float scaleIn4 = 0.0011210687225684524;
+__constant__ float scaleOut4 = 0.005765164736658335;
+__constant__ float dequantizeScale4 = 6.463145837187767e-06;
 #endif
