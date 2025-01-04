@@ -604,7 +604,7 @@ bool traceSynthesizedHeightMapEstimated(
     out float intersectedHeight
 )
 {
-    uint coarseLength = 16;
+    uint coarseLength = 32;
     intersectedT = {};
     intersectedHeight = {};
 
@@ -615,7 +615,7 @@ bool traceSynthesizedHeightMapEstimated(
 
     // we assume we only have square a height field texture
     float pixelSizeInTexel = max(length(ddx) * width, length(ddy) * width) * UV_SCALE;
-    pixelSizeInTexel = min(pixelSizeInTexel, width / float(coarseLength * 2));
+    pixelSizeInTexel = max(min(pixelSizeInTexel, width / float(coarseLength * 2)), 5.f);
 
 
     float shellSize = max(abs(viewDirection.x) * width, abs(viewDirection.y) * width) * UV_SCALE;
@@ -628,7 +628,7 @@ bool traceSynthesizedHeightMapEstimated(
     if (fineSteps > coarseLength) {
         incrementUnitCoarse = viewDirection / coarseSteps;
         incrementUnitFine = incrementUnitCoarse / coarseLength;
-        incrementUnitFine * 1.0001;
+        // incrementUnitFine * 1.0001;
     }
     else {
         incrementUnitFine = viewDirection / fineSteps;
@@ -656,7 +656,6 @@ bool traceSynthesizedHeightMapEstimated(
             else
                 heightData = gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
             const float currentHeightDelta = currentTestPoint.z - heightData;
-            //
             if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
                 (sign(lastHeightDelta) != sign(currentHeightDelta)))
             {
@@ -664,8 +663,6 @@ bool traceSynthesizedHeightMapEstimated(
                 float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
                 intersectedT = tMax * (estimatedT / fineSteps);
                 intersectedHeight = lerp(currentTestPoint.z, lastTestPoint.z, heightDeltaRatio);
-                // intersectedT = tMax;
-                // intersectedHeight = 2;
                 return true;
             }
             lastHeightDelta = currentHeightDelta;
@@ -694,9 +691,7 @@ bool traceSynthesizedHeightMapEstimated(
             // float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
             // intersectedT = tMax * (estimatedT / coarseSteps );
             // intersectedHeight = currentTestPoint.z;
-
             // return true;
-
             float3 lastTestPointFine;
             float3 currentTestPointFine = lastTestPoint;
             float lastHeightDeltaFine = 0.0001;
@@ -715,19 +710,13 @@ bool traceSynthesizedHeightMapEstimated(
                         gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x * HF_SCALING + HF_OFFSET;
 
                 const float currentHeightDeltaFine = currentTestPointFine.z - heightDataFine;
-                // if (((currentHeightDeltaFine <= 0.f) && (currentHeightDeltaFine > -kSurfaceThickness)) ||
-                //     (sign(lastHeightDeltaFine) != sign(currentHeightDeltaFine)))
-
-                if (((currentHeightDeltaFine <= 0.f) ) ||
-                        (sign(lastHeightDeltaFine) != sign(currentHeightDeltaFine)))
+                if (((currentHeightDeltaFine <= 0.f) && (currentHeightDeltaFine > -kSurfaceThickness)) ||
+                    (sign(lastHeightDeltaFine) != sign(currentHeightDeltaFine)))
                 {
                     float heightDeltaRatio = abs(currentHeightDeltaFine) / (abs(currentHeightDeltaFine) + abs(lastHeightDeltaFine));
                     float estimatedTFine = lerp(float(j) + 1.f, float(j), heightDeltaRatio);
-                    // intersectedT = tMax * (float(i) / coarseSteps + (float(estimatedT) / coarseLength) / coarseLength);
-
                     intersectedT = tMax * ((float(i)  + estimatedTFine / coarseLength) / coarseSteps);
                     intersectedHeight = lerp(currentTestPointFine.z, lastTestPointFine.z, heightDeltaRatio);
-                    // intersectedHeight = currentTestPointFine.z;
                     return true;
                 }
                 lastHeightDeltaFine = currentHeightDeltaFine;

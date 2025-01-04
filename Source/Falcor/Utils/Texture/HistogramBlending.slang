@@ -183,6 +183,9 @@ float AutocovarianceBlendingDual(
     G = (data.tex.SampleGrad(sampler, uv - float2(data.sampleMap[2 * id0], data.sampleMap[2 * id0 + 1]), ddx, ddy) - 0.5f) * b.x
       + (data.tex.SampleGrad(sampler, uv - float2(data.sampleMap[2 * id1], data.sampleMap[2 * id1 + 1]), ddx, ddy) - 0.5f) * b.y;
 
+    // G = max((data.tex.SampleGrad(sampler, uv - float2(data.sampleMap[2 * id0], data.sampleMap[2 * id0 + 1]), ddx, ddy) - 0.5f) * b.x
+    //   , (data.tex.SampleGrad(sampler, uv - float2(data.sampleMap[2 * id1], data.sampleMap[2 * id1 + 1]), ddx, ddy) - 0.5f) * b.y);
+    // float G = max(max(w1 * g1, w2 * g2), w3 * g3);
     G = 0.5f + G / length(b);
     G = clamp(G, 0.0001, 0.999);
 
