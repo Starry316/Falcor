@@ -53,10 +53,10 @@ cbuffer CB
     bool gApplySyn;
     bool gUseFP16;
     EnvMapSampler envMapSampler;
-    uint gDebugPrism;
     bool gShowTracedHF;
     bool gTracedShadowRay;
     HistogramBlendingHFData hfData;
+
 }
 #define M_1_32 0.03125 // 1/32
 #define M_1_16 0.0625  // 1/16
@@ -67,7 +67,6 @@ RWTexture2D<float4> gOutputColor;
 
 Texture2D<float> gHF;
 Texture2D<float4> gShellHF;
-Texture2D<float> gHFMaxMip;
 Texture2D<float4> gNormalMap;
 Texture2D<float4> gTangentMap;
 Texture2D<float4> gPosMap;
@@ -120,11 +119,8 @@ struct ScatterRayData
 {
     float3 radiance;  ///< Accumulated outgoing radiance from path.
     bool terminated;  ///< Set to true when path is terminated.
-    float3 thp;       ///< Current path throughput. and pixel position.
-    uint pathLength;  ///< Path length in number of path segments (0 at origin, 1 at first secondary hit, etc.). Max 2^31.
     float3 origin;    ///< Next path segment origin.
     float3 direction; ///< Next path segment direction.
-    float BRDFPdf;    ///< PDF of the last BSDF sample. Used for MIS.
 
     SampleGenerator sg; ///< Per-ray state for the sample generator (up to 16B).
 
@@ -134,13 +130,10 @@ struct ScatterRayData
     __init(SampleGenerator sg)
     {
         this.terminated = false;
-        this.pathLength = 0;
         this.radiance = float3(0, 0, 0);
-        this.thp = float3(1, 1, 1);
         this.origin = float3(0, 0, 0);
         this.direction = float3(0, 0, 0);
         this.sg = sg;
-        this.BRDFPdf = 1.0f;
     }
 };
 
@@ -232,17 +225,6 @@ ShadingData loadShadingData(
     VertexData v = {};
     uint materialID = {};
 
-#if SCENE_HAS_GEOMETRY_TYPE(GEOMETRY_TYPE_TRIANGLE_MESH)
-    if (hit.getType() == HitType::Triangle)
-    {
-        const TriangleHit triangleHit = hit.getTriangleHit();
-        instanceID = triangleHit.instanceID;
-        primitiveIndex = triangleHit.primitiveIndex;
-        v = gScene.getVertexData(triangleHit);
-        materialID = gScene.getMaterialID(triangleHit.instanceID);
-    }
-#endif
-#if SCENE_HAS_GEOMETRY_TYPE(GEOMETRY_TYPE_DISPLACED_TRIANGLE_MESH)
     if (hit.getType() == HitType::DisplacedTriangle)
     {
         const DisplacedTriangleHit displacedTriangleHit = hit.getDisplacedTriangleHit();
@@ -251,7 +233,6 @@ ShadingData loadShadingData(
         v = gScene.getVertexData(displacedTriangleHit, -rayDir);
         materialID = gScene.getMaterialID(displacedTriangleHit.instanceID);
     }
-#endif
     ShadingData sd = gScene.materials.prepareShadingData(v, materialID, -rayDir);
 
     return sd;
@@ -259,11 +240,19 @@ ShadingData loadShadingData(
 /**
  * Returns the primary ray's direction.
  */
-float3 getPrimaryRayDir(uint2 launchIndex, uint2 launchDim, const Camera camera)
+float3 getPrimaryRayDir(uint2 launchIndex, uint2 launchDim, const Camera camera, float2 jitter)
 {
-    return camera.computeRayPinhole(launchIndex, launchDim).dir;
-}
+    // Compute sample position in screen space in [0,1] with origin at the top-left corner.
+    // The camera jitter offsets the sample by +-0.5 pixels from the pixel center.
+    float2 p = (launchIndex + jitter) / launchDim;
 
+    float2 ndc = float2(2, -2) * p + float2(-1, 1);
+
+    // Compute the non-normalized ray direction assuming a pinhole camera.
+    return normalize(ndc.x * camera.data.cameraU + ndc.y * camera.data.cameraV + camera.data.cameraW);
+
+    // return camera.computeRayPinhole(launchIndex, launchDim).dir;
+}
 
 
 /**
@@ -405,19 +394,19 @@ float3 evalDirectAnalytic(const ShadingData sd, const IMaterialInstance mi, inou
 bool generateScatterRay(const ShadingData sd, const IMaterialInstance mi, float3 rayOrigin, inout ScatterRayData rayData)
 {
     // Sample material.
-    BSDFSample bsdfSample;
-    if (mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
-    {
-        rayData.origin = rayOrigin;
-        if (bsdfSample.isLobe(LobeType::Transmission))
-        {
-            rayData.origin = sd.computeRayOrigin(false);
-        }
-        rayData.direction = bsdfSample.wo;
-        rayData.thp *= bsdfSample.weight;
-        rayData.BRDFPdf = bsdfSample.pdf;
-        return any(rayData.thp > 0.f);
-    }
+    // BSDFSample bsdfSample;
+    // if (mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
+    // {
+    //     rayData.origin = rayOrigin;
+    //     if (bsdfSample.isLobe(LobeType::Transmission))
+    //     {
+    //         rayData.origin = sd.computeRayOrigin(false);
+    //     }
+    //     rayData.direction = bsdfSample.wo;
+    //     rayData.thp *= bsdfSample.weight;
+    //     rayData.BRDFPdf = bsdfSample.pdf;
+    //     return any(rayData.thp > 0.f);
+    // }
 
     return false;
 }
@@ -524,17 +513,16 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
         sampleNext1D(sg);
 
     const float3 primaryRayOrigin = gScene.camera.getPosition();
-    const float3 primaryRayDir = getPrimaryRayDir(pixel, frameDim, gScene.camera);
+
+    const float3 primaryRayDir = getPrimaryRayDir(pixel, frameDim, gScene.camera, sampleNext2D(sg));
     // Prepare ray payload.
     ScatterRayData rayData = ScatterRayData(sg);
 
     rayData.origin = primaryRayOrigin;
     rayData.direction = primaryRayDir;
 
-    for (uint depth = 0; depth < 1 && !rayData.terminated; depth++)
-    {
-        traceScatterRay(rayData);
-    }
+
+    traceScatterRay(rayData);
     // =================================================================================================
     // I used rayData.terminated to determine if the ray is terminated.
     // There can be a better way to do this.
@@ -556,11 +544,12 @@ void scatterMiss(inout ScatterRayData rayData)
     uint2 pixel = DispatchRaysIndex().xy;
 
     // Add contribution from distant light (env map) in this direction.
-    if (kUseEnvLight && (kComputeDirect || rayData.pathLength == 0))
+    // if (kUseEnvLight && (kComputeDirect || rayData.pathLength == 0))
+    if (kUseEnvLight)
     {
         float3 Le = gScene.envMap.eval(WorldRayDirection());
         // rayData.radiance += rayData.thp * Le * MISWeight(rayData.BRDFPdf, envMapSampler.evalPdf(WorldRayDirection()));
-        rayData.radiance += rayData.thp * Le;
+        rayData.radiance += Le;
     }
 }
 
@@ -607,16 +596,15 @@ void shadowTriangleMeshAnyHit(inout ShadowRayData rayData, BuiltInTriangleInters
 }
 
 bool traceSynthesizedHeightMapEstimated(
-    const DisplacementData displacementData,
     float3 startPoint,
     float3 endPoint,
-    const float2 ddx,
-    const float2 ddy,
+    float2 ddx,
+    float2 ddy,
     out float intersectedT,
     out float intersectedHeight
 )
 {
-    uint coarseLength =16;
+    uint coarseLength = 16;
     intersectedT = {};
     intersectedHeight = {};
 
@@ -625,19 +613,22 @@ bool traceSynthesizedHeightMapEstimated(
     uint width, height;
     gShellHF.GetDimensions(width, height);
 
-    // camera ddx and ddy
-    float maxGradient = max(length(ddx), length(ddx));
-    float lod = log2(maxGradient * UV_SCALE);
+    // we assume we only have square a height field texture
+    float pixelSizeInTexel = max(length(ddx) * width, length(ddy) * width) * UV_SCALE;
+    pixelSizeInTexel = min(pixelSizeInTexel, width / float(coarseLength * 2));
 
 
     float shellSize = max(abs(viewDirection.x) * width, abs(viewDirection.y) * width) * UV_SCALE;
-    int fineSteps = max(ceil(shellSize * 2), 1);
+
+    int fineSteps = max(ceil(shellSize / pixelSizeInTexel * 2), 1);
     fineSteps = min(fineSteps, kRaymarchingMaxSampleCount);
+    // fineSteps = 4;
     int coarseSteps = max(ceil(float(fineSteps) / coarseLength), 1);
     float3 incrementUnitCoarse, incrementUnitFine;
     if (fineSteps > coarseLength) {
         incrementUnitCoarse = viewDirection / coarseSteps;
         incrementUnitFine = incrementUnitCoarse / coarseLength;
+        incrementUnitFine * 1.0001;
     }
     else {
         incrementUnitFine = viewDirection / fineSteps;
@@ -663,7 +654,7 @@ bool traceSynthesizedHeightMapEstimated(
                     AutocovarianceBlendingDual(hfData, gMaxSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING +
                     HF_OFFSET;
             else
-                heightData = gShellHF.SampleGrad(gSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+                heightData = gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
             const float currentHeightDelta = currentTestPoint.z - heightData;
             //
             if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
@@ -673,6 +664,8 @@ bool traceSynthesizedHeightMapEstimated(
                 float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
                 intersectedT = tMax * (estimatedT / fineSteps);
                 intersectedHeight = lerp(currentTestPoint.z, lastTestPoint.z, heightDeltaRatio);
+                // intersectedT = tMax;
+                // intersectedHeight = 2;
                 return true;
             }
             lastHeightDelta = currentHeightDelta;
@@ -687,23 +680,28 @@ bool traceSynthesizedHeightMapEstimated(
         float heightData;
         if (gApplySyn)
             heightData = AutocovarianceBlendingDual(
-                             hfData, gMaxSampler, ddx * coarseLength / 2, ddy * coarseLength / 2, frac(abs(currentTestPoint.xy)) * UV_SCALE
+                             hfData, gMaxSampler, ddx * coarseLength, ddy * coarseLength, frac(abs(currentTestPoint.xy)) * UV_SCALE
                          ) * HF_SCALING +
                          HF_OFFSET;
         else
             heightData =
-                gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength / 2, ddy * coarseLength / 2).x *
-                    HF_SCALING +
-                HF_OFFSET;
+                gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x *HF_SCALING +HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
-        if (currentHeightDelta <= 0.f)
+        if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
+            (sign(lastHeightDelta) != sign(currentHeightDelta)))
         {
-            // trace fine level
+            // float heightDeltaRatio = abs(currentHeightDelta) / (abs(currentHeightDelta) + abs(lastHeightDelta));
+            // float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
+            // intersectedT = tMax * (estimatedT / coarseSteps );
+            // intersectedHeight = currentTestPoint.z;
+
+            // return true;
+
             float3 lastTestPointFine;
             float3 currentTestPointFine = lastTestPoint;
-            lastHeightDelta = 0.0001;
-
-            for (int j = 0; j < fineSteps; j++)
+            float lastHeightDeltaFine = 0.0001;
+            // return true;
+            for (int j = 0; j < coarseLength; j++)
             {
                 lastTestPointFine = currentTestPointFine;
                 currentTestPointFine += incrementUnitFine;
@@ -717,147 +715,30 @@ bool traceSynthesizedHeightMapEstimated(
                         gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x * HF_SCALING + HF_OFFSET;
 
                 const float currentHeightDeltaFine = currentTestPointFine.z - heightDataFine;
-                if (((currentHeightDeltaFine <= 0.f) && (currentHeightDeltaFine > -kSurfaceThickness)) ||
-                    (sign(lastHeightDelta) != sign(currentHeightDeltaFine)))
+                // if (((currentHeightDeltaFine <= 0.f) && (currentHeightDeltaFine > -kSurfaceThickness)) ||
+                //     (sign(lastHeightDeltaFine) != sign(currentHeightDeltaFine)))
+
+                if (((currentHeightDeltaFine <= 0.f) ) ||
+                        (sign(lastHeightDeltaFine) != sign(currentHeightDeltaFine)))
                 {
-                    float heightDeltaRatio = abs(currentHeightDeltaFine) / (abs(currentHeightDeltaFine) + abs(lastHeightDelta));
-                    float estimatedT = lerp(float(j) + 1.f, float(j), heightDeltaRatio);
-                    // intersectedT = tMax * (float(i) / coarseSteps + (float(estimatedT) / fineSteps) / coarseLength);
+                    float heightDeltaRatio = abs(currentHeightDeltaFine) / (abs(currentHeightDeltaFine) + abs(lastHeightDeltaFine));
+                    float estimatedTFine = lerp(float(j) + 1.f, float(j), heightDeltaRatio);
+                    // intersectedT = tMax * (float(i) / coarseSteps + (float(estimatedT) / coarseLength) / coarseLength);
 
-                    intersectedT = tMax * (float(i) / coarseSteps + (float(j) / fineSteps) / coarseLength);
-
-                    // intersectedHeight = lerp(currentTestPointFine.z, lastTestPointFine.z, heightDeltaRatio);
-                    intersectedHeight = currentTestPointFine.z;
+                    intersectedT = tMax * ((float(i)  + estimatedTFine / coarseLength) / coarseSteps);
+                    intersectedHeight = lerp(currentTestPointFine.z, lastTestPointFine.z, heightDeltaRatio);
+                    // intersectedHeight = currentTestPointFine.z;
                     return true;
                 }
-                lastHeightDelta = currentHeightDeltaFine;
+                lastHeightDeltaFine = currentHeightDeltaFine;
             }
         }
-
+        lastHeightDelta = currentHeightDelta;
     }
-    // for (int i = 0; i < coarseSteps; i++)
-    // {
-    //     lastTestPoint = currentTestPoint;
-    //     currentTestPoint += incrementUnitCoarse;
-    //     float heightData;
-    //     if (gApplySyn)
-    //         heightData =
-    //             AutocovarianceBlendingDual(hfData, gMaxSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING +
-    //             HF_OFFSET;
-    //     else
-    //         heightData = gShellHF.SampleGrad(gSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
-    //     const float currentHeightDelta = currentTestPoint.z - heightData;
-    //     //
-    //     if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
-    //         (sign(lastHeightDelta) != sign(currentHeightDelta)))
-    //     {
-    //         float heightDeltaRatio = abs(currentHeightDelta) / (abs(currentHeightDelta) + abs(lastHeightDelta));
-    //         float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
-    //         intersectedT = tMax * (estimatedT / fineSteps);
-    //         intersectedHeight = lerp(currentTestPoint.z, lastTestPoint.z, heightDeltaRatio);
-    //         return true;
-    //     }
-    //     lastHeightDelta = currentHeightDelta;
-    // }
-
-    // for (int i = 0; i < fineSteps; i++)
-    // {
-    //     lastTestPoint = currentTestPoint;
-    //     currentTestPoint += incrementUnitFine;
-    //     float heightData;
-    //     if (gApplySyn)
-    //         heightData =
-    //             AutocovarianceBlendingDual(hfData, gMaxSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING +
-    //             HF_OFFSET;
-    //     else
-    //         heightData = gShellHF.SampleGrad(gSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
-    //     const float currentHeightDelta = currentTestPoint.z - heightData;
-    //     //
-    //     if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
-    //         (sign(lastHeightDelta) != sign(currentHeightDelta)))
-    //     {
-    //         float heightDeltaRatio = abs(currentHeightDelta) / (abs(currentHeightDelta) + abs(lastHeightDelta));
-    //         float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
-    //         intersectedT = tMax * (estimatedT / fineSteps);
-    //         intersectedHeight = lerp(currentTestPoint.z, lastTestPoint.z, heightDeltaRatio);
-    //         return true;
-    //     }
-    //     lastHeightDelta = currentHeightDelta;
-    // }
-
-    // float fineFootprintPixel = ceil(min(fineStepTS * UV_SCALE, width * 0.25f / coarseLength));
-    // int fineSteps = coarseLength;
-
-    // float coarseFootprintPixel = fineFootprintPixel * coarseLength;
-    // int coarseSteps = ceil(min(width / coarseFootprintPixel, kRaymarchingMaxSampleCount));
-
-    // float coarseLod = log2(coarseFootprintPixel);
-    // float fineLod = log2(fineFootprintPixel);
-
-    // float3 incrementUnitFine = fineStepTS * viewDirection;
-    // float3 incrementUnitCoarse = incrementUnitFine * coarseLength;
-
-    // float lastHeightDelta = 0.0001;
-    // for (int i = 0; i < coarseSteps && i * (fineStepTS * coarseLength) <= tMax; i++)
-    // {
-    //     lastTestPoint = currentTestPoint;
-    //     currentTestPoint += incrementUnitCoarse;
-    //     float heightData;
-    //     if (gApplySyn)
-    //         heightData =
-    //             AutocovarianceBlendingDual(hfData, gMaxSampler, coarseLod, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING +
-    //             HF_OFFSET;
-    //     else
-    //         heightData = gShellHF.SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, coarseLod).x * HF_SCALING +
-    //         HF_OFFSET;
-    //     const float currentHeightDelta = currentTestPoint.z - heightData;
-    //     if ((currentHeightDelta <= 0.f))
-    //     {
-    //         // trace fine level
-    //         float3 lastTestPointFine;
-    //         float3 currentTestPointFine = lastTestPoint;
-    //         float lastHeightDelta = 0.0001;
-
-    //         float heightDeltaRatio = abs(currentHeightDelta) / (abs(currentHeightDelta) + abs(lastHeightDelta));
-    //         float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
-
-    //         intersectedT = tMax * (estimatedT / coarseSteps);
-    //         intersectedHeight = lerp(currentTestPoint.z, lastTestPoint.z, heightDeltaRatio);
-
-    //         return true;
-
-    // for (int j = 0; j < fineSteps; j++) {
-    //     lastTestPointFine = currentTestPointFine;
-    //     currentTestPointFine += incrementUnitFine;
-    //     float heightDataFine;
-    //     if (gApplySyn)
-    //         heightDataFine = AutocovarianceBlendingDual(hfData, gMaxSampler, minLod, frac(abs(currentTestPoint.xy)) * UV_SCALE) *
-    //         HF_SCALING + HF_OFFSET;
-    //     else
-    //         heightDataFine = gShellHF.SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x * HF_SCALING
-    //         + HF_OFFSET;
-    //     const float currentHeightDeltaFine = currentTestPointFine.z - heightDataFine;
-    //     // if (((currentHeightDeltaFine <= 0.f)))
-    //     if (((currentHeightDeltaFine <= 0.f) && (currentHeightDeltaFine > -kSurfaceThickness)) ||
-    //         (sign(lastHeightDelta) != sign(currentHeightDeltaFine)))
-    //     {
-    //         float heightDeltaRatio = abs(currentHeightDeltaFine) / (abs(currentHeightDeltaFine) + abs(lastHeightDelta));
-    //         float estimatedT = lerp(float(j) + 1.f, float(j), heightDeltaRatio);
-    //         intersectedT = tMax * (float(i) / coarseSteps + (float(estimatedT) / fineSteps) / coarseLength);
-    //         // intersectedT = tMax * (estimatedT / fineSteps);
-    //         intersectedHeight = lerp(currentTestPointFine.z, lastTestPointFine.z, heightDeltaRatio);
-    //         return true;
-    //     }
-    //     lastHeightDelta = currentHeightDeltaFine;
-    // }
-    // }
-    // lastHeightDelta = currentHeightDelta;
-    // }
     return false;
 }
 
 bool traceSynthesizedHeightMapEstimatedNoMip(
-    const DisplacementData displacementData,
     float3 startPoint,
     float3 endPoint,
     const float2 ddx,
@@ -918,7 +799,6 @@ bool traceSynthesizedHeightMapEstimatedNoMip(
 }
 
 bool traceSynthesizedHeightMapEstimatedSimpleMip(
-    const DisplacementData displacementData,
     float3 startPoint,
     float3 endPoint,
     const float2 ddx,
@@ -990,140 +870,10 @@ bool traceSynthesizedHeightMapEstimatedSimpleMip(
     return false;
 }
 
-// contact refinement hf tracing
-bool traceSynthesizedHeightMapEstimated_CR(
-    const DisplacementData displacementData,
-    float3 startPoint,
-    float3 endPoint,
-    const float2 ddx,
-    const float2 ddy,
-    out float intersectedT,
-    out float intersectedHeight
-)
-{
-    intersectedT = {};
-    intersectedHeight = {};
-    float2 coarseDdx = ddx * 16;
-    float2 coarseDdy = ddy * 16;
-
-    float entryHeightData;
-    if (gApplySyn)
-        // entryHeightData = HexTilingHeight(gShellHF, gSampler, ddx, ddy, startPoint.xy * UV_SCALE) * HF_SCALING + HF_OFFSET;
-        // entryHeightData = HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(startPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
-        entryHeightData =
-            AutocovarianceBlendingDual(hfData, gSampler, ddx, ddy, frac(abs(startPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
-    else
-        entryHeightData = gShellHF.SampleGrad(gSampler, frac(abs(startPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
-
-    // if (startPoint.z < entryHeightData)
-    // {
-    //     intersectedT = 0.000001f; // This seems to make the intersection ignored. TODO: experiment with eg. 0.000001
-    //     intersectedHeight = startPoint.z;
-    //     return true;
-    // }
-
-    float3 viewDirection = endPoint - startPoint;
-
-    float footprint = max(max(length(ddx), length(ddy)), 0.0001f);
-    float maxDistance = length(viewDirection.xy);
-    int maxCount = ceil(maxDistance / footprint) + 1;
-    bool useCoarse = true;
-    if (maxCount < 16)
-    {
-        coarseDdx = ddx;
-        coarseDdy = ddy;
-        useCoarse = false;
-    }
-    else
-    {
-        maxCount = ceil(maxCount / 16);
-    }
-
-    // int maxCount = ceil(abs(viewDirection.x)) + ceil(abs(viewDirection.y)) + 2;
-    // maxCount = min(maxCount * kRaymarchingSampleCountFactor, kRaymarchingMaxSampleCount); // Prevent freeze due to corner cases. Todo:
-    //                                                                                       // Investigate why this happens.
-    float3 incrementUnit = viewDirection / maxCount;
-    viewDirection = normalize(viewDirection);
-    const float tMax = solveT(startPoint, viewDirection, endPoint);
-
-    float3 lastTestPoint;
-    float3 currentTestPoint = startPoint;
-    float lastHeightDelta = currentTestPoint.z - entryHeightData;
-
-    for (int i = 0; i < maxCount; i++)
-    {
-        lastTestPoint = currentTestPoint;
-        currentTestPoint += incrementUnit;
-        float heightData;
-        if (gApplySyn)
-            // heightData = HexTilingHeight(gShellHF, gSampler, coarseDdx, coarseDdy, currentTestPoint.xy * UV_SCALE) * HF_SCALING +
-            // HF_OFFSET;
-            // heightData = HistorgramBlending(hfData, gSampler, coarseDdx, coarseDdy, frac(abs(currentTestPoint.xy)) * UV_SCALE) *
-            // HF_SCALING + HF_OFFSET;
-            heightData =
-                AutocovarianceBlendingDual(hfData, gSampler, coarseDdx, coarseDdy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING +
-                HF_OFFSET;
-        else
-            heightData =
-                gShellHF.SampleGrad(gSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, coarseDdx, coarseDdy).x * HF_SCALING + HF_OFFSET;
-        const float currentHeightDelta = currentTestPoint.z - heightData;
-        if (currentHeightDelta <= 0.f)
-        {
-            if (useCoarse)
-            {
-                float heightDeltaRatio = abs(currentHeightDelta) / (abs(currentHeightDelta) + abs(lastHeightDelta));
-                float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
-
-                intersectedT = tMax * (estimatedT / maxCount);
-                intersectedHeight = lerp(currentTestPoint.z, lastTestPoint.z, heightDeltaRatio);
-                return true;
-            }
-            else
-            {
-                float3 lastTestPointFine = lastTestPoint;
-                float3 currentTestPointFine = lastTestPointFine;
-                float lastHeightDeltaFine = currentHeightDelta;
-                for (int j = 0; j < 16; j++)
-                {
-                    lastTestPointFine = currentTestPointFine;
-                    currentTestPointFine += incrementUnit * M_1_16;
-                    float heightFine;
-                    if (gApplySyn)
-                        // heightFine = HexTilingHeight(gShellHF, gSampler, ddx, ddy, currentTestPointFine.xy * UV_SCALE) * HF_SCALING +
-                        // HF_OFFSET;
-                        // heightFine = HistorgramBlending(hfData, gSampler, ddx, ddy, frac(abs(currentTestPointFine.xy)) * UV_SCALE) *
-                        // HF_SCALING + HF_OFFSET;
-                        heightFine = AutocovarianceBlendingDual(hfData, gSampler, ddx, ddy, frac(abs(currentTestPointFine.xy)) * UV_SCALE) *
-                                         HF_SCALING +
-                                     HF_OFFSET;
-                    else
-                        heightFine = gShellHF.SampleGrad(gSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING +
-                                     HF_OFFSET;
-                    const float currentFineHeightDelta = currentTestPointFine.z - heightFine;
-                    if (currentFineHeightDelta <= 0.f)
-                    {
-                        float heightDeltaRatio = abs(currentFineHeightDelta) / (abs(currentFineHeightDelta) + abs(lastHeightDeltaFine));
-                        float estimatedT = lerp(float(i) + 1.f, float(i), heightDeltaRatio);
-
-                        intersectedT = tMax * ((float(j) / 16) * M_1_16 + estimatedT / maxCount);
-                        intersectedHeight = lerp(currentTestPointFine.z, lastTestPointFine.z, heightDeltaRatio);
-                        return true;
-                    }
-                    lastHeightDeltaFine = currentFineHeightDelta;
-                }
-            }
-        }
-
-        lastHeightDelta = currentHeightDelta;
-    }
-
-    return false;
-}
 
 bool calcSynthesizedDisplacementIntersection(
     const Ray ray,
     const StaticVertexData vertices[3],
-    const DisplacementData displacementData,
     out DisplacementIntersection result
 )
 {
@@ -1235,8 +985,11 @@ bool calcSynthesizedDisplacementIntersection(
                                maxIntersection.barycentric[2] * vertices[2].texCrd.xy;
 
     // start/end point texture space point
-    float3 minIntersectionTexSpaceCoord = float3(minIntersectionUV * displacementData.size, minIntersection.textureSpaceHeight);
-    float3 maxIntersectionTexSpaceCoord = float3(maxIntersectionUV * displacementData.size, maxIntersection.textureSpaceHeight);
+    uint width, height;
+    gShellHF.GetDimensions(width, height);
+    float2 displacementSize = float2(width, height);
+    float3 minIntersectionTexSpaceCoord = float3(minIntersectionUV * displacementSize, minIntersection.textureSpaceHeight);
+    float3 maxIntersectionTexSpaceCoord = float3(maxIntersectionUV * displacementSize, maxIntersection.textureSpaceHeight);
     float validStartT = max(tStart, minIntersection.t);
     float validEndT = maxIntersection.t;
     minIntersectionTexSpaceCoord = lerp(
@@ -1274,9 +1027,9 @@ bool calcSynthesizedDisplacementIntersection(
     float3 maxUV = float3(maxIntersectionUV, maxIntersection.textureSpaceHeight);
     minUV = lerp(minUV, maxUV, (validStartT - minIntersection.t) / (maxIntersection.t - minIntersection.t));
 #ifdef CONTACT_REFINEMENT
-    ret = traceSynthesizedHeightMapEstimatedSimpleMip(displacementData, minUV, maxUV, ddx, ddy, intersectedT, intersectedHeight);
+    ret = traceSynthesizedHeightMapEstimatedSimpleMip( minUV, maxUV, ddx, ddy, intersectedT, intersectedHeight);
 #else
-    ret = traceSynthesizedHeightMapEstimated(displacementData, minUV, maxUV, ddx, ddy, intersectedT, intersectedHeight);
+    ret = traceSynthesizedHeightMapEstimated(minUV, maxUV, ddx, ddy, intersectedT, intersectedHeight);
 #endif
     if (ret)
     {
@@ -1302,7 +1055,6 @@ bool calcSynthesizedDisplacementIntersection(
     \param[in] ray Ray in world space.
     \param[in] vertices Triangle vertices in object space.
     \param[in] worldMat Triangle object to world transform.
-    \param[in] displacementData Displacement data.
     \param[out] result Intersection result (only valid if triangle is intersected).
     \return Returns true if displaced triangle is intersected.
 */
@@ -1310,7 +1062,6 @@ bool intersectSynthesizedDisplacedTriangle(
     const Ray ray,
     StaticVertexData vertices[3],
     const float4x4 worldMat,
-    const DisplacementData displacementData,
 
     out DisplacementIntersection result
 )
@@ -1334,7 +1085,7 @@ bool intersectSynthesizedDisplacedTriangle(
     vertices[0].position = vertPosTr[0];
     vertices[1].position = vertPosTr[1];
     vertices[2].position = vertPosTr[2];
-    bool valid = calcSynthesizedDisplacementIntersection(ray, vertices, displacementData, result);
+    bool valid = calcSynthesizedDisplacementIntersection(ray, vertices,  result);
     // Transform displacement into WS distance.
     if (!kDisplacementScalingUsePreciseLength)
     {
@@ -1380,12 +1131,11 @@ struct SynthesizedDisplacedTriangleMeshIntersector
         const StaticVertexData vertices[3] = { gScene.getVertex(indices[0]), gScene.getVertex(indices[1]), gScene.getVertex(indices[2]) };
         const float4x4 worldMat = gScene.getWorldMatrix(instanceID);
 
-        DisplacementData displacementData;
-        gScene.materials.loadDisplacementData(materialID, displacementData);
+
 
         DisplacementIntersection result;
 
-        if (intersectSynthesizedDisplacedTriangle(ray, vertices, worldMat, displacementData, result))
+        if (intersectSynthesizedDisplacedTriangle(ray, vertices, worldMat, result))
         {
             attribs.barycentrics = result.barycentrics;
             attribs.displacement = result.displacement;
@@ -1464,20 +1214,16 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     let mi = gScene.materials.getMaterialInstance(sd, lod);
 
     // Add emitted light.
-    if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
+    // if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
+    if (kUseEmissiveLights )
     {
-        rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
+        // rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
+        rayData.radiance += mi.getProperties(sd).emission;
     }
 
     // always true for common surface
     rayData.terminated = true;
 
-    // Add contribution of direct light from analytic lights.
-    if (kUseAnalyticLights)
-    {
-        float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
-        rayData.radiance += rayData.thp * Lr;
-    }
 
     float3 wo = sd.frame.toLocal(sd.V);
     float3 envLi;
@@ -1497,40 +1243,38 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
             float3 wi = sd.frame.toLocal(envDir);
             float NdotL = wi.z > 0 ? wi.z : 0;
-            uint4 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+            uint4 packedData;
+            if (gApplySyn) {
+                // float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
+                // float4 uv_hashed = getHashUV(hfData, uv_raw);
+                // packedData = packInputSyn(wi, wo, frac(abs(uv_hashed.xy)), frac(abs(uv_hashed.wz)));
+                packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+                float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
+                float4 uv_hashed = getHashUV(hfData, uv_raw);
+                hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = uv_hashed.x;
+                hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = uv_hashed.y;
+                hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = uv_hashed.z;
+                hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = uv_hashed.w;
+            }
+            else
+                packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
 
             packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
             packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
             packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
             packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
-            float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-            float4 uv_hashed = getHashUV(hfData, uv_raw);
-            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = uv_hashed.x;
-            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = uv_hashed.y;
-            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = uv_hashed.z;
-            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = uv_hashed.w;
 
-            rayData.radiance = rayData.thp * envLi * NdotL;
+
+            rayData.radiance = envLi * NdotL;
             rayData.terminated = false;
             return;
         }
-        // rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg) * MISWeight(envPdf, mi.evalPdf(sd, envDir));
         else
-            rayData.radiance += rayData.thp * envLi * mi.eval(sd, envDir, rayData.sg);
+            rayData.radiance += envLi * mi.eval(sd, envDir, rayData.sg);
     }
 
-    // // Generate scatter ray for the next path segment.
-    // // The raygen shader will continue the path based on the returned payload.
-    // if (!generateScatterRay(sd, mi, sd.computeRayOrigin(), rayData))
-    // {
-    //     rayData.terminated = true;
-    //     return;
-    // }
 
-    rayData.pathLength++;
 }
-
-
 
 void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
 {
@@ -1566,41 +1310,33 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         uint2 pixel = DispatchRaysIndex().xy;
         float3 wi = sd.frame.toLocal(envDir);
         float NdotL = wi.z > 0 ? wi.z : 0;
-        uint4 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+
+        uint4 packedData;
+        if (gApplySyn) {
+            // float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
+            // float4 uv_hashed = getHashUV(hfData, uv_raw);
+            // packedData = packInputSyn(wi, wo, frac(abs(uv_hashed.xy)), frac(abs(uv_hashed.wz)));
+            packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+            float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
+            float4 uv_hashed = getHashUV(hfData, uv_raw);
+            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = uv_hashed.x;
+            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = uv_hashed.y;
+            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = uv_hashed.z;
+            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = uv_hashed.w;
+
+        }
+        else
+            packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
 
         packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
         packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
         packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
         packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
 
-        float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-        float4 uv_hashed = getHashUV(hfData, uv_raw);
-        hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = uv_hashed.x;
-        hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = uv_hashed.y;
-        hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = uv_hashed.z;
-        hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = uv_hashed.w;
 
         rayData.origin = newPos;
-        rayData.radiance = rayData.thp * envLi * NdotL;
+        rayData.radiance = envLi * NdotL;
     }
-    // #endif
 
-    // rayData.pathLength++;
-    // if (rayData.pathLength == 2)
-    // {
-    //     rayData.terminated = true;
-    //     return;
-    // }
-    // float pdf;
-    // float3 scatterDir = sample_cosine_hemisphere_concentric(sampleNext2D(rayData.sg), pdf);
-    // rayData.origin = sd.computeRayOrigin();
-    // rayData.direction = sd.frame.fromLocal(scatterDir);
-    // rayData.thp *= nbtf.evalDebug(scatterDir, wo, sd.uv * UV_SCALE, ddx, ddy, gApplySyn) / pdf;
-    // rayData.BRDFPdf = pdf;
-    // if (all(rayData.thp == 0.f))
-    // {
-    //     rayData.terminated = true;
-    //     return;
-    // }
 }
 

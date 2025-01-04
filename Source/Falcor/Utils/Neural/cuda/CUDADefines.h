@@ -1,8 +1,8 @@
 // #define PEBBLE
-#define LEATHER
+// #define LEATHER
 // #define LEATHER_04R
 // #define TILE
-// #define TILE2
+#define TILE2
 // #define TILE3
 // #define BRICK
 // #define METAL

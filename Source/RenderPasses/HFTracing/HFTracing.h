@@ -121,9 +121,7 @@ public:
     virtual Properties getProperties() const override;
     virtual RenderPassReflection reflect(const CompileData& compileData) override;
     virtual void execute(RenderContext* pRenderContext, const RenderData& renderData) override;
-    void generateGeometryMap(RenderContext* pRenderContext, const RenderData& renderData);
     void renderHF(RenderContext* pRenderContext, const RenderData& renderData);
-    void createMaxMip(RenderContext* pRenderContext, const RenderData& renderData);
     void nnInferPass(RenderContext* pRenderContext, const RenderData& renderData);
     void cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData);
 
@@ -310,7 +308,7 @@ private:
     uint mMaxTriCount = 1000;
 
     RenderType mRenderType = RenderType::WAVEFRONT_SHADER_NN;
-    InferType mInferType = InferType::CUDA;
+    InferType mInferType = InferType::CUDAINT8;
 
     bool mContactRefinement = false;
     bool mMipGenerated = false;
@@ -338,7 +336,7 @@ private:
 
     uint mDebugPrism = 0;
     bool mShowTracedHF = false;
-    bool mTracedShadowRay = true;
+    bool mTracedShadowRay = false;
     bool mUseMIS = false;
 
 

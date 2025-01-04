@@ -30,8 +30,10 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "Utils/CudaUtils.h"
+#include "Utils/Neural/IOHelper.h"
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include "Tools/Utils.h"
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
@@ -40,34 +42,15 @@ extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registr
 
 namespace
 {
-std::vector<float> readBinaryFile(const char* filename)
-{
-    std::ifstream file(filename, std::ios::binary | std::ios::ate);
-    if (!file)
-    {
-        logError("[MLP] Unable to open file {}", filename);
-        return std::vector<float>();
-    }
-    std::streamsize size = file.tellg();
-    file.seekg(0, std::ios::beg);
-    std::vector<float> buffer(size / sizeof(float));
-    if (!file.read(reinterpret_cast<char*>(buffer.data()), size))
-    {
-        logError("[MLP] Error reading file {}", filename);
-        return std::vector<float>();
-    }
-    file.close();
-    return buffer;
-}
+
 const char kShaderFile[] = "RenderPasses/HFTracing/MinimalPathTracer.rt.slang";
 
 // Ray tracing settings that affect the traversal stack size.
 // These should be set as small as possible.
-const uint32_t kMaxPayloadSizeBytes = 76u;
+const uint32_t kMaxPayloadSizeBytes = 56u;
 const uint32_t kMaxRecursionDepth = 2u;
 
 const char kInputViewDir[] = "viewW";
-
 const ChannelList kInputChannels = {
     // clang-format off
     // { "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
@@ -85,60 +68,6 @@ const char kMaxBounces[] = "maxBounces";
 const char kComputeDirect[] = "computeDirect";
 const char kUseImportanceSampling[] = "useImportanceSampling";
 } // namespace
-void createTex(ref<Texture>& tex, ref<Device> device, Falcor::uint2 targetDim, bool buildCuda = false, bool isUint = false)
-{
-    ResourceBindFlags flag = ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess;
-    if (buildCuda)
-        flag |= ResourceBindFlags::Shared;
-
-    if (tex.get() == nullptr)
-    {
-        if (isUint)
-            tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Uint, 1, 1, nullptr, flag);
-        else
-            tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Float, 1, 1, nullptr, flag);
-    }
-    else
-    {
-        if (tex.get()->getWidth() != targetDim.x || tex.get()->getHeight() != targetDim.y)
-        {
-            logInfo("Recreating texture");
-            if (isUint)
-                tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Uint, 1, 1, nullptr, flag);
-            else
-                tex = device->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Float, 1, 1, nullptr, flag);
-        }
-    }
-}
-void createBuffer(ref<Buffer>& buf, ref<Device> device, Falcor::uint2 targetDim, uint itemSize = 4)
-{
-    if (buf.get() == nullptr)
-    {
-        buf = device->createBuffer(
-            targetDim.x * targetDim.y * itemSize * sizeof(float),
-            ResourceBindFlags::ShaderResource | ResourceBindFlags::Shared | ResourceBindFlags::UnorderedAccess,
-            MemoryType::DeviceLocal,
-            nullptr
-        );
-    }
-    else
-    {
-        if (buf.get()->getElementCount() != targetDim.x * targetDim.y * itemSize * sizeof(float))
-        {
-            logInfo("Recreating Buffer");
-            buf = device->createBuffer(
-                targetDim.x * targetDim.y * itemSize * sizeof(float),
-                ResourceBindFlags::ShaderResource | ResourceBindFlags::Shared | ResourceBindFlags::UnorderedAccess,
-                MemoryType::DeviceLocal,
-                nullptr
-            );
-        }
-    }
-}
-int packInt8x4(int x, int y, int z, int w)
-{
-    return (x & 0x000000ff) | ((y << 8) & 0x0000ff00) | ((z << 16) & 0x00ff0000) | ((w << 24) & 0xff000000);
-}
 
 HFTracing::HFTracing(ref<Device> pDevice, const Properties& props) : RenderPass(pDevice)
 {
@@ -210,87 +139,6 @@ void generateMaxMip(RenderContext* pRenderContext, ref<Texture> pTex)
     }
 }
 
-void HFTracing::generateGeometryMap(RenderContext* pRenderContext, const RenderData& renderData)
-{
-    // If we have no scene, just clear the outputs and return.
-    if (!mpScene)
-    {
-        for (auto it : kOutputChannels)
-        {
-            Texture* pDst = renderData.getTexture(it.name).get();
-            if (pDst)
-                pRenderContext->clearTexture(pDst);
-        }
-        return;
-    }
-
-    mMaxTriCount = mpScene->getMesh(MeshID{0}).getTriangleCount();
-
-    // Get dimensions of ray dispatch.
-    Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
-    targetDim = Falcor::uint2(2048);
-    FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-
-    auto precomputeVar = mpGenerateGeometryMapPass->getRootVar();
-
-    // set mesh data
-    const auto& meshDesc = mpScene->getMesh(MeshID{0});
-    precomputeVar["PerFrameCB"]["vertexCount"] = meshDesc.vertexCount;
-    precomputeVar["PerFrameCB"]["vbOffset"] = meshDesc.vbOffset;
-    precomputeVar["PerFrameCB"]["triangleCount"] = meshDesc.getTriangleCount();
-    precomputeVar["PerFrameCB"]["ibOffset"] = meshDesc.ibOffset;
-    precomputeVar["PerFrameCB"]["use16BitIndices"] = meshDesc.use16BitIndices();
-    precomputeVar["PerFrameCB"]["gTriID"] = mTriID;
-
-    // mpScene->getMesh(0)->setIntoConstantBuffer(precomputeVar["PerFrameCB"]["gMeshData"]);
-    precomputeVar["PerFrameCB"]["gRenderTargetDim"] = targetDim;
-    precomputeVar["PerFrameCB"]["gControlParas"] = mControlParas;
-    precomputeVar["gOutputNormalMap"].setUav(mpNormalMap->getUAV());
-    precomputeVar["gOutputTangentMap"].setUav(mpTangentMap->getUAV());
-    precomputeVar["gOutputPosMap"].setUav(mpPosMap->getUAV());
-    precomputeVar["gOutputColor"] = renderData.getTexture("color");
-    mpScene->bindShaderData(precomputeVar["scene"]);
-
-    mpGenerateGeometryMapPass->execute(pRenderContext, targetDim.x, targetDim.y);
-    mTriID++;
-}
-
-void HFTracing::createMaxMip(RenderContext* pRenderContext, const RenderData& renderData)
-{
-    // If we have no scene, just clear the outputs and return.
-    if (mpHF.get() == nullptr)
-    {
-        return;
-    }
-    if (mpHFMaxMip.get() != nullptr)
-    {
-        return;
-    }
-    int windowSize = pow(2, 5);
-    // int windowSize = 1;
-    int mipHeight = mpHF->getHeight() / windowSize;
-    int mipWidth = mpHF->getWidth() / windowSize;
-    mpHFMaxMip = mpDevice->createTexture2D(
-        mipWidth,
-        mipHeight,
-        ResourceFormat::R32Float,
-        1,
-        1,
-        nullptr,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
-    );
-    // Get dimensions of ray dispatch.
-    Falcor::uint2 targetDim = Falcor::uint2(mipWidth, mipHeight);
-    FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-    auto var = mpCreateMaxMipPass->getRootVar();
-    var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
-    var["PerFrameCB"]["gLod"] = 5;
-    var["gInputHeightMap"].setSrv(mpHF->getSRV());
-    var["gOutputHeightMap"].setUav(mpHFMaxMip->getUAV());
-    // var["gOutputHeightMap"].setUav(mpShellHF->getUAV());
-
-    mpCreateMaxMipPass->execute(pRenderContext, targetDim.x, targetDim.y);
-}
 
 void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
@@ -453,19 +301,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     mTracer.pProgram->addDefine("USE_EMISSIVE_LIGHTS", mpScene->useEmissiveLights() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_LIGHT", mpScene->useEnvLight() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
-    if (mHFBound)
-        mTracer.pProgram->addDefine("HF_BOUND");
-    else
-        mTracer.pProgram->removeDefine("HF_BOUND");
 
-    if (mRenderType == RenderType::RT)
-        mTracer.pProgram->addDefine("RT");
-    else
-        mTracer.pProgram->removeDefine("RT");
-    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN)
-        mTracer.pProgram->addDefine("WAVEFRONT_SHADER_NN");
-    else
-        mTracer.pProgram->removeDefine("WAVEFRONT_SHADER_NN");
 
     if (mContactRefinement)
         mTracer.pProgram->addDefine("CONTACT_REFINEMENT");
@@ -489,7 +325,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gControlParas"] = mControlParas;
     var["CB"]["gCurvatureParas"] = mCurvatureParas;
     var["CB"]["gApplySyn"] = mApplySyn;
-    var["CB"]["gDebugPrism"] = mDebugPrism;
     var["CB"]["gShowTracedHF"] = mShowTracedHF;
     var["CB"]["gTracedShadowRay"] = mTracedShadowRay;
     var["CB"]["gRenderTargetDim"] = targetDim;
@@ -515,7 +350,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     // Bind textures
     var["gHF"].setSrv(mpHF->getSRV());
     var["gShellHF"].setSrv(mpShellHF->getSRV());
-    var["gHFMaxMip"].setSrv(mpHFMaxMip->getSRV());
     var["cudaVaildBuffer"] = mpVaildBuffer;
 
     var["packedInput"] = mpPackedInputBuffer;
@@ -552,12 +386,6 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     }
     mFrameCount++;
 
-    if (!mMipGenerated)
-    {
-        createMaxMip(pRenderContext, renderData);
-        mMipGenerated = true;
-    }
-
     // ======================================================================================================
     // Step 1: Trace HF to get BTF input, the input data is packed into mpPackedInputBuffer.
     // A valid hit mask mpVaildBuffer stores the screen space valid hits (1: valid, 0: invalid)
@@ -565,12 +393,11 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
 
     // ======================================================================================================
     // Step 2: Inference the BTF input to get the output color
-    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
+    if (mInferType == InferType::SHADER || mInferType == InferType::SHADERTP)
     {
         nnInferPass(pRenderContext, renderData);
     }
-
-    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
+    else
     {
         cudaInferPass(pRenderContext, renderData);
         displayPass(pRenderContext, renderData);
