@@ -52,19 +52,40 @@ void TriangleGrid(out float w1, out float w2, out float w3, out int2 vertex1, ou
     // Scaling of the input
     st *= 2 * sqrt(3);
     // Skew input space into simplex triangle grid.
-    const float2x2 gridToSkewedGrid = float2x2(1.0, -0.57735027, 0.0, 1.15470054);
+    // const float2x2 gridToSkewedGrid = float2x2(1.0, -0.57735027, 0.0, 1.15470054);
+    const float2x2 gridToSkewedGrid = float2x2(1.0, 0.0, -0.57735027, 1.15470054);
     float2 skewedCoord = mul(gridToSkewedGrid, st);
     int2 baseId = int2(floor(skewedCoord));
     float3 temp = float3(frac(skewedCoord), 0);
     temp.z = 1.0 - temp.x - temp.y;
-    float s = step(0.0, -temp.z);
-    float s2 = 2 * s - 1;
-    w1 = -temp.z * s2;
-    w2 = s - temp.y * s2;
-    w3 = s - temp.x * s2;
-    vertex1 = baseId + int2(s, s);
-    vertex2 = baseId + int2(s, 1 - s);
-    vertex3 = baseId + int2(1 - s, s);
+
+    if (temp.z > 0.0)
+    {
+        w1 = temp.z;
+        w2 = temp.y;
+        w3 = temp.x;
+        vertex1 = baseId;
+        vertex2 = baseId + int2(0, 1);
+        vertex3 = baseId + int2(1, 0);
+    }
+    else
+    {
+
+        w1 = -temp.z;
+        w2 = 1.0 - temp.y;
+        w3 = 1.0 - temp.x;
+        vertex1 = baseId + int2(1, 1);
+        vertex2 = baseId + int2(1, 0);
+        vertex3 = baseId + int2(0, 1);
+    }
+    // float s = step(0.0, -temp.z);
+    // float s2 = 2 * s - 1;
+    // w1 = -temp.z * s2;
+    // w2 = s - temp.y * s2;
+    // w3 = s - temp.x * s2;
+    // vertex1 = baseId + int2(s, s);
+    // vertex2 = baseId + int2(s, 1 - s);
+    // vertex3 = baseId + int2(1 - s, s);
 }
 float2 hash(float2 p)
 {

@@ -95,9 +95,89 @@ private:
 
 #ifdef PEBBLE
     std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ganges_river_pebbles_disp_4k.png";
+    std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
+    bool mHDRBTF = false;
 #endif
+
 #ifdef LEATHER
     std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ubo/leather11.png";
+    std::string mHFFileName = "ubo/leather11.png";
+    bool mHDRBTF = false;
+#endif
+
+
+#ifdef LEATHER_04R
+    std::string mNetInt8Name = "leather04r_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ubo/leather04.png";
+    std::string mHFFileName = "ubo/leather04.png";
+    bool mHDRBTF = false;
+#endif
+
+
+
+#ifdef METAL
+    std::string mNetInt8Name = "metal_m32u8h8d8_int8";
+    std::string mShellHFFileName = "metal_grate_rusty_disp_4k.png";
+    std::string mHFFileName = "metal_grate_rusty_disp_4k.png";
+    bool mHDRBTF = true;
+#endif
+
+
+#ifdef METAL2
+    std::string mNetInt8Name = "metal2_m32u8h8d8_int8";
+    std::string mShellHFFileName = "MetalGoldHammered001_DISP_6K.png";
+    std::string mHFFileName = "MetalGoldHammered001_DISP_6K.png";
+    bool mHDRBTF = true;
+#endif
+
+
+#ifdef BRICK
+    std::string mNetInt8Name = "brick_m32u8h8d8_int8";
+    std::string mShellHFFileName = "castle_brick_02_red_disp_4k.png";
+    std::string mHFFileName = "castle_brick_02_red_disp_4k.png";
+    bool mHDRBTF = false;
+#endif
+
+
+#ifdef TILE
+    std::string mNetInt8Name = "tile_m32u8h8d8_int8";
+    std::string mShellHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
+    std::string mHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
+    bool mHDRBTF = false;
+#endif
+
+
+
+#ifdef TILE2
+    std::string mNetInt8Name = "tile2_m32u8h8d8_int8";
+    std::string mShellHFFileName = "roof_tiles_14_disp_1k.png";
+    std::string mHFFileName = "roof_tiles_14_disp_1k.png";
+    bool mHDRBTF = false;
+#endif
+
+#ifdef FABRIC
+    std::string mNetInt8Name = "fabric_m32u8h8d8_int8";
+    std::string mShellHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
+    std::string mHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
+    bool mHDRBTF = false;
+#endif
+
+
+#ifdef WEAVE
+    std::string mNetInt8Name = "weave_m32u8h8d8_int8";
+    std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K.jpg";
+    std::string mHFFileName = mShellHFFileName;
+    bool mHDRBTF = false;
+#endif
+
+
+#ifdef DUMMY
+    std::string mNetInt8Name = "Dummy";
+    std::string mShellHFFileName = "roof_tiles_14_disp_1k.png";
+    std::string mHFFileName = "roof_tiles_14_disp_1k.png";
+    bool mHDRBTF = false;
 #endif
 
 

@@ -70,8 +70,8 @@ const char kInputViewDir[] = "viewW";
 
 const ChannelList kInputChannels = {
     // clang-format off
-    { "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
-    { kInputViewDir,    "gViewW",       "World-space view direction (xyz float format)", true /* optional */ },
+    // { "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
+    // { kInputViewDir,    "gViewW",       "World-space view direction (xyz float format)", true /* optional */ },
     // clang-format on
 };
 
@@ -305,8 +305,15 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
     var["cudaVaildBuffer"] = mpVaildBuffer;
     var["gOutputColor"] = renderData.getTexture("color");
     var["btfInput"] = mpPackedInputBuffer;
-    mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtf"]);
-    mpNBTFInt8->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
+    if (mInferType == InferType::SHADERTP)
+    {
+        mpNBTF->bindShaderData(var["PerFrameCB"]["nbtf"]);
+    }
+    else
+    {
+        mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtf"]);
+        mpNBTFInt8->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
+    }
 
     mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
     mpPixelDebug->prepareProgram(mpInferPass->getProgram(), mpInferPass->getRootVar());
@@ -326,15 +333,25 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
     for (int i = 0; i < cudaInferTimes; i++)
     {
         if (mInferType == InferType::CUDAINT8)
-            mpNBTFInt8->mpMLPCuda->inferInt8Hashed(
-                (int*)mpPackedInputBuffer->getGpuAddress(),
-                (float*)mpHashedUVBuffer->getGpuAddress(),
-                (float*)mpOutputBuffer->getGpuAddress(),
-                targetDim.x,
-                targetDim.y,
-                (int*)mpVaildBuffer->getGpuAddress(),
-                mCurvatureParas.z
-            );
+            if (mApplySyn)
+                mpNBTFInt8->mpMLPCuda->inferInt8Hashed(
+                    (int*)mpPackedInputBuffer->getGpuAddress(),
+                    (float*)mpHashedUVBuffer->getGpuAddress(),
+                    (float*)mpOutputBuffer->getGpuAddress(),
+                    targetDim.x,
+                    targetDim.y,
+                    (int*)mpVaildBuffer->getGpuAddress(),
+                    mCurvatureParas.z
+                );
+            else
+                mpNBTFInt8->mpMLPCuda->inferInt8(
+                    (int*)mpPackedInputBuffer->getGpuAddress(),
+                    (float*)mpOutputBuffer->getGpuAddress(),
+                    targetDim.x,
+                    targetDim.y,
+                    (int*)mpVaildBuffer->getGpuAddress(),
+                    mCurvatureParas.z
+                );
 
         else if (mInferType == InferType::CUDAFP16)
 
@@ -409,8 +426,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         }
     }
 
-    mpHitBuffer =
-        mpDevice->createTexture2D(targetDim.x, targetDim.y, ResourceFormat::RGBA32Uint, 1, 1, nullptr, ResourceBindFlags::UnorderedAccess);
+
     createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
     createBuffer(mpHashedUVBuffer, mpDevice, targetDim, 4);
@@ -450,7 +466,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         mTracer.pProgram->addDefine("WAVEFRONT_SHADER_NN");
     else
         mTracer.pProgram->removeDefine("WAVEFRONT_SHADER_NN");
-
 
     if (mContactRefinement)
         mTracer.pProgram->addDefine("CONTACT_REFINEMENT");
@@ -502,13 +517,12 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["gShellHF"].setSrv(mpShellHF->getSRV());
     var["gHFMaxMip"].setSrv(mpHFMaxMip->getSRV());
     var["cudaVaildBuffer"] = mpVaildBuffer;
-    var["gHitBuffer"] = mpHitBuffer;
+
     var["packedInput"] = mpPackedInputBuffer;
     var["hashedUV"] = mpHashedUVBuffer;
     var["gMaxSampler"] = mpMaxSampler;
-    var["gNormalMap"].setSrv(mpNormalMap->getSRV());
-    var["gTangentMap"].setSrv(mpTangentMap->getSRV());
-    var["gPosMap"].setSrv(mpPosMap->getSRV());
+
+
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
     pRenderContext->submit(false);
     pRenderContext->signal(mpFence2.get());
@@ -538,53 +552,29 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     }
     mFrameCount++;
 
-    if (mTriID < mMaxTriCount)
+    if (!mMipGenerated)
     {
-        if (mTriID == 1)
-            logInfo("[HF Tracing] Start to generate normal, tangent and position maps");
-        generateGeometryMap(pRenderContext, renderData);
-    }
-    else
-    {
-        if (!mMipGenerated)
-        {
-            mpNormalMap->generateMips(pRenderContext);
-            mpTangentMap->generateMips(pRenderContext);
-            createMaxMip(pRenderContext, renderData);
-            mMipGenerated = true;
-        }
-
-        renderHF(pRenderContext, renderData);
-
-        if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
-        {
-            nnInferPass(pRenderContext, renderData);
-        }
-
-        if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
-        {
-            cudaInferPass(pRenderContext, renderData);
-            displayPass(pRenderContext, renderData);
-        }
+        createMaxMip(pRenderContext, renderData);
+        mMipGenerated = true;
     }
 
-    // // ======================================================================================================
-    // // Step 1: Trace HF to get BTF input, the input data is packed into mpPackedInputBuffer.
-    // // A valid hit mask mpVaildBuffer stores the screen space valid hits (1: valid, 0: invalid)
-    // renderHF(pRenderContext, renderData);
-    // 
-    // // ======================================================================================================
-    // // Step 2: Inference the BTF input to get the output color
-    // if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
-    // {
-    //     nnInferPass(pRenderContext, renderData);
-    // }
-    // 
-    // if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
-    // {
-    //     cudaInferPass(pRenderContext, renderData);
-    //     displayPass(pRenderContext, renderData);
-    // }
+    // ======================================================================================================
+    // Step 1: Trace HF to get BTF input, the input data is packed into mpPackedInputBuffer.
+    // A valid hit mask mpVaildBuffer stores the screen space valid hits (1: valid, 0: invalid)
+    renderHF(pRenderContext, renderData);
+
+    // ======================================================================================================
+    // Step 2: Inference the BTF input to get the output color
+    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType == InferType::SHADER)
+    {
+        nnInferPass(pRenderContext, renderData);
+    }
+
+    if (mRenderType == RenderType::WAVEFRONT_SHADER_NN && mInferType != InferType::SHADER)
+    {
+        cudaInferPass(pRenderContext, renderData);
+        displayPass(pRenderContext, renderData);
+    }
 }
 
 void HFTracing::renderUI(Gui::Widgets& widget)
@@ -605,7 +595,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
     widget.tooltip("Increse = less marching steps", true);
-    dirty |= widget.slider("LoD Scale", mControlParas.y, 1.0f, 100.0f);
+    dirty |= widget.slider("LoD Scale", mControlParas.y, 0.001f, 0.1f);
     widget.tooltip("Scale the LoD", true);
     dirty |= widget.slider("HF Offset", mControlParas.z, 0.0f, 1.0f);
     widget.tooltip("height = Scale * h + Offset", true);
@@ -615,6 +605,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.slider("D", mCurvatureParas.x, 0.0f, 1.0f);
     widget.tooltip("Max height to mesh surface, i.e., the HF tracing starting height", true);
     dirty |= widget.slider("UV Scale", mCurvatureParas.z, 0.0f, 50.0f);
+    dirty |= widget.var("UV Scale_", mCurvatureParas.z);
     widget.tooltip("Scale the uv coords", true);
 
     dirty |= widget.checkbox("Traced Shadow Ray", mTracedShadowRay);
@@ -791,7 +782,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     generateMaxMip(pRenderContext, mpTextureSynthesis->mpHFT);
 
     mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
-
+    mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, false);
     DefineList defines = mpScene->getSceneDefines();
     mpGenerateGeometryMapPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/GenerateGeometryMap.cs.slang", "csMain", defines);
     mpVisualizeMapsPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/VisualizeMaps.cs.slang", "csMain", defines);

@@ -43,6 +43,17 @@ void TextureSynthesis::readHFData(std::string hfPath, ref<Device> pDevice)
         }
     }
 
+
+    else if (pBitmap->getFormat() == ResourceFormat::R8Unorm)
+    {
+        bitMapChannels = 1;
+        auto pBitData = reinterpret_cast<const uint8_t*>(pBitmap->getData());
+        for (size_t i = 0; i < pBitmap->getWidth() * pBitmap->getHeight(); i++)
+        {
+            input.data[i] = pBitData[i * bitMapChannels + 0] / 255.0f;
+        }
+    }
+
     TextureDataFloat Tinput;
     TextureDataFloat lut;
     logInfo("[Synthesis] Precomputing Gaussian T and Inv.");
@@ -140,10 +151,7 @@ void TextureSynthesis::precomputeFeatureData(std::vector<float> data, uint2 data
         }
     }
     acfWeight.resize(dataDim.x * dataDim.x );
-    // acfWeight = readBinaryFile("D:/acf_TILE2.bin");
-
     mpACFBuffer->getBlob(acfWeight.data(), 0, dataDim.x * dataDim.x * 1 * sizeof(float));
-
     logInfo("[Synthesis] Precomputing ACF done! {} {}", acfWeight.size(), acfWeight[1]);
 
     logInfo("[Synthesis] Precomputation done!");
@@ -151,12 +159,12 @@ void TextureSynthesis::precomputeFeatureData(std::vector<float> data, uint2 data
     updateMap(dataDim.x, pDevice);
 
     // // TODO generate max mipmap
-    // mpFeatureT = pDevice->createTexture2D(
-    //     dataDim.x,  dataDim.x, ResourceFormat::RGBA32Float, dataDim.y, 1, TData.data(), ResourceBindFlags::ShaderResource
-    // );
-    // mpFeatureInvT =
-    //     pDevice->createTexture2D(LUT_WIDTH, 1, ResourceFormat::RGBA32Float, dataDim.y, 1, invTData.data(),
-    //     ResourceBindFlags::ShaderResource);
+    mpFeatureT = pDevice->createTexture2D(
+        dataDim.x,  dataDim.x, ResourceFormat::RGBA32Float, dataDim.y, 1, TData.data(), ResourceBindFlags::ShaderResource
+    );
+    mpFeatureInvT =
+        pDevice->createTexture2D(LUT_WIDTH, 1, ResourceFormat::RGBA32Float, dataDim.y, 1, invTData.data(),
+        ResourceBindFlags::ShaderResource);
     // mpACF =
     //     pDevice->createTexture2D(dataDim.x, dataDim.x, ResourceFormat::R32Float, 1, 1, acf.data.data(),
     //     ResourceBindFlags::ShaderResource);

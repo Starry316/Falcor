@@ -22,4 +22,20 @@ std::vector<float> readBinaryFile(const char* filename)
     file.close();
     return buffer;
 }
+
+void writeToBinaryFile(const std::vector<float>& vec, const std::string& filename)
+{
+    std::ofstream outFile(filename, std::ios::binary);
+    if (!outFile)
+    {
+        logError("[IOHelper] Unable to open file {}", filename);
+        return;
+    }
+
+    size_t size = vec.size();
+    outFile.write(reinterpret_cast<const char*>(vec.data()), size * sizeof(float));
+    outFile.close();
+}
+
+
 }

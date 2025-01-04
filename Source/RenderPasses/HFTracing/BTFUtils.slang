@@ -16,8 +16,8 @@ inline uint4 packInput(float3 wi, float3 wo, float2 uv, float2 ddx, float2 ddy)
     float3 vh = spherical_to_cartesian_rad(h);
     float3 vd = spherical_to_cartesian_rad(d);
 
-    h = hemisphereDirToDiskSquare(vh).yx;
-    d = hemisphereDirToDiskSquare(vd).yx;
+    h = hemisphereDirToDiskSquare(vh);
+    d = hemisphereDirToDiskSquare(vd);
 
 
     ddxy.x = abs(ddx.x) > abs(ddx.y) ? ddx.x : ddx.y;

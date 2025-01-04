@@ -759,7 +759,7 @@ __global__ void inferInt8TexAutocov(
     // float2 uv{u * uvScale, v * uvScale};
     // TriangleGrid(w1, w2, w3, vertex1, vertex2, vertex3, uv);
     // float norm = sqrt(w1 * w1 + w2 * w2 + w3 * w3);
-    // 
+    //
     // int id1 = (int)floor(rnd21(float2{(float)vertex1.x, (float)vertex1.y}) * 2048);
     // int id2 = (int)floor(rnd21(float2{(float)vertex2.x, (float)vertex2.y}) * 2048);
     // int id3 = (int)floor(rnd21(float2{(float)vertex3.x, (float)vertex3.y}) * 2048);
@@ -772,11 +772,11 @@ __global__ void inferInt8TexAutocov(
     // st1 = float2{abs(st1.x - trunc(st1.x)), abs(st1.y - trunc(st1.y))};
     // st2 = float2{abs(st2.x - trunc(st2.x)), abs(st2.y - trunc(st2.y))};
     // st3 = float2{abs(st3.x - trunc(st3.x)), abs(st3.y - trunc(st3.y))};
-    // 
+    //
     // float4 g1 = tex2DLayered<float4>(TP, st1.y, st1.x, 0);
     // float4 g2 = tex2DLayered<float4>(TP, st2.y, st2.x, 0);
     // float4 g3 = tex2DLayered<float4>(TP, st3.y, st3.x, 0);
-    // 
+    //
     // float4 G = float4{
     //     w1 * g1.x + w2 * g2.x + w3 * g3.x - 0.5f,
     //     w1 * g1.y + w2 * g2.y + w3 * g3.y - 0.5f,
@@ -785,17 +785,17 @@ __global__ void inferInt8TexAutocov(
     // };
     // G = float4{G.x / norm, G.y / norm, G.z / norm, G.w / norm};
     // G = float4{__saturatef(abs(G.x + 0.5f)), __saturatef(abs(G.y + 0.5f)), __saturatef(abs(G.z + 0.5f)), __saturatef(abs(G.w + 0.5f))};
-    // 
+    //
     // val.x = tex2DLayered<float4>(InvP, G.x, 0.0f, 0).x;
     // val.y = tex2DLayered<float4>(InvP, G.y, 0.0f, 0).y;
     // val.z = tex2DLayered<float4>(InvP, G.z, 0.0f, 0).z;
     // val.w = tex2DLayered<float4>(InvP, G.w, 0.0f, 0).w;
     // val2[2] = quantizeInt8x4f_safe(val, scaleIn1);
-    // 
+    //
     // g1 = tex2DLayered<float4>(TP, st1.y, st1.x, 1);
     // g2 = tex2DLayered<float4>(TP, st2.y, st2.x, 1);
     // g3 = tex2DLayered<float4>(TP, st3.y, st3.x, 1);
-    // 
+    //
     // G = float4{
     //     w1 * g1.x + w2 * g2.x + w3 * g3.x - 0.5f,
     //     w1 * g1.y + w2 * g2.y + w3 * g3.y - 0.5f,
@@ -804,7 +804,7 @@ __global__ void inferInt8TexAutocov(
     // };
     // G = float4{G.x / norm, G.y / norm, G.z / norm, G.w / norm};
     // G = float4{__saturatef(abs(G.x + 0.5f)), __saturatef(abs(G.y + 0.5f)), __saturatef(abs(G.z + 0.5f)), __saturatef(abs(G.w + 0.5f))};
-    // 
+    //
     // val.x = tex2DLayered<float4>(InvP, G.x, 0.0f, 1).x;
     // val.y = tex2DLayered<float4>(InvP, G.y, 0.0f, 1).y;
     // val.z = tex2DLayered<float4>(InvP, G.z, 0.0f, 1).z;

@@ -41,8 +41,8 @@ static const bool kHitFaceNormalUseCentralGrad = true;
 static const bool kDisplacementScalingUsePreciseLength = false;
 
 static const float kSurfaceThickness = 0.008f;
-static const int kRaymarchingMaxSampleCount = 32;
-static const int kRaymarchingSampleCountFactor = 2;
+static const int kRaymarchingMaxSampleCount = 64;
+static const int kRaymarchingSampleCountFactor = 1;
 
 /** Extension to add displacement mapping functionality to the
     DisplacementData struct.
