@@ -1419,6 +1419,26 @@ void scatterDisplacedTriangleMeshClosestHit(inout ScatterRayData rayData, Synthe
     displacedTriangleHit.displacement = attribs.displacement;
     handleDisplacementHit(HitInfo(displacedTriangleHit), rayData);
 }
+[shader("intersection")]
+void displacedTriangleMeshIntersectionShadow()
+{
+    float t;
+    GeometryInstanceID instanceID = getGeometryInstanceID();
+    const uint3 indices = gScene.getIndices(instanceID, PrimitiveIndex());
+    const StaticVertexData vertices[3] = { gScene.getVertex(indices[0]), gScene.getVertex(indices[1]), gScene.getVertex(indices[2]) };
+    const float4x4 worldMat = gScene.getWorldMatrix(instanceID);
+
+    float3 vertPosTr[3];
+    vertPosTr[0] = mul(worldMat, float4(vertices[0].position, 1.f)).xyz;
+    vertPosTr[1] = mul(worldMat, float4(vertices[1].position, 1.f)).xyz;
+    vertPosTr[2] = mul(worldMat, float4(vertices[2].position, 1.f)).xyz;
+    float3 barycentrics;
+    BuiltInTriangleIntersectionAttributes attribs;
+    if (intersectRayTriangle(WorldRayOrigin(), WorldRayDirection(), vertPosTr, barycentrics, t))
+    {
+        ReportHit(t, 1, attribs);
+    }
+}
 
 //
 // Shader entry point for ray generation shader.

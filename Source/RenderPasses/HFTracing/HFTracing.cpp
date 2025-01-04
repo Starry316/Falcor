@@ -701,7 +701,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
             sbt->setHitGroup(
                 1,
                 mpScene->getGeometryIDs(Scene::GeometryType::DisplacedTriangleMesh),
-                desc.addHitGroup("", "", "displacedTriangleMeshIntersection")
+                desc.addHitGroup("", "", "displacedTriangleMeshIntersectionShadow")
             );
         }
 
@@ -741,33 +741,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     generateMaxMip(pRenderContext, mpShellHF);
     generateMaxMip(pRenderContext, mpHF);
 
-    mpNormalMap = mpDevice->createTexture2D(
-        2048,
-        2048,
-        ResourceFormat::RGBA32Float,
-        1,
-        Resource::kMaxPossible,
-        nullptr,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
-    );
-    mpTangentMap = mpDevice->createTexture2D(
-        2048,
-        2048,
-        ResourceFormat::RGBA32Float,
-        1,
-        Resource::kMaxPossible,
-        nullptr,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
-    );
-    mpPosMap = mpDevice->createTexture2D(
-        2048,
-        2048,
-        ResourceFormat::RGBA32Float,
-        1,
-        1,
-        nullptr,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess
-    );
+
 
     // Create max sampler for texel fetch.
     Sampler::Desc samplerDesc = Sampler::Desc();
