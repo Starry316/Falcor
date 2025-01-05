@@ -139,7 +139,6 @@ void generateMaxMip(RenderContext* pRenderContext, ref<Texture> pTex)
     }
 }
 
-
 void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
     Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
@@ -274,7 +273,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         }
     }
 
-
     createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
     createBuffer(mpHashedUVBuffer, mpDevice, targetDim, 4);
@@ -301,7 +299,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     mTracer.pProgram->addDefine("USE_EMISSIVE_LIGHTS", mpScene->useEmissiveLights() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_LIGHT", mpScene->useEnvLight() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
-
 
     if (mContactRefinement)
         mTracer.pProgram->addDefine("CONTACT_REFINEMENT");
@@ -355,7 +352,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["packedInput"] = mpPackedInputBuffer;
     var["hashedUV"] = mpHashedUVBuffer;
     var["gMaxSampler"] = mpMaxSampler;
-
 
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
     pRenderContext->submit(false);
@@ -448,6 +444,8 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Use float4", mMLPDebug);
     widget.tooltip("Use float4 in shader inference (debug only)", true);
 
+
+
     dirty |= widget.slider("CUDA infer times", cudaInferTimes, 1, 20);
     widget.tooltip("For speed test, run cuda infer multiple times to get the avg running time.", true);
     widget.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
@@ -461,6 +459,44 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         mCudaAccumulatedFrames = 1;
     }
 
+    if (mOutputingVideo)
+        handleOutput();
+
+    dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));
+    dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));
+    dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
+    widget.textbox("Output Path", mOutputPath);
+    widget.var("OutputSPP", mOutputSPP);
+    if (widget.button("Output video"))
+    {
+        auto pCamera = mpScene->getCamera();
+        pCamera->setOutputFrameCount(mOutputSPP);
+        pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
+        pCamera->setAccumulating(true);
+        mOutputStep = 0;
+        mOutputingVideo = true;
+        dirty = true;
+    }
+    if (widget.button("Stop", true) || mOutputSPP > 200000)
+    {
+        auto pCamera = mpScene->getCamera();
+        pCamera->setOutputFrameCount(mOutputSPP);
+        pCamera->setAccumulating(false);
+        mOutputingVideo = false;
+        dirty = true;
+    }
+    if (widget.button("Reset index")){
+        mOutputIndx = 0;
+        mOutputSPP = 1;
+        mOutputStep = 0;
+        mpScene->getCamera()->setResetFlag(true);
+        mEnvRotAngle = Falcor::float3(0);
+        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle));
+    }
+    if (mOutputingVideo && mpScene->getEnvMap())
+    {
+        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle));
+    }
     mpPixelDebug->renderUI(widget);
 
     // If rendering options that modify the output have changed, set flag to indicate that.
@@ -472,7 +508,60 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         mOptionsChanged = true;
     }
 }
-
+void HFTracing::handleOutput()
+{
+    auto pCamera = mpScene->getCamera();
+    if (mpScene->getCamera()->isNextStep())
+    {
+        pCamera->setNextStep(false);
+        pCamera->setAccumulating(mOutputingVideo);
+        pCamera->setOutputFrameCount(mOutputSPP);
+        pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
+        mOutputIndx++;
+        if (mOutputStep == 1)
+        {
+            mEnvRotAngle.y += float(2 * M_PI) / 180;
+            if (mEnvRotAngle.y > float(2 * M_PI))
+            {
+                mEnvRotAngle.y = 0;
+                mOutputStep = 2;
+            }
+        }
+        else if (mOutputStep == 0)
+        {
+            mEnvRotAngle.x += float(2 * M_PI) / 180;
+            if (mEnvRotAngle.x > float(2 * M_PI))
+            {
+                mEnvRotAngle.x = 0;
+                mOutputStep = 1;
+            }
+        }
+        else if (mOutputStep == 2)
+        {
+            mEnvRotAngle.z += float(2 * M_PI) / 180;
+            if (mEnvRotAngle.z > float(2 * M_PI))
+            {
+                mEnvRotAngle.z = 0;
+                mOutputStep = 3;
+            }
+        }
+        else if (mOutputStep == 3)
+        {
+            mEnvRotAngle += float(2 * M_PI) / 180;
+            if (mEnvRotAngle.z > float(2 * M_PI))
+            {
+                mEnvRotAngle = Falcor::float3(0);
+                mOutputStep = 0;
+                mOutputIndx = 0;
+                mOutputSPP = 1;
+                mpScene->getCamera()->setResetFlag(true);
+                mpScene->getCamera()->setNextStep(false);
+                mOutputingVideo = false;
+                mpScene->getCamera()->setAccumulating(mOutputingVideo);
+            }
+        }
+    }
+}
 void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
 {
     // Clear data for previous scene.
@@ -567,8 +656,6 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     // );
     generateMaxMip(pRenderContext, mpShellHF);
     generateMaxMip(pRenderContext, mpHF);
-
-
 
     // Create max sampler for texel fetch.
     Sampler::Desc samplerDesc = Sampler::Desc();

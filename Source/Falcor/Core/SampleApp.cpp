@@ -308,6 +308,7 @@ bool screenSizeUI(Gui::Widgets& widget, uint2& screenDims)
         {1280, 720},
         {1920, 1080},
         {1920, 1200},
+        {2520, 1080},
         {2560, 1440},
         {3840, 2160},
     };

@@ -1,5 +1,5 @@
 /***************************************************************************
- # Copyright (c) 2015-24, NVIDIA CORPORATION. All rights reserved.
+ # Copyright (c) 2015-23, NVIDIA CORPORATION. All rights reserved.
  #
  # Redistribution and use in source and binary forms, with or without
  # modification, are permitted provided that the following conditions
@@ -27,7 +27,6 @@
  **************************************************************************/
 #include "ToneMapper.h"
 #include "Utils/Color/ColorUtils.h"
-
 #include <fstd/bit.h> // TODO C++20: Replace with <bit>
 
 namespace
@@ -269,6 +268,20 @@ void ToneMapper::execute(RenderContext* pRenderContext, const RenderData& render
     }
 
     mpToneMapPass->execute(pRenderContext, pFbo);
+
+    if (mpScene)
+    {
+        auto pCamera = mpScene->getCamera();
+        if (pCamera->tonemapperOutput())
+        {
+            pDst->captureToFile(
+                0, 0, pCamera->getOutputPath(), Bitmap::FileFormat::PngFile, Bitmap::ExportFlags::Uncompressed
+            );
+            pCamera->setTonemapperOutput(false);
+        }
+    }
+
+
 }
 
 void ToneMapper::createLuminanceFbo(const ref<Texture>& pSrc)
@@ -401,9 +414,9 @@ void ToneMapper::setScene(RenderContext* pRenderContext, const ref<Scene>& pScen
             setFNumber(metadata.fNumber.value());
         if (metadata.shutterSpeed)
             setShutter(metadata.shutterSpeed.value());
+        mpScene = pScene;
     }
 }
-
 
 void ToneMapper::setExposureCompensation(float exposureCompensation)
 {

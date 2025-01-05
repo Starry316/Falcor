@@ -1,5 +1,5 @@
 /***************************************************************************
- # Copyright (c) 2015-24, NVIDIA CORPORATION. All rights reserved.
+ # Copyright (c) 2015-23, NVIDIA CORPORATION. All rights reserved.
  #
  # Redistribution and use in source and binary forms, with or without
  # modification, are permitted provided that the following conditions
@@ -116,7 +116,7 @@ private:
     ref<Fbo> mpLuminanceFbo;
     ref<Sampler> mpPointSampler;
     ref<Sampler> mpLinearSampler;
-
+    ref<Scene> mpScene;
     /// Selected output size.
     RenderPassHelpers::IOSize mOutputSizeSelection = RenderPassHelpers::IOSize::Default;
     /// Output format (uses default when set to ResourceFormat::Unknown).

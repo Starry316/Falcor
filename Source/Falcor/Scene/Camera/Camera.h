@@ -261,6 +261,19 @@ namespace Falcor
         */
         void renderUI(Gui::Widgets& widget);
 
+        void setOutputFrameCount(uint32_t count) { mOutputFrameCount = count; };
+        uint32_t getOutputFrameCount() const { return mOutputFrameCount; };
+        bool tonemapperOutput() const { return mTonemapperOutput; };
+        void setTonemapperOutput(bool output)  { mTonemapperOutput = output; };
+        void setAccumulating(bool isAccumulating) { mIsAccumulating = isAccumulating; };
+        bool isAccumulating() const { return mIsAccumulating; };
+        void setNextStep(bool nextStep) { mIsNextStep = nextStep; };
+        bool isNextStep() const { return mIsNextStep; };
+        void setOutputPath(const std::string& path) { mOutputPath = path; };
+        std::string getOutputPath() const { return mOutputPath; };
+        bool getResetFlag() const { return mResetFlag; };
+        void setResetFlag(bool resetFlag)  { mResetFlag = resetFlag; };
+
         enum class Changes
         {
             None            = 0x0,
@@ -319,6 +332,13 @@ namespace Falcor
 
         friend class SceneBuilder;
         friend class SceneCache;
+
+        uint32_t mOutputFrameCount = 0;
+        bool mIsAccumulating = false;
+        bool mIsNextStep = false;
+        std::string mOutputPath = "../../../../DebugTex/Camera.exr";
+        bool mTonemapperOutput = false;
+        bool mResetFlag = true;
     };
 
     FALCOR_ENUM_CLASS_OPERATORS(Camera::Changes);

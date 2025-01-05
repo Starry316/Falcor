@@ -48,8 +48,6 @@
 // using namespace nvonnxparser;
 using namespace Falcor;
 
-
-
 enum class InferType : uint32_t
 {
     SHADERTP,
@@ -59,16 +57,13 @@ enum class InferType : uint32_t
     CUDAINT8
 };
 
-
 FALCOR_ENUM_INFO(
     InferType,
-    {
-        { InferType::SHADERTP, "Shader TP Inference" },
-        { InferType::SHADER, "Shader Inference" },
-        { InferType::CUDA, "CUDA FP32 Inference" },
-        { InferType::CUDAFP16, "CUDA FP16 Inference" },
-        { InferType::CUDAINT8, "CUDA INT8 Inference" }
-    }
+    {{InferType::SHADERTP, "Shader TP Inference"},
+     {InferType::SHADER, "Shader Inference"},
+     {InferType::CUDA, "CUDA FP32 Inference"},
+     {InferType::CUDAFP16, "CUDA FP16 Inference"},
+     {InferType::CUDAINT8, "CUDA INT8 Inference"}}
 );
 FALCOR_ENUM_REGISTER(InferType);
 
@@ -85,8 +80,8 @@ enum class RenderType : uint32_t
 FALCOR_ENUM_INFO(
     RenderType,
     {
-        { RenderType::RT, "RT" },
-        { RenderType::WAVEFRONT_SHADER_NN, "Wavefront Inference" }
+        {RenderType::RT, "RT"},
+        {RenderType::WAVEFRONT_SHADER_NN, "Wavefront Inference"}
         // { RenderType::SHADER_NN, "Shader Inference" },
         // { RenderType::CUDA, "CUDA Inference" },
         // { RenderType::TRT, "TensorRT Inference" },
@@ -94,7 +89,6 @@ FALCOR_ENUM_INFO(
     }
 );
 FALCOR_ENUM_REGISTER(RenderType);
-
 
 /**
  * Minimal path tracer.
@@ -111,10 +105,7 @@ class HFTracing : public RenderPass
 public:
     FALCOR_PLUGIN_CLASS(HFTracing, "HFTracing", "Minimal path tracer.");
 
-    static ref<HFTracing> create(ref<Device> pDevice, const Properties& props)
-    {
-        return make_ref<HFTracing>(pDevice, props);
-    }
+    static ref<HFTracing> create(ref<Device> pDevice, const Properties& props) { return make_ref<HFTracing>(pDevice, props); }
 
     HFTracing(ref<Device> pDevice, const Properties& props);
 
@@ -126,9 +117,10 @@ public:
     void cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData);
 
     void displayPass(RenderContext* pRenderContext, const RenderData& renderData);
+    void handleOutput();
     virtual void renderUI(Gui::Widgets& widget) override;
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
-    virtual bool onMouseEvent(const MouseEvent& mouseEvent) override {   return mpPixelDebug->onMouseEvent(mouseEvent); }
+    virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return mpPixelDebug->onMouseEvent(mouseEvent); }
     virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override { return false; }
 
 private:
@@ -167,12 +159,11 @@ private:
 
     ref<ComputePass> mpVisualizeMapsPass;
     ref<ComputePass> mpCreateMaxMipPass;
-    ref<ComputePass> mpInferPass ;
-    ref<ComputePass> mpDisplayPass ;
+    ref<ComputePass> mpInferPass;
+    ref<ComputePass> mpDisplayPass;
     ref<ComputePass> mpGenerateGeometryMapPass;
     // Texture inputs
-    std::string mMediaPath =getProjectDirectory().string();
-
+    std::string mMediaPath = getProjectDirectory().string();
 
 #ifdef PEBBLE
     std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
@@ -187,7 +178,12 @@ private:
     std::string mHFFileName = "ubo/leather11.png";
     bool mHDRBTF = false;
 #endif
-
+#ifdef LEATHER10
+    std::string mNetInt8Name = "leather10_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ubo/leather11.png";
+    std::string mHFFileName = "ubo/leather11.png";
+    bool mHDRBTF = false;
+#endif
 
 #ifdef LEATHER_04R
     std::string mNetInt8Name = "leather04r_m32u8h8d8_int8";
@@ -203,7 +199,12 @@ private:
     bool mHDRBTF = false;
 #endif
 
-
+#ifdef FABRIC10
+    std::string mNetInt8Name = "fabric10_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ubo/fabric09.png";
+    std::string mHFFileName = "ubo/fabric09.png";
+    bool mHDRBTF = false;
+#endif
 
 #ifdef METAL
     std::string mNetInt8Name = "metal_m32u8h8d8_int8";
@@ -211,7 +212,6 @@ private:
     std::string mHFFileName = "metal_grate_rusty_disp_4k.png";
     bool mHDRBTF = true;
 #endif
-
 
 #ifdef METAL2
     std::string mNetInt8Name = "metal2_m32u8h8d8_int8";
@@ -234,15 +234,12 @@ private:
     bool mHDRBTF = false;
 #endif
 
-
 #ifdef TILE
     std::string mNetInt8Name = "tile_m32u8h8d8_int8";
     std::string mShellHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
     std::string mHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
     bool mHDRBTF = false;
 #endif
-
-
 
 #ifdef TILE2
     std::string mNetInt8Name = "tile2_m32u8h8d8_int8";
@@ -265,14 +262,12 @@ private:
     bool mHDRBTF = false;
 #endif
 
-
 #ifdef WEAVE
     std::string mNetInt8Name = "weave_m32u8h8d8_int8";
     std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K.jpg";
     std::string mHFFileName = mShellHFFileName;
     bool mHDRBTF = false;
 #endif
-
 
 #ifdef DUMMY
     std::string mNetInt8Name = "Dummy";
@@ -281,9 +276,8 @@ private:
     bool mHDRBTF = false;
 #endif
 
-
-    // std::string mNetName = "leather11_m32u16h8d8";
-    std::string mNetName = "tile2_m32u16h8d8";
+    std::string mNetName = "leather11_m32u16h8d8";
+    // std::string mNetName = "tile2_m32u16h8d8";
     // std::string mNetName = "metal2_m32u16h8d8";
     ref<Texture> mpHitBuffer;
 
@@ -295,13 +289,12 @@ private:
     ref<Texture> mpTangentMap;
     ref<Texture> mpPosMap;
 
-
     ref<Sampler> mpMaxSampler;
 
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
     Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.099);
-    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 1, 10, 0.3);  // z - 10
+    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 0.1, 10, 0.3); // z - 10
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
     uint mTriID = 0;
     uint mMaxSteps = 1000;
@@ -319,27 +312,29 @@ private:
     bool mCudaInfer = true;
     bool mUseFP16 = false;
     bool mMLPDebug = false;
+    bool mOutputingVideo = false;
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
     ref<Fence> mpFence1;
     ref<Fence> mpFence2;
 
-
-
-
-
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
     std::unique_ptr<NBTF> mpNBTFInt8;
-   std::unique_ptr<NBTF> mpNBTF;
+    std::unique_ptr<NBTF> mpNBTF;
 
-    std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;
+    std::unique_ptr<EnvMapSampler> mpEnvMapSampler;
 
     uint mDebugPrism = 0;
     bool mShowTracedHF = false;
-    bool mTracedShadowRay = false;
+    bool mTracedShadowRay = true;
     bool mUseMIS = false;
 
-
+    // output
+    uint32_t mOutputSPP = 100;
+    uint32_t mOutputIndx = 0;
+    std::string mOutputPath = "D:/video/{}.png";
+    Falcor::float3 mEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
+    uint mOutputStep = 0;
     // cuda
     float mCudaTime = 0.0;
     double mCudaAvgTime = 0.0;
@@ -351,6 +346,4 @@ private:
     ref<Buffer> mpHashedUVBuffer;
 
     uint mCudaAccumulatedFrames = 1;
-
-
 };
