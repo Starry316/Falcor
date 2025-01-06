@@ -518,7 +518,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 void HFTracing::handleOutput()
 {
     auto pCamera = mpScene->getCamera();
-    float uvscaleFactor = 3.0f;
+    float uvscaleFactor = 1.0f;
     if (mpScene->getCamera()->isNextStep())
     {
         pCamera->setNextStep(false);
@@ -530,7 +530,8 @@ void HFTracing::handleOutput()
         {
             mEnvRotAngle.y += float(2 * M_PI) / 180;
             if (mScaleUV)
-                mCurvatureParas.z += uvscaleFactor / 180.0f;
+                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.y * 0.5) / 180.0f * float(M_PI);
+                // mCurvatureParas.z += uvscaleFactor / 180.0f;
             if (mEnvRotAngle.y > float(2 * M_PI))
             {
                 mEnvRotAngle.y = 0;
@@ -541,7 +542,8 @@ void HFTracing::handleOutput()
         {
             mEnvRotAngle.x += float(2 * M_PI) / 180;
             if (mScaleUV)
-                mCurvatureParas.z += uvscaleFactor / 180.0f;
+                // mCurvatureParas.z += uvscaleFactor / 180.0f;
+                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.x * 0.5) / 180.0f * float(M_PI);
 
             if (mEnvRotAngle.x > float(2 * M_PI))
             {
@@ -553,7 +555,8 @@ void HFTracing::handleOutput()
         {
             mEnvRotAngle.z += float(2 * M_PI) / 180;
             if (mScaleUV)
-                mCurvatureParas.z -= uvscaleFactor / 180.0f;
+                // mCurvatureParas.z -= uvscaleFactor / 180.0f;
+                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI);
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
                 mEnvRotAngle.z = 0;
@@ -564,7 +567,8 @@ void HFTracing::handleOutput()
         {
             mEnvRotAngle += float(2 * M_PI) / 180;
             if (mScaleUV)
-                mCurvatureParas.z -= uvscaleFactor / 180.0f;
+                // mCurvatureParas.z -= uvscaleFactor / 180.0f;
+                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI);
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
                 mEnvRotAngle = Falcor::float3(0);
