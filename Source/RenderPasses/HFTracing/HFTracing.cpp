@@ -471,7 +471,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
     widget.textbox("Output Path", mOutputPath);
     widget.var("OutputSPP", mOutputSPP);
-
+    dirty |= widget.checkbox("Scale UV", mScaleUV);
     if (widget.button("Output video"))
     {
         auto pCamera = mpScene->getCamera();
@@ -518,6 +518,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 void HFTracing::handleOutput()
 {
     auto pCamera = mpScene->getCamera();
+
     if (mpScene->getCamera()->isNextStep())
     {
         pCamera->setNextStep(false);
@@ -528,7 +529,8 @@ void HFTracing::handleOutput()
         if (mOutputStep == 0)
         {
             mEnvRotAngle.y += float(2 * M_PI) / 180;
-            mCurvatureParas.z += 10.0f / 180.0f;
+            if (mScaleUV)
+                mCurvatureParas.z += 10.0f / 180.0f;
             if (mEnvRotAngle.y > float(2 * M_PI))
             {
                 mEnvRotAngle.y = 0;
@@ -538,7 +540,8 @@ void HFTracing::handleOutput()
         else if (mOutputStep == 1)
         {
             mEnvRotAngle.x += float(2 * M_PI) / 180;
-            mCurvatureParas.z += 10.0f / 180.0f;
+            if (mScaleUV)
+                mCurvatureParas.z += 10.0f / 180.0f;
 
             if (mEnvRotAngle.x > float(2 * M_PI))
             {
@@ -549,7 +552,8 @@ void HFTracing::handleOutput()
         else if (mOutputStep == 2)
         {
             mEnvRotAngle.z += float(2 * M_PI) / 180;
-            mCurvatureParas.z -= 10.0f / 180.0f;
+            if (mScaleUV)
+                mCurvatureParas.z -= 10.0f / 180.0f;
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
                 mEnvRotAngle.z = 0;
@@ -559,7 +563,8 @@ void HFTracing::handleOutput()
         else if (mOutputStep == 3)
         {
             mEnvRotAngle += float(2 * M_PI) / 180;
-            mCurvatureParas.z -= 10.0f / 180.0f;
+            if (mScaleUV)
+                mCurvatureParas.z -= 10.0f / 180.0f;
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
                 mEnvRotAngle = Falcor::float3(0);
@@ -582,8 +587,8 @@ void HFTracing::handleOutput()
             mPhi += float(2 * M_PI) / 360;
             float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
             float phi = atan2f(pos.z / r, pos.x / r);
-            mCurvatureParas.z += 10.0f * sinf(mPhi) / 180.0f *  float(M_PI) ;
-
+            if (mScaleUV)
+                mCurvatureParas.z += 10.0f * sinf(mPhi) / 180.0f * float(M_PI);
             pos.x = r * cosf(phi + float(2 * M_PI) / 360);
             pos.z = r * sinf(phi + float(2 * M_PI) / 360);
 
