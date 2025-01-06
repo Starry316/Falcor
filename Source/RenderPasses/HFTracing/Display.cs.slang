@@ -15,7 +15,7 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
     if (any(dispatchThreadId.xy >= gRenderTargetDim))
         return;
     uint2 pixel = dispatchThreadId.xy;
-    printSetPixel(pixel);
+    // printSetPixel(pixel);
 
     if (cudaVaildBuffer[pixel.y * gRenderTargetDim.x + pixel.x] == 0)
         return;
@@ -31,8 +31,8 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
         btfVal = float4(0);
 
     // print("Li", uvWoyz[pixel]);
-    print("Li", gOutputColor[pixel]);
-    print("btf", btfVal);
+    // print("Li", gOutputColor[pixel]);
+    // print("btf", btfVal);
 
     //float2 t0 = float2(0.3f, 0.5f);
     //float2 t1 = float2(2.1f, 4.7f);

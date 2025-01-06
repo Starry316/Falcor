@@ -278,8 +278,8 @@ private:
 
     // std::string mNetName = "leather11_m32u16h8d8";
     // std::string mNetName = "tile2_m32u16h8d8";
-    std::string mNetName = "metal2_m32u16h8d8";
-    // std::string mNetName = "weave_m32u16h8d8";
+    // std::string mNetName = "metal2_m32u16h8d8";
+    std::string mNetName = "weave_m32u16h8d8";
     ref<Texture> mpHitBuffer;
 
     ref<Texture> mpHF;

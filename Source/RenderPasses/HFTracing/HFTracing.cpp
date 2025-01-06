@@ -149,6 +149,7 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
     var["PerFrameCB"]["gApplySyn"] = mApplySyn;
     var["PerFrameCB"]["gCurvatureParas"] = mCurvatureParas;
     var["PerFrameCB"]["gDebugMLP"] = mMLPDebug;
+    var["gInputColor"] = mpOutputBuffer;
     var["cudaVaildBuffer"] = mpVaildBuffer;
     var["gOutputColor"] = renderData.getTexture("color");
     var["btfInput"] = mpPackedInputBuffer;
@@ -396,8 +397,8 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     else
     {
         cudaInferPass(pRenderContext, renderData);
-        displayPass(pRenderContext, renderData);
     }
+      displayPass(pRenderContext, renderData);
 }
 
 void HFTracing::renderUI(Gui::Widgets& widget)
@@ -530,7 +531,7 @@ void HFTracing::handleOutput()
         {
             mEnvRotAngle.y += float(2 * M_PI) / 180;
             if (mScaleUV)
-                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.y * 0.5) / 180.0f * float(M_PI);
+                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.y * 0.5) / 180.0f * float(M_PI_2);
                 // mCurvatureParas.z += uvscaleFactor / 180.0f;
             if (mEnvRotAngle.y > float(2 * M_PI))
             {
@@ -543,7 +544,7 @@ void HFTracing::handleOutput()
             mEnvRotAngle.x += float(2 * M_PI) / 180;
             if (mScaleUV)
                 // mCurvatureParas.z += uvscaleFactor / 180.0f;
-                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.x * 0.5) / 180.0f * float(M_PI);
+                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.x * 0.5) / 180.0f * float(M_PI_2);
 
             if (mEnvRotAngle.x > float(2 * M_PI))
             {
@@ -556,7 +557,7 @@ void HFTracing::handleOutput()
             mEnvRotAngle.z += float(2 * M_PI) / 180;
             if (mScaleUV)
                 // mCurvatureParas.z -= uvscaleFactor / 180.0f;
-                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI);
+                mCurvatureParas.z += uvscaleFactor * sinf(float(M_PI) + mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI_2);
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
                 mEnvRotAngle.z = 0;
@@ -568,7 +569,7 @@ void HFTracing::handleOutput()
             mEnvRotAngle += float(2 * M_PI) / 180;
             if (mScaleUV)
                 // mCurvatureParas.z -= uvscaleFactor / 180.0f;
-                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI);
+                mCurvatureParas.z += uvscaleFactor * sinf(float(M_PI) + mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI_2);
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
                 mEnvRotAngle = Falcor::float3(0);

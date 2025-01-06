@@ -40,7 +40,7 @@ struct MLP
                 }
                 for (int j = 0; j < outNum; ++j)
                 {
-                    // y[j] += bias[j + biasOffset];
+                    y[j] += bias[j + biasOffset];
                     y[j] = relu(y[j]);
                 }
                 biasOffset += outNum;
@@ -65,7 +65,7 @@ struct MLP
                 }
                 for (int j = 0; j < outNum; ++j)
                 {
-                    // x[j] += bias[j + biasOffset];
+                    x[j] += bias[j + biasOffset];
                     x[j] = relu(x[j]);
                 }
                 biasOffset += outNum;
