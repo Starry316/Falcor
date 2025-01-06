@@ -276,9 +276,10 @@ private:
     bool mHDRBTF = false;
 #endif
 
-    std::string mNetName = "leather11_m32u16h8d8";
+    // std::string mNetName = "leather11_m32u16h8d8";
     // std::string mNetName = "tile2_m32u16h8d8";
     // std::string mNetName = "metal2_m32u16h8d8";
+    std::string mNetName = "weave_m32u16h8d8";
     ref<Texture> mpHitBuffer;
 
     ref<Texture> mpHF;
@@ -334,9 +335,10 @@ private:
     uint32_t mOutputIndx = 0;
     std::string mOutputPath = "D:/video/{}.png";
     Falcor::float3 mEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
-    uint mOutputStep = 0;
+    uint mOutputStep = 4;
     // cuda
     float mCudaTime = 0.0;
+    float mPhi = 0.0;
     double mCudaAvgTime = 0.0;
     int cudaInferTimes = 1;
     cudaEvent_t mCudaStart, mCudaStop;
