@@ -444,7 +444,11 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Use float4", mMLPDebug);
     widget.tooltip("Use float4 in shader inference (debug only)", true);
 
-
+    if (widget.button("Reset Envmap"))
+    {
+        mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
+        dirty = true;
+    }
 
     dirty |= widget.slider("CUDA infer times", cudaInferTimes, 1, 20);
     widget.tooltip("For speed test, run cuda infer multiple times to get the avg running time.", true);
@@ -485,7 +489,8 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         mOutputingVideo = false;
         dirty = true;
     }
-    if (widget.button("Reset index")){
+    if (widget.button("Reset index"))
+    {
         mOutputIndx = 0;
         mOutputSPP = 1;
         mOutputStep = 0;
