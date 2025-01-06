@@ -518,7 +518,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 void HFTracing::handleOutput()
 {
     auto pCamera = mpScene->getCamera();
-
+    float uvscaleFactor = 3.0f;
     if (mpScene->getCamera()->isNextStep())
     {
         pCamera->setNextStep(false);
@@ -530,7 +530,7 @@ void HFTracing::handleOutput()
         {
             mEnvRotAngle.y += float(2 * M_PI) / 180;
             if (mScaleUV)
-                mCurvatureParas.z += 10.0f / 180.0f;
+                mCurvatureParas.z += uvscaleFactor / 180.0f;
             if (mEnvRotAngle.y > float(2 * M_PI))
             {
                 mEnvRotAngle.y = 0;
@@ -541,7 +541,7 @@ void HFTracing::handleOutput()
         {
             mEnvRotAngle.x += float(2 * M_PI) / 180;
             if (mScaleUV)
-                mCurvatureParas.z += 10.0f / 180.0f;
+                mCurvatureParas.z += uvscaleFactor / 180.0f;
 
             if (mEnvRotAngle.x > float(2 * M_PI))
             {
@@ -553,7 +553,7 @@ void HFTracing::handleOutput()
         {
             mEnvRotAngle.z += float(2 * M_PI) / 180;
             if (mScaleUV)
-                mCurvatureParas.z -= 10.0f / 180.0f;
+                mCurvatureParas.z -= uvscaleFactor / 180.0f;
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
                 mEnvRotAngle.z = 0;
@@ -564,7 +564,7 @@ void HFTracing::handleOutput()
         {
             mEnvRotAngle += float(2 * M_PI) / 180;
             if (mScaleUV)
-                mCurvatureParas.z -= 10.0f / 180.0f;
+                mCurvatureParas.z -= uvscaleFactor / 180.0f;
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
                 mEnvRotAngle = Falcor::float3(0);
@@ -588,7 +588,7 @@ void HFTracing::handleOutput()
             float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
             float phi = atan2f(pos.z / r, pos.x / r);
             if (mScaleUV)
-                mCurvatureParas.z += 10.0f * sinf(mPhi) / 180.0f * float(M_PI);
+                mCurvatureParas.z += uvscaleFactor * sinf(mPhi) / 180.0f * float(M_PI);
             pos.x = r * cosf(phi + float(2 * M_PI) / 360);
             pos.z = r * sinf(phi + float(2 * M_PI) / 360);
 
