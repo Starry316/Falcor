@@ -472,7 +472,6 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     widget.textbox("Output Path", mOutputPath);
     widget.var("OutputSPP", mOutputSPP);
 
-
     if (widget.button("Output video"))
     {
         auto pCamera = mpScene->getCamera();
@@ -498,11 +497,12 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         mOutputStep = 0;
         mpScene->getCamera()->setResetFlag(true);
         mEnvRotAngle = Falcor::float3(0);
-        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle));
+
+        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
     }
     if (mOutputingVideo && mpScene->getEnvMap())
     {
-        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle));
+        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
     }
     mpPixelDebug->renderUI(widget);
 
@@ -525,72 +525,72 @@ void HFTracing::handleOutput()
         pCamera->setOutputFrameCount(mOutputSPP);
         pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
         mOutputIndx++;
-        // if (mOutputStep == 1)
-        // {
-        //     mEnvRotAngle.y += float(2 * M_PI) / 180;
-        //     if (mEnvRotAngle.y > float(2 * M_PI))
-        //     {
-        //         mEnvRotAngle.y = 0;
-        //         mOutputStep = 2;
-        //     }
-        // }
-        // else if (mOutputStep == 0)
-        // {
-        //     mEnvRotAngle.x += float(2 * M_PI) / 180;
-        //     if (mEnvRotAngle.x > float(2 * M_PI))
-        //     {
-        //         mEnvRotAngle.x = 0;
-        //         mOutputStep = 1;
-        //     }
-        // }
-        // else if (mOutputStep == 2)
-        // {
-        //     mEnvRotAngle.z += float(2 * M_PI) / 180;
-        //     if (mEnvRotAngle.z > float(2 * M_PI))
-        //     {
-        //         mEnvRotAngle.z = 0;
-        //         mOutputStep = 3;
-        //     }
-        // }
-        // else if (mOutputStep == 3)
-        // {
-        //     mEnvRotAngle += float(2 * M_PI) / 180;
-        //     if (mEnvRotAngle.z > float(2 * M_PI))
-        //     {
-        //         mEnvRotAngle = Falcor::float3(0);
-        //         mOutputStep = 4;
-
-        //         // mEnvRotAngle = Falcor::float3(0);
-        //         // mOutputStep = 0;
-        //         // mOutputIndx = 0;
-        //         // mOutputSPP = 1;
-        //         // mpScene->getCamera()->setResetFlag(true);
-        //         // mpScene->getCamera()->setNextStep(false);
-        //         // mOutputingVideo = false;
-        //         // mpScene->getCamera()->setAccumulating(mOutputingVideo);
-        //     }
-        // }
-        // else if (mOutputStep == 4)
+        if (mOutputStep == 0)
         {
-            // float moveFactor  = 0.05f;
+            mEnvRotAngle.y += float(2 * M_PI) / 180;
+            mCurvatureParas.z += 10.0f / 180.0f;
+            if (mEnvRotAngle.y > float(2 * M_PI))
+            {
+                mEnvRotAngle.y = 0;
+                mOutputStep = 1;
+            }
+        }
+        else if (mOutputStep == 1)
+        {
+            mEnvRotAngle.x += float(2 * M_PI) / 180;
+            mCurvatureParas.z += 10.0f / 180.0f;
+
+            if (mEnvRotAngle.x > float(2 * M_PI))
+            {
+                mEnvRotAngle.x = 0;
+                mOutputStep = 2;
+            }
+        }
+        else if (mOutputStep == 2)
+        {
+            mEnvRotAngle.z += float(2 * M_PI) / 180;
+            mCurvatureParas.z -= 10.0f / 180.0f;
+            if (mEnvRotAngle.z > float(2 * M_PI))
+            {
+                mEnvRotAngle.z = 0;
+                mOutputStep = 3;
+            }
+        }
+        else if (mOutputStep == 3)
+        {
+            mEnvRotAngle += float(2 * M_PI) / 180;
+            mCurvatureParas.z -= 10.0f / 180.0f;
+            if (mEnvRotAngle.z > float(2 * M_PI))
+            {
+                mEnvRotAngle = Falcor::float3(0);
+                mOutputStep = 4;
+
+                //         // mEnvRotAngle = Falcor::float3(0);
+                //         // mOutputStep = 0;
+                //         // mOutputIndx = 0;
+                //         // mOutputSPP = 1;
+                //         // mpScene->getCamera()->setResetFlag(true);
+                //         // mpScene->getCamera()->setNextStep(false);
+                //         // mOutputingVideo = false;
+                //         // mpScene->getCamera()->setAccumulating(mOutputingVideo);
+            }
+        }
+        else if (mOutputStep == 4)
+        {
             Falcor::float3 pos = pCamera->getPosition();
             Falcor::float3 lookat = pCamera->getTarget();
-
-            float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
-            float phi = atan2f(pos.z/r, pos.x/r);
             mPhi += float(2 * M_PI) / 360;
-            // pos.y += -(sinf(mPhi) )*moveFactor;
-            // r += (sinf(mPhi) )*moveFactor;
+            float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
+            float phi = atan2f(pos.z / r, pos.x / r);
+            mCurvatureParas.z += 10.0f * sinf(mPhi) / 180.0f *  float(M_PI) ;
+
             pos.x = r * cosf(phi + float(2 * M_PI) / 360);
             pos.z = r * sinf(phi + float(2 * M_PI) / 360);
 
             pCamera->setPosition(pos);
 
             float lookatR = sqrtf(lookat.x * lookat.x + lookat.z * lookat.z);
-            float lookatPhi = atan2f(lookat.z/lookatR, lookat.x/lookatR);
-
-            // lookat.y += (sinf(mPhi) )*moveFactor;
-            // lookatR += (sinf(mPhi) )*moveFactor;
+            float lookatPhi = atan2f(lookat.z / lookatR, lookat.x / lookatR);
 
             lookat.x = lookatR * cosf(lookatPhi + float(2 * M_PI) / 360);
             lookat.z = lookatR * sinf(lookatPhi + float(2 * M_PI) / 360);
@@ -608,8 +608,6 @@ void HFTracing::handleOutput()
                 mpScene->getCamera()->setAccumulating(mOutputingVideo);
             }
         }
-
-
     }
 }
 void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
@@ -740,6 +738,12 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 
     mpFence2 = mpDevice->createFence();
     mpFence2->breakStrongReferenceToDevice();
+
+    if (mpScene->getEnvMap() != nullptr)
+    {
+        mOriginEnvRotAngle = mpScene->getEnvMap()->getRotation();
+        logInfo("Env map rotation: {}", mOriginEnvRotAngle);
+    }
 }
 
 void HFTracing::prepareVars()

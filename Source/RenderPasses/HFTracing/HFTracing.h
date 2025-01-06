@@ -335,6 +335,7 @@ private:
     uint32_t mOutputIndx = 0;
     std::string mOutputPath = "D:/video/{}.png";
     Falcor::float3 mEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
+    Falcor::float3 mOriginEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     uint mOutputStep = 4;
     // cuda
     float mCudaTime = 0.0;
