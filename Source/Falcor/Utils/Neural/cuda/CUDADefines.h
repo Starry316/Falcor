@@ -1,9 +1,12 @@
 // #define PEBBLE
 // #define LEATHER
-#define LEATHER10
+#define LEATHER_TILE
+// #define LEATHER10
+// #define LEATHER10_TILE
 // #define LEATHER_04R
 // #define TILE
 // #define TILE2
+// #define TILE2_SML
 // #define TILE3
 // #define BRICK
 // #define METAL
@@ -12,5 +15,8 @@
 // #define FABRIC
 // #define FABRIC09
 // #define FABRIC10
+// #define FABRIC12
 // #define WEAVE
+// #define WEAVE_SML
 // #define DUMMY
+// #define MIP
