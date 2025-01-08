@@ -41,8 +41,11 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
         gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = btfVal.y;
         gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = btfVal.z;
         gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = btfVal.w;
-        // print("uv", uv);
-        // print("h", h);
-        // print("d", d);
+
+        // gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 0] = frac(uv.x);
+        // gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = frac(uv.y);
+        // gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] =0;
+        // gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] =0;
+
     }
 }

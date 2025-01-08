@@ -163,11 +163,11 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
         mpNBTFInt8->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
     }
 
-    mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
-    mpPixelDebug->prepareProgram(mpInferPass->getProgram(), mpInferPass->getRootVar());
+    // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
+    // mpPixelDebug->prepareProgram(mpInferPass->getProgram(), mpInferPass->getRootVar());
 
     mpInferPass->execute(pRenderContext, targetDim.x, targetDim.y);
-    mpPixelDebug->endFrame(pRenderContext);
+    // mpPixelDebug->endFrame(pRenderContext);
     pRenderContext->submit(false);
     pRenderContext->signal(mpFence1.get());
     mpFence1->wait();
@@ -240,10 +240,10 @@ void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& ren
     var["gOutputColor"] = renderData.getTexture("color");
     var["gInputColor"] = mpOutputBuffer;
     var["cudaVaildBuffer"] = mpVaildBuffer;
-    mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
-    mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
+    // mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
+    // mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, targetDim.x, targetDim.y);
-    mpPixelDebug->endFrame(pRenderContext);
+    // mpPixelDebug->endFrame(pRenderContext);
     // pRenderContext->submit(false);
     // pRenderContext->signal(mpFence2.get());
     // mpFence2->wait();
@@ -398,7 +398,7 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     {
         cudaInferPass(pRenderContext, renderData);
     }
-      displayPass(pRenderContext, renderData);
+    displayPass(pRenderContext, renderData);
 }
 
 void HFTracing::renderUI(Gui::Widgets& widget)
@@ -519,7 +519,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 void HFTracing::handleOutput()
 {
     auto pCamera = mpScene->getCamera();
-    float uvscaleFactor = 1.0f;
+
     if (mpScene->getCamera()->isNextStep())
     {
         pCamera->setNextStep(false);
@@ -527,12 +527,44 @@ void HFTracing::handleOutput()
         pCamera->setOutputFrameCount(mOutputSPP);
         pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
         mOutputIndx++;
+#ifdef MIP
+        Falcor::float3 pos = pCamera->getPosition();
+        Falcor::float3 lookat = pCamera->getTarget();
+        mPhi += float(2 * M_PI) / 360;
+        float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
+
+        float phi = atan2f(pos.z / r, pos.x / r);
+        r+= 0.05f;
+        pos.x = r * cosf(phi + float(2 * M_PI) / 360);
+        pos.z = r * sinf(phi + float(2 * M_PI) / 360);
+
+        pCamera->setPosition(pos);
+
+        // float lookatR = sqrtf(lookat.x * lookat.x + lookat.z * lookat.z);;
+        // float lookatPhi = atan2f(lookat.z / lookatR, lookat.x / lookatR);
+        // lookatR += 0.01f;
+        // lookat.x = lookatR * cosf(lookatPhi + float(2 * M_PI) / 360);
+        // lookat.z = lookatR * sinf(lookatPhi + float(2 * M_PI) / 360);
+
+        pCamera->setTarget(lookat);
+        if (mPhi > float(2 * M_PI * 4))
+        {
+            mPhi = 0;
+            mOutputStep = 0;
+            mOutputIndx = 0;
+            mOutputSPP = 1;
+            mpScene->getCamera()->setResetFlag(true);
+            mpScene->getCamera()->setNextStep(false);
+            mOutputingVideo = false;
+            mpScene->getCamera()->setAccumulating(mOutputingVideo);
+        }
+#else
         if (mOutputStep == 0)
         {
             mEnvRotAngle.y += float(2 * M_PI) / 180;
             if (mScaleUV)
                 mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.y * 0.5) / 180.0f * float(M_PI_2);
-                // mCurvatureParas.z += uvscaleFactor / 180.0f;
+            // mCurvatureParas.z += uvscaleFactor / 180.0f;
             if (mEnvRotAngle.y > float(2 * M_PI))
             {
                 mEnvRotAngle.y = 0;
@@ -618,6 +650,7 @@ void HFTracing::handleOutput()
                 mpScene->getCamera()->setAccumulating(mOutputingVideo);
             }
         }
+#endif
     }
 }
 void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)

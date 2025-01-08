@@ -178,8 +178,20 @@ private:
     std::string mHFFileName = "ubo/leather11.png";
     bool mHDRBTF = false;
 #endif
+#ifdef LEATHER_TILE
+    std::string mNetInt8Name = "leather11_tile_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ubo/leather11_tile.png";
+    std::string mHFFileName = "ubo/leather11_tile.png";
+    bool mHDRBTF = false;
+#endif
 #ifdef LEATHER10
     std::string mNetInt8Name = "leather10_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ubo/leather11.png";
+    std::string mHFFileName = "ubo/leather11.png";
+    bool mHDRBTF = false;
+#endif
+#ifdef LEATHER10_TILE
+    std::string mNetInt8Name = "leather10_tile_m32u8h8d8_int8";
     std::string mShellHFFileName = "ubo/leather11.png";
     std::string mHFFileName = "ubo/leather11.png";
     bool mHDRBTF = false;
@@ -247,7 +259,12 @@ private:
     std::string mHFFileName = "roof_tiles_14_disp_1k.png";
     bool mHDRBTF = false;
 #endif
-
+#ifdef TILE2_SML
+    std::string mNetInt8Name = "tile2_small_m32u8h8d8_int8";
+    std::string mShellHFFileName = "roof_tiles_14_disp_1k_small.png";
+    std::string mHFFileName = "roof_tiles_14_disp_1k_small.png";
+    bool mHDRBTF = false;
+#endif
 #ifdef TILE3
     std::string mNetInt8Name = "tile3_m32u8h8d8_int8";
     std::string mShellHFFileName = "TilesCeramicChevron001_DISP_6K.jpg";
@@ -261,14 +278,24 @@ private:
     std::string mHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
     bool mHDRBTF = false;
 #endif
-
+#ifdef FABRIC12
+    std::string mNetInt8Name = "fabric12_m32u8h8d8_int8";
+    std::string mShellHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
+    std::string mHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
+    bool mHDRBTF = false;
+#endif
 #ifdef WEAVE
     std::string mNetInt8Name = "weave_m32u8h8d8_int8";
     std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K.jpg";
     std::string mHFFileName = mShellHFFileName;
     bool mHDRBTF = false;
 #endif
-
+#ifdef WEAVE_SML
+    std::string mNetInt8Name = "weave_small_m32u8h8d8_int8";
+    std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K_small.jpg";
+    std::string mHFFileName = mShellHFFileName;
+    bool mHDRBTF = false;
+#endif
 #ifdef DUMMY
     std::string mNetInt8Name = "Dummy";
     std::string mShellHFFileName = "roof_tiles_14_disp_1k.png";
@@ -277,9 +304,12 @@ private:
 #endif
 
     // std::string mNetName = "leather11_m32u16h8d8";
+    std::string mNetName = "leather11_tile_m32u16h8d8";
     // std::string mNetName = "tile2_m32u16h8d8";
+    // std::string mNetName = "tile2_small_m32u16h8d8";
     // std::string mNetName = "metal2_m32u16h8d8";
-    std::string mNetName = "weave_m32u16h8d8";
+    // std::string mNetName = "weave_m32u16h8d8";
+    // std::string mNetName = "weave_small_m32u16h8d8";
     ref<Texture> mpHitBuffer;
 
     ref<Texture> mpHF;
@@ -332,15 +362,17 @@ private:
     bool mUseMIS = false;
 
     // output
-    uint32_t mOutputSPP = 100;
+    uint32_t mOutputSPP = 16;
     uint32_t mOutputIndx = 0;
     std::string mOutputPath = "D:/video/{}.png";
     Falcor::float3 mEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     Falcor::float3 mOriginEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     uint mOutputStep = 4;
+    float uvscaleFactor = 1.0f;
     // cuda
     float mCudaTime = 0.0;
     float mPhi = 0.0;
+
     double mCudaAvgTime = 0.0;
     int cudaInferTimes = 1;
     cudaEvent_t mCudaStart, mCudaStop;

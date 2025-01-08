@@ -41,4 +41,5 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 
 
     gOutputColor[pixel] *= btfVal;
+    // gOutputColor[pixel] = btfVal;
 }

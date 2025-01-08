@@ -467,9 +467,9 @@ void calculateAutocovariance(TextureDataFloat& image, TextureDataFloat& acf, std
 
 float acfTransform(float val){
     // return val;
-    return  val * val * val ;
+    // return  val * val * val ;
     // return  cos(val * M_1_2PI);
-    // return  val * val;
+    return  val * val * val;
     // return  powf(val, 1.5);
     // val = 1-val;
     // return  val * val;
@@ -492,8 +492,8 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
     for (int i = 0; i < acf_weight.size(); ++i)
     {
         float val = acf_weight[i];
-        // val = (val - min) / (max - min);
-        val = val > 0 ? val : 0;
+        val = (val - min) / (max - min);
+        // val = val > 0 ? val : 0;
         // val = acfTransform(val);
 
         acf_pdf.push_back(val);

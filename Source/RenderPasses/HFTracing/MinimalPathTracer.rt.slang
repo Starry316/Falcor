@@ -1065,10 +1065,10 @@ bool intersectSynthesizedDisplacedTriangle(
     vertices[0].normal = mul(worldMat, float4(vertices[0].position + vertices[0].normal, 1.f)).xyz - vertPosTr[0];
     vertices[1].normal = mul(worldMat, float4(vertices[1].position + vertices[1].normal, 1.f)).xyz - vertPosTr[1];
     vertices[2].normal = mul(worldMat, float4(vertices[2].position + vertices[2].normal, 1.f)).xyz - vertPosTr[2];
-    if (dot(ray.dir, vertices[0].normal) > 0 || dot(ray.dir, vertices[1].normal) > 0 || dot(ray.dir, vertices[2].normal) > 0)
-    {
-        return false;
-    }
+    // if (dot(ray.dir, vertices[0].normal) > 0 || dot(ray.dir, vertices[1].normal) > 0 || dot(ray.dir, vertices[2].normal) > 0)
+    // {
+    //     return false;
+    // }
 
 
     vertices[0].position = vertPosTr[0];
@@ -1238,6 +1238,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 // float4 uv_hashed = getHashUV(hfData, uv_raw);
                 // packedData = packInputSyn(wi, wo, frac(abs(uv_hashed.xy)), frac(abs(uv_hashed.wz)));
                 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+                // packedData = packInput(wi, wo, sd.uv, ddx, ddy);
                 float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
                 float4 uv_hashed = getHashUV(hfData, uv_raw);
                 hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = uv_hashed.x;
