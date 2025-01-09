@@ -110,7 +110,45 @@ struct NBTF
         }
         return mlp.eval(x);
     }
+    float4 evalDebugFP32(float2 h, float2 d, float2 uv, float lod, bool synthesize = false)
+    {
+        float x[24];
+        int count = 0;
+        for (uint i = 0; i < hDims.y; i++)
+        {
+            float4 val = hP.SampleLevel(gSampler, float3(h, i), 0.f);
+            x[count * 4] = val.x;
+            x[count * 4 + 1] = val.y;
+            x[count * 4 + 2] = val.z;
+            x[count * 4 + 3] = val.w;
+            count += 1;
+        }
+        for (uint i = 0; i < uDims.y; i++)
+        {
+            float4 val;
+            // if (synthesize)
+            //     val = HistorgramBlending(histoFeatureData, gSampler, uv, i, ddx, ddy);
+            // else
+            val = uP.SampleLevel(gSampler, float3(uv, i), lod);
+            // val = HistorgramBlending(histoFeatureData, gSampler, uv, i, ddx, ddy);
+            x[count * 4] = val.x;
+            x[count * 4 + 1] = val.y;
+            x[count * 4 + 2] = val.z;
+            x[count * 4 + 3] = val.w;
+            count += 1;
+        }
 
+        for (uint i = 0; i < dDims.y; i++)
+        {
+            float4 val = dP.SampleLevel(gSampler, float3(d, i), 0.f);
+            x[count * 4] = val.x;
+            x[count * 4 + 1] = val.y;
+            x[count * 4 + 2] = val.z;
+            x[count * 4 + 3] = val.w;
+            count += 1;
+        }
+        return mlp.eval(x);
+    }
     // float4 evalDebugHist(float2 h, float2 d, float2 uv, float2 ddx, float2 ddy, bool synthesize = false, out float3 weights)
     // {
     //     ddx = float2(0.000001);

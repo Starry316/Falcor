@@ -92,7 +92,8 @@ float2 hash(float2 p)
     //float2 r = mul(float2x2(127.1, 311.7, 269.5, 183.3), p);
     float2 r = float2(127.1f * p.x + 311.7f * p.y, 269.5f * p.x + 183.3f * p.y);
     float2 temp = sin(r) * 43758.5453f;
-    return (temp - floor(temp));
+    // return (temp - floor(temp));
+    return frac(temp);
 }
 
 #define PI 3.14159265f
@@ -129,5 +130,6 @@ float BSingularity(float2 uv)
 float rnd21(float2 p)
 {
     float temp = sin(12.9898f * p.x + 78.233f * p.y) * 43758.5453f;
-    return (temp - floor(temp));
+    // return (temp - floor(temp));
+    return frac(temp);
 }

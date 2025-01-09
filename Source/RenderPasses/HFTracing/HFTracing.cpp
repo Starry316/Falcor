@@ -431,11 +431,11 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.slider("UV Scale", mCurvatureParas.z, 0.0f, 50.0f);
     dirty |= widget.var("UV Scale_", mCurvatureParas.z);
     widget.tooltip("Scale the uv coords", true);
-
+    dirty |= widget.slider("mip scale", mCurvatureParas.w, 0.0f, 100.0f);
     dirty |= widget.checkbox("Traced Shadow Ray", mTracedShadowRay);
     dirty |= widget.slider("Shadow ray offset", mCurvatureParas.y, 0.0f, 1.0f);
     widget.tooltip("Position offset along with the normal dir. To avoid self-occlusion", true);
-    // dirty |= widget.slider("mip scale", mCurvatureParas.w, 0.0f, 11.0f);
+
 
     dirty |= widget.checkbox("Contact Refinement", mContactRefinement);
     widget.tooltip("use contact refinement tracing", true);
@@ -528,26 +528,8 @@ void HFTracing::handleOutput()
         pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
         mOutputIndx++;
 #ifdef MIP
-        Falcor::float3 pos = pCamera->getPosition();
-        Falcor::float3 lookat = pCamera->getTarget();
-        mPhi += float(2 * M_PI) / 360;
-        float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
-
-        float phi = atan2f(pos.z / r, pos.x / r);
-        r+= 0.05f;
-        pos.x = r * cosf(phi + float(2 * M_PI) / 360);
-        pos.z = r * sinf(phi + float(2 * M_PI) / 360);
-
-        pCamera->setPosition(pos);
-
-        // float lookatR = sqrtf(lookat.x * lookat.x + lookat.z * lookat.z);;
-        // float lookatPhi = atan2f(lookat.z / lookatR, lookat.x / lookatR);
-        // lookatR += 0.01f;
-        // lookat.x = lookatR * cosf(lookatPhi + float(2 * M_PI) / 360);
-        // lookat.z = lookatR * sinf(lookatPhi + float(2 * M_PI) / 360);
-
-        pCamera->setTarget(lookat);
-        if (mPhi > float(2 * M_PI * 4))
+        mCurvatureParas.w += 0.1f;
+        if (mCurvatureParas.w > 55)
         {
             mPhi = 0;
             mOutputStep = 0;
@@ -558,6 +540,39 @@ void HFTracing::handleOutput()
             mOutputingVideo = false;
             mpScene->getCamera()->setAccumulating(mOutputingVideo);
         }
+
+
+
+        // Falcor::float3 pos = pCamera->getPosition();
+        // Falcor::float3 lookat = pCamera->getTarget();
+        // mPhi += float(2 * M_PI) / 360;
+        // float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
+
+        // float phi = atan2f(pos.z / r, pos.x / r);
+        // r+= 0.05f;
+        // pos.x = r * cosf(phi + float(2 * M_PI) / 360);
+        // pos.z = r * sinf(phi + float(2 * M_PI) / 360);
+
+        // pCamera->setPosition(pos);
+
+        // // float lookatR = sqrtf(lookat.x * lookat.x + lookat.z * lookat.z);;
+        // // float lookatPhi = atan2f(lookat.z / lookatR, lookat.x / lookatR);
+        // // lookatR += 0.01f;
+        // // lookat.x = lookatR * cosf(lookatPhi + float(2 * M_PI) / 360);
+        // // lookat.z = lookatR * sinf(lookatPhi + float(2 * M_PI) / 360);
+
+        // pCamera->setTarget(lookat);
+        // if (mPhi > float(2 * M_PI * 4))
+        // {
+        //     mPhi = 0;
+        //     mOutputStep = 0;
+        //     mOutputIndx = 0;
+        //     mOutputSPP = 1;
+        //     mpScene->getCamera()->setResetFlag(true);
+        //     mpScene->getCamera()->setNextStep(false);
+        //     mOutputingVideo = false;
+        //     mpScene->getCamera()->setAccumulating(mOutputingVideo);
+        // }
 #else
         if (mOutputStep == 0)
         {

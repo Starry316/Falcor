@@ -72,11 +72,12 @@ float4 HistorgramBlending(
     float4 g2 = data.tex.SampleLevel(sampler, float3(st2, layer), 0);
     float4 g3 = data.tex.SampleLevel(sampler, float3(st3, layer), 0);
 
+    // float4 G = w1 * g1 + w2 * g2 + w3 * g3;
     float4 G = w1 * g1 + w2 * g2 + w3 * g3;
     G -= 0.5f;
     G *= inversesqrt(w1 * w1 + w2 * w2 + w3 * w3);
     G += 0.5f;
-    G = abs(G);
+    // G = abs(G);
     G = clamp(G, 0.0001, 0.999);
     float4 res;
     res.x = data.invTex.SampleLevel(sampler, float3(G.x, 0.0f, layer), 0.f).x;

@@ -304,12 +304,12 @@ private:
 #endif
 
     // std::string mNetName = "leather11_m32u16h8d8";
-    std::string mNetName = "leather11_tile_m32u16h8d8";
+    // std::string mNetName = "leather11_tile_m32u16h8d8";
     // std::string mNetName = "tile2_m32u16h8d8";
     // std::string mNetName = "tile2_small_m32u16h8d8";
     // std::string mNetName = "metal2_m32u16h8d8";
     // std::string mNetName = "weave_m32u16h8d8";
-    // std::string mNetName = "weave_small_m32u16h8d8";
+    std::string mNetName = "weave_small_m32u16h8d8";
     ref<Texture> mpHitBuffer;
 
     ref<Texture> mpHF;
@@ -325,7 +325,7 @@ private:
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
     Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.099);
-    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 0.1, 10, 0.3); // z - 10
+    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 0.01, 10, 1); // z - 10
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
     uint mTriID = 0;
     uint mMaxSteps = 1000;
@@ -368,7 +368,7 @@ private:
     Falcor::float3 mEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     Falcor::float3 mOriginEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     uint mOutputStep = 4;
-    float uvscaleFactor = 1.0f;
+    float uvscaleFactor =2.0f;
     // cuda
     float mCudaTime = 0.0;
     float mPhi = 0.0;

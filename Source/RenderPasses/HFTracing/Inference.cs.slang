@@ -14,6 +14,7 @@ Buffer<uint> btfInput;
 RWBuffer<int> cudaVaildBuffer;
 RWBuffer<float> gInputColor;
 #define UV_SCALE gCurvatureParas.z
+#define MIP_SCALE gCurvatureParas.w
 
 [numthreads(16, 16, 1)]
 void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
@@ -33,9 +34,10 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
         uv = uv.yx * UV_SCALE;
         float4 btfVal = float4(1.0f);
         if (gDebugMLP)
-            btfVal.xyz= nbtf.evalDebug(h, d, uv, ddx, ddy, gApplySyn);
+            btfVal.xyz = nbtf.evalDebug(h, d, uv, ddx , ddy , gApplySyn);
         else
-            btfVal= nbtf.evalDebugFP32(h, d, uv, ddx, ddy, gApplySyn);
+            btfVal = nbtf.evalDebugFP32(h, d, uv, ddx, ddy , gApplySyn);
+            // btfVal = nbtf.evalDebugFP32(h, d, uv, 0.1 * MIP_SCALE, gApplySyn);
 
         gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 0] = btfVal.x;
         gInputColor[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = btfVal.y;
