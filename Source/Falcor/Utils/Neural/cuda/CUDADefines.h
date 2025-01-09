@@ -1,6 +1,6 @@
 // #define PEBBLE
-// #define LEATHER
-#define LEATHER10
+#define LEATHER
+// #define LEATHER10
 // #define LEATHER_04R
 // #define TILE
 // #define TILE2

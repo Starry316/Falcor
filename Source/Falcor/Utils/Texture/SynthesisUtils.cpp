@@ -479,8 +479,8 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
 {
     std::vector<float> acf_pdf;
     acf_pdf.reserve(acf_weight.size());
-    float min = 10000;
-    float max = -10000;
+    float min = FLT_MAX;
+    float max = -FLT_MAX;
     for (int i = 0; i < acf_weight.size(); ++i)
     {
         float val = acf_weight[i];
@@ -511,6 +511,56 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
         //sample_uv_list.push_back(float2((id / dim) / float(dim), (id % dim) / float(dim)));
         sample_uv_list.push_back((id / dim) / float(dim));
         sample_uv_list.push_back((id % dim) / float(dim));
+    }
+}
+
+void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_list, uint dim, float2* ctrl_point)
+{
+    std::vector<float> acf_pdf;
+    acf_pdf.reserve(acf_weight.size());
+    float min = FLT_MAX;
+    float max = -FLT_MAX;
+    for (int i = 0; i < acf_weight.size(); ++i)
+    {
+        float val = acf_weight[i];
+        min = std::min(min, val);
+        max = std::max(max, val);
+    }
+
+    float a = 3 * ctrl_point[1].x - 3 * ctrl_point[2].x + 1;
+    float b = 3 * ctrl_point[2].x - 6 * ctrl_point[1].x;
+    float c = 3 * ctrl_point[1].x;
+
+    for (int i = 0; i < acf_weight.size(); ++i)
+    {
+        float val = acf_weight[i];
+        val = (val - min) / (max - min);
+        // val = acfTransform(val);
+
+        float t = val;
+        for (int step = 0; step < 16; step++)
+        {
+            float err = a * t * t * t + b * t * t + c * t - val;
+            if (abs(err) < 1e-6)
+                break;
+            t = t - err / (3 * a * t * t + 2 * b * t + c);
+        }
+
+        val = 3 * t * (1 - t) * (1 - t) * (1 - ctrl_point[1].y) + 3 * t * t * (1 - t) * (1 - ctrl_point[2].y) + t * t * t;
+
+        acf_pdf.push_back(val);
+    }
+
+    // std::random_device rd;
+    // std::default_random_engine rng{rd()};
+    std::default_random_engine rng;
+    std::discrete_distribution<> d(acf_pdf.begin(), acf_pdf.end());
+
+    for (int i = 0; i < sample_uv_list.size() / 2; i++)
+    {
+        int id = d(rng);
+        sample_uv_list[2 * i] = (id / dim) / float(dim);
+        sample_uv_list[2 * i + 1] = (id % dim) / float(dim);
     }
 }
 

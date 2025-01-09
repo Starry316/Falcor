@@ -401,9 +401,15 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
       displayPass(pRenderContext, renderData);
 }
 
+float getPoint(void* data, int32_t index)
+{
+    return ((float*)data)[index];
+}
+
 void HFTracing::renderUI(Gui::Widgets& widget)
 {
     bool dirty = false;
+    bool editCurve = false;
 
     dirty |= widget.dropdown("Render Type", mRenderType);
     dirty |= widget.dropdown("Infer Type", mInferType);
@@ -416,6 +422,13 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     // dirty |= widget.checkbox("Use importance sampling", mUseImportanceSampling);
     // widget.tooltip("Use importance sampling for materials", true);
+
+    editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
+    editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
+    editCurve |= widget.bezierCurve("TestCurve", getPoint, (void*)point_data, 4);
+    dirty |= editCurve;
+    if (editCurve)
+        mpNBTFInt8->mpTextureSynthesis->updateMap(mpNBTFInt8->mUP.texDim.x, mpDevice, point_data);
 
     dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
     widget.tooltip("Increse = less marching steps", true);

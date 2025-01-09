@@ -28,6 +28,7 @@ public:
     void bindHFData(const ShaderVar& var);
     void bindMap(const ShaderVar& var);
     void updateMap(uint dim, ref<Device> pDevice);
+    void updateMap(uint dim, ref<Device> pDevice, float2* ctrl_point);
     void precomputeFeatureData(std::vector<float> data, uint2 dataDim, ref<Device> pDevice);
     void bindFeatureData(const ShaderVar& var);
 

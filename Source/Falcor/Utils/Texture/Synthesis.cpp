@@ -178,6 +178,14 @@ void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice)
     );
 }
 
+void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice, float2* ctrl_point)
+{
+    updateSample(acfWeight, sample_uv_list, dim, ctrl_point);
+    mpMap = pDevice->createTypedBuffer(
+        ResourceFormat::R32Float, sample_uv_list.size(), ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, sample_uv_list.data()
+    );
+}
+
 void TextureSynthesis::bindHFData(const ShaderVar& var)
 {
     var["tex"] = mpHFT;
