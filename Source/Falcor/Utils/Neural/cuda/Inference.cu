@@ -241,9 +241,9 @@ __global__ void inferInt8Tex(
     float h1, h2;
     float d1, d2;
     float u, v;
-    unpackUnorm2x16(packedInput[3 * (y * width + x) + 0], h1, h2);
-    unpackUnorm2x16(packedInput[3 * (y * width + x) + 1], d1, d2);
-    unpackUnorm2x16(packedInput[3 * (y * width + x) + 2], u, v);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 0], h1, h2);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 1], d1, d2);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 2], u, v);
 
     float4 val = tex2DLayered<float4>(HP, h1, h2, 0);
     val2[0] = quantizeInt8x4f_safe(val, scaleIn1);
@@ -1720,9 +1720,9 @@ __global__ void inferFP32Tex(
     float h1, h2;
     float d1, d2;
     float u, v;
-    unpackUnorm2x16(packedInput[3 * (y * width + x) + 0], h1, h2);
-    unpackUnorm2x16(packedInput[3 * (y * width + x) + 1], d1, d2);
-    unpackUnorm2x16(packedInput[3 * (y * width + x) + 2], u, v);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 0], h1, h2);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 1], d1, d2);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 2], u, v);
     u *= uvScale;
     v *= uvScale;
     int inputOffset = 0;
@@ -2184,9 +2184,9 @@ __global__ void inferFP16Tex(
     float h1, h2;
     float d1, d2;
     float u, v;
-    unpackUnorm2x16(packedInput[3 * (y * width + x) + 0], h1, h2);
-    unpackUnorm2x16(packedInput[3 * (y * width + x) + 1], d1, d2);
-    unpackUnorm2x16(packedInput[3 * (y * width + x) + 2], u, v);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 0], h1, h2);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 1], d1, d2);
+    unpackUnorm2x16(packedInput[4 * (y * width + x) + 2], u, v);
     u *= uvScale;
     v *= uvScale;
     int inputOffset = 0;

@@ -1245,10 +1245,10 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
             }
             else {
                 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
-                packedInput[3 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
-                packedInput[3 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
-                packedInput[3 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
-                // packedInput[3 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
             }
 
 
@@ -1314,10 +1314,10 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         else
             packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
 
-        packedInput[3 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
-        packedInput[3 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
-        packedInput[3 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
-        // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
 
 
         rayData.origin = newPos;
