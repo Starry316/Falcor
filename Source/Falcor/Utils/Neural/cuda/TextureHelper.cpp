@@ -68,3 +68,41 @@ cudaTextureObject_t createCuda2DTexture(std::vector<float> data, int width, int 
     return texObj;
 }
 
+cudaTextureObject_t createCuda1DTextureArray(const std::vector<float>& data, int width,  int layers)
+{
+// Create channel descriptor
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
+
+    // Allocate CUDA array
+    cudaArray_t cuArray;
+    cudaMalloc3DArray(&cuArray, &channelDesc, make_cudaExtent(width, 1, layers), cudaArrayLayered);
+
+    // Copy data from host to CUDA array
+    cudaMemcpy3DParms copyParams = {0};
+    copyParams.srcPtr = make_cudaPitchedPtr((void*)data.data(), width * sizeof(float), width, 1);
+    copyParams.dstArray = cuArray;
+    copyParams.extent = make_cudaExtent(width, 1, layers);
+    copyParams.kind = cudaMemcpyHostToDevice;
+    cudaMemcpy3D(&copyParams);
+
+    // Create resource descriptor
+    cudaResourceDesc resDesc;
+    memset(&resDesc, 0, sizeof(resDesc));
+    resDesc.resType = cudaResourceTypeArray;
+    resDesc.res.array.array = cuArray;
+
+    // Create texture descriptor
+    cudaTextureDesc texDesc;
+    memset(&texDesc, 0, sizeof(texDesc));
+    texDesc.addressMode[0] = cudaAddressModeWrap;
+    texDesc.filterMode = cudaFilterModeLinear;
+    texDesc.readMode = cudaReadModeElementType;
+    texDesc.normalizedCoords = 1;
+
+    // Create texture object
+    cudaTextureObject_t texObj = 0;
+    cudaCreateTextureObject(&texObj, &resDesc, &texDesc, nullptr);
+
+    return texObj;
+}
+

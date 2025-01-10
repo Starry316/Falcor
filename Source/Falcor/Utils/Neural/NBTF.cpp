@@ -61,7 +61,7 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
     mTPInv.featureData = mpTextureSynthesis->getInvTData();
     mTP.texDim = int2(PlaneMetaBuffer[0], PlaneMetaBuffer[1]);
     mTPInv.texDim = int2(mTPInv.featureData.size() / (4 * int(PlaneMetaBuffer[1])), PlaneMetaBuffer[1]);
-    //mTPInv.texDim = int2(8192, PlaneMetaBuffer[1]);
+    // mTPInv.texDim = int2(8192, PlaneMetaBuffer[1]);
     logInfo("[NBTF] T: {}, InvT: {}", mTP.texDim, mTPInv.texDim);
 
     mUP.featureTex = pDevice->createTexture2D(
@@ -100,6 +100,23 @@ NBTF::NBTF(ref<Device> pDevice, std::string networkName, bool buildCuda)
 
         mpMLPCuda->mTTexObj = createCudaTextureArray(mTP.featureData, mTP.texDim.x, mTP.texDim.x, mTP.texDim.y);
         mpMLPCuda->mInvTexObj = createCudaTextureArray(mTPInv.featureData, mTPInv.texDim.x, 1, mTPInv.texDim.y);
+        // logInfo("[NBTF] ================================InvT: {}", mTPInv.texDim);
+        // std::vector<float> tmpData(mTPInv.texDim.x * 4 * mTPInv.texDim.y);
+        // for (int i = 0; i < mTPInv.texDim.y; ++i)
+        // {
+        //     for (int j = 0; j < mTP.texDim.x; ++j)
+        //     {
+        //         for (int k = 0; k < 4; ++k)
+        //         {
+        //             int inputIndex = i * (mTP.texDim.x * 4) + j * 4 + k;
+        //             int outputIndex = k * (mTPInv.texDim.y * mTP.texDim.x) + i * mTP.texDim.x + j;
+        //             tmpData[outputIndex] = mTPInv.featureData[inputIndex];
+        //         }
+        //     }
+        // }
+
+        // mpMLPCuda->mInvTexObj = createCuda1DTextureArray(tmpData, mTPInv.texDim.x, 4 * mTPInv.texDim.y);
+
         std::vector<float> sample_data = mpTextureSynthesis->getSampleUV();
         mpMLPCuda->mpSampleBuffer = pDevice->createBuffer(
             sample_data.size() * sizeof(float), ResourceBindFlags::Shared, MemoryType::DeviceLocal, sample_data.data()

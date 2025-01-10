@@ -275,7 +275,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     }
 
     createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
-    createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
+    createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 5);
     createBuffer(mpHashedUVBuffer, mpDevice, targetDim, 4);
 
     // Request the light collection if emissive lights are enabled.
