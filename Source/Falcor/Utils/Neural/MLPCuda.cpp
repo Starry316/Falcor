@@ -91,7 +91,17 @@ void MLPCuda::inferInt8Autocov(int* packedInput, float* output, int width, int h
     );
 }
 
-void MLPCuda::inferInt8Hashed(int* packedInput, float* hashedUV, float* output, int width, int height, int* valid, float scale)
+void MLPCuda::inferInt8Hashed(
+    int* packedInput,
+    float* hashedUV,
+    float* output,
+    int width,
+    int height,
+    int* valid,
+    float scale,
+    float scale_patch,
+    int matId
+)
 {
     launchInferInt8TexHashed(
         (int*)mpInt8Buffer->getGpuAddress(),
@@ -107,7 +117,9 @@ void MLPCuda::inferInt8Hashed(int* packedInput, float* hashedUV, float* output, 
         width,
         height,
         valid,
-        scale
+        scale,
+        scale_patch,
+        matId
     );
 }
 

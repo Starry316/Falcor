@@ -665,24 +665,38 @@ inline __device__ float rnd21(float2 p)
     return (temp - floor(temp));
 }
 
-inline __device__ float B0cos(float2 uv)
+inline __device__ float B0(float2 uv, float scale = 1.0f)
 {
+    float u = uv.x * scale;
+    float v = uv.y * scale;
+    return powf(min(min(u - floor(u), ceil(u) - u), min(v - floor(v), ceil(v) - v)), 1.0);
+}
+
+inline __device__ float B1(float2 uv, float scale = 1.0f)
+{
+    float u = uv.x * scale + 0.5f;
+    float v = uv.y * scale + 0.5f;
+    return powf(min(min(u - floor(u), ceil(u) - u), min(v - floor(v), ceil(v) - v)), 1.0);
+}
+
+inline __device__ float B0cos(float2 uv, float scale = 1.0f)
+{
+    float cosu = sinf(uv.x * scale * 3.14159265f);
+    float cosv = sinf(uv.y * scale * 3.14159265f);
+    return powf(cosu * cosv * cosu * cosv, 0.5f);
+}
+
+inline __device__ float B1cos(float2 uv, float scale = 1.0f)
+{
+    uv = float2{uv.x * scale + 0.5f, uv.y * scale + 0.5f};
     float cosu = sinf(uv.x * 3.14159265f);
     float cosv = sinf(uv.y * 3.14159265f);
     return powf(cosu * cosv * cosu * cosv, 0.5f);
 }
 
-inline __device__ float B1cos(float2 uv)
+inline __device__ float BSingularity(float2 uv, float scale = 1.0f)
 {
-    uv = float2{uv.x + 0.5f, uv.y + 0.5f};
-    float cosu = sinf(uv.x * 3.14159265f);
-    float cosv = sinf(uv.y * 3.14159265f);
-    return powf(cosu * cosv * cosu * cosv, 0.5f);
-}
-
-inline __device__ float BSingularity(float2 uv)
-{
-    uv = float2{(uv.x - 0.5f) * 1.41421356237f, (uv.y - 0.5f) * 1.41421356237f};
+    uv = float2{(uv.x * scale - 0.5f) * 1.41421356237f, (uv.y * scale - 0.5f) * 1.41421356237f};
     const float a = 0.78539816f; // Pi / 4
     float cosA = cosf(a);
     float sinA = sinf(a);
@@ -1094,7 +1108,9 @@ __global__ void inferInt8TexHashed(
     unsigned int width,
     unsigned int height,
     int* validMask,
-    float uvScale
+    float uvScale,
+    float patchScale,
+    int matId
 )
 {
     __shared__ int W[768];
@@ -1111,7 +1127,8 @@ __global__ void inferInt8TexHashed(
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height)
         return;
-    if (validMask[y * width + x] == 0)
+    //if (validMask[y * width + x] == 0)
+    if (validMask[y * width + x] != matId)
         return;
 
     int offset = 0;
@@ -1146,7 +1163,7 @@ __global__ void inferInt8TexHashed(
     float3 b;
     float bSum;
 
-    b = float3{B0cos(uv), B1cos(uv), BSingularity(uv)};
+    b = float3{B0cos(uv, patchScale), B1cos(uv, patchScale), BSingularity(uv, patchScale)};
     bSum = b.x + b.y + b.z;
     b = float3{b.x / bSum, b.y / bSum, b.z / bSum};
     float norm = sqrt(b.x * b.x + b.y * b.y + b.z * b.z);
@@ -1449,12 +1466,14 @@ void launchInferInt8TexHashed(
     unsigned int width,
     unsigned int height,
     int* validMask,
-    float uvScale
+    float uvScale,
+    float patchScale,
+    int matId
 )
 {
     dim3 dimBlock(16, 16);
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-    inferInt8TexHashed<<<dimGrid, dimBlock>>>(weight, packedInput, hashedUV, HP, DP, UP, TP, InvP, sampleList, output, width, height, validMask, uvScale);
+    inferInt8TexHashed<<<dimGrid, dimBlock>>>(weight, packedInput, hashedUV, HP, DP, UP, TP, InvP, sampleList, output, width, height, validMask, uvScale, patchScale, matId);
 }
 
 __global__ void inferFP32Tex(

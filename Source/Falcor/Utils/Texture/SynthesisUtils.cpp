@@ -475,10 +475,8 @@ float acfTransform(float val){
     // return  val * val;
 }
 
-void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_list, uint dim)
+void updateSample(std::vector<float>& acf_weight, std::vector<float>& acf_pdf, std::vector<float>& sample_uv_list, uint dim)
 {
-    std::vector<float> acf_pdf;
-    acf_pdf.reserve(acf_weight.size());
     float min = FLT_MAX;
     float max = -FLT_MAX;
     for (int i = 0; i < acf_weight.size(); ++i)
@@ -492,8 +490,8 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
     for (int i = 0; i < acf_weight.size(); ++i)
     {
         float val = acf_weight[i];
-        // val = (val - min) / (max - min);
-        val = val > 0 ? val : 0;
+        val = (val - min) / (max - min);
+        //val = val > 0 ? val : 0;
         // val = acfTransform(val);
 
         acf_pdf.push_back(val);
@@ -514,10 +512,14 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
     }
 }
 
-void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_list, uint dim, float2* ctrl_point)
+void updateSample(
+    std::vector<float>& acf_weight,
+    std::vector<float>& acf_pdf,
+    std::vector<float>& sample_uv_list,
+    uint dim,
+    float2* ctrl_point
+)
 {
-    std::vector<float> acf_pdf;
-    acf_pdf.reserve(acf_weight.size());
     float min = FLT_MAX;
     float max = -FLT_MAX;
     for (int i = 0; i < acf_weight.size(); ++i)

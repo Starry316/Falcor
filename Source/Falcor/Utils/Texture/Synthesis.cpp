@@ -172,18 +172,24 @@ void TextureSynthesis::precomputeFeatureData(std::vector<float> data, uint2 data
 
 void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice)
 {
-    updateSample(acfWeight, sample_uv_list, dim);
+    std::vector<float> acf_pdf;
+    acf_pdf.reserve(acfWeight.size());
+    updateSample(acfWeight, acf_pdf, sample_uv_list, dim);
     mpMap = pDevice->createTypedBuffer(
         ResourceFormat::R32Float, sample_uv_list.size(), ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, sample_uv_list.data()
     );
+    mpACF = pDevice->createTexture2D(dim, dim, ResourceFormat::R32Float, 1, 1, acf_pdf.data(), ResourceBindFlags::ShaderResource);
 }
 
 void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice, float2* ctrl_point)
 {
-    updateSample(acfWeight, sample_uv_list, dim, ctrl_point);
+    std::vector<float> acf_pdf;
+    acf_pdf.reserve(acfWeight.size());
+    updateSample(acfWeight, acf_pdf, sample_uv_list, dim, ctrl_point);
     mpMap = pDevice->createTypedBuffer(
         ResourceFormat::R32Float, sample_uv_list.size(), ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, sample_uv_list.data()
     );
+    mpACF = pDevice->createTexture2D(dim, dim, ResourceFormat::R32Float, 1, 1, acf_pdf.data(), ResourceBindFlags::ShaderResource);
 }
 
 void TextureSynthesis::bindHFData(const ShaderVar& var)

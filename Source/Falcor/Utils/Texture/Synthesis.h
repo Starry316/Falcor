@@ -38,13 +38,14 @@ public:
     std::vector<float> getSampleUV() { return sample_uv_list; }
 
     ref<Texture> mpHFT;
+    ref<Texture> mpACF;
+
 private:
     float HTRotStength = 0.5f;
     ref<Texture> mpColor;
     ref<Texture> mpHFInvT;
     ref<Texture> mpFeatureT;
     ref<Texture> mpFeatureInvT;
-    ref<Texture> mpACF;
     ref<Buffer> mpACFBuffer;
     ref<Buffer> mpACFInputBuffer;
 

@@ -37,6 +37,21 @@ __constant__ float scaleOut4 = 0.009822787716984749;
 __constant__ float dequantizeScale4 = 1.605643228685949e-05;
 #endif
 
+#ifdef TEST_MULTI
+__constant__ float scaleIn1 = 0.003400295041501522;
+__constant__ float scaleOut1 = 0.0033392827026546;
+__constant__ float dequantizeScale1 = 1.1354546586517245e-05;
+__constant__ float scaleIn2 = 0.0024283595848828554;
+__constant__ float scaleOut2 = 0.004313669633120298;
+__constant__ float dequantizeScale2 = 1.047514069796307e-05;
+__constant__ float scaleIn3 = 0.0021721271332353354;
+__constant__ float scaleOut3 = 0.009137849323451519;
+__constant__ float dequantizeScale3 = 1.9848570445901714e-05;
+__constant__ float scaleIn4 = 0.0016346105840057135;
+__constant__ float scaleOut4 = 0.009822787716984749;
+__constant__ float dequantizeScale4 = 1.605643228685949e-05;
+#endif
+
 
 #ifdef LEATHER_04R
 __constant__ float scaleIn1 = 0.003255440853536129;

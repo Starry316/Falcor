@@ -97,23 +97,44 @@ float2 hash(float2 p)
 
 #define PI 3.14159265f
 
-float B0cos(float2 uv)
+float B0(float2 uv, float scale = 1.0f)
 {
+    uv *= scale;
+    float u = uv.x;
+    float v = uv.y;
+    return pow(min(min(u - floor(u), ceil(u) - u), min(v - floor(v), ceil(v) - v)), 1.0);
+}
+
+float B1(float2 uv, float scale = 1.0f)
+{
+    uv *= scale;
+    uv += float2(0.5f, 0.5f);
+    float u = uv.x;
+    float v = uv.y;
+    return pow(min(min(u - floor(u), ceil(u) - u), min(v - floor(v), ceil(v) - v)), 1.0);
+}
+
+
+float B0cos(float2 uv, float scale = 1.0f)
+{
+    uv *= scale;
     float cosu = sin(uv.x * PI);
     float cosv = sin(uv.y * PI);
     return pow(cosu * cosv * cosu * cosv, 0.5f);
 }
 
-float B1cos(float2 uv)
+float B1cos(float2 uv, float scale = 1.0f)
 {
+    uv *= scale;
     uv += float2(0.5f, 0.5f);
     float cosu = sin(uv.x * PI);
     float cosv = sin(uv.y * PI);
     return pow(cosu * cosv * cosu * cosv, 0.5f);
 }
 
-float BSingularity(float2 uv)
+float BSingularity(float2 uv, float scale = 1.0f)
 {
+    uv *= scale;
     uv -= float2(0.5f, 0.5f);
     uv *= 1.41421356237f;
     const float a = 0.78539816f; // PI / 4.0;
@@ -130,4 +151,16 @@ float rnd21(float2 p)
 {
     float temp = sin(12.9898f * p.x + 78.233f * p.y) * 43758.5453f;
     return (temp - floor(temp));
+}
+
+float2 T0(float2 uv, float scale = 1.0f)
+{
+    uv *= scale;
+    return floor(uv) * 2.0f;
+}
+
+float2 T1(float2 uv, float scale = 1.0f)
+{
+    uv *= scale;
+    return floor(uv + float2(0.5f, 0.5f)) * 2.0f + 1.0f;
 }

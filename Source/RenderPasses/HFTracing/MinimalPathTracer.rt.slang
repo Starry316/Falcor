@@ -55,8 +55,9 @@ cbuffer CB
     EnvMapSampler envMapSampler;
     bool gShowTracedHF;
     bool gTracedShadowRay;
-    HistogramBlendingHFData hfData;
-
+    HistogramBlendingHFData hfData[2];
+    float gPatchScale;
+    uint2 gSelectedPixel;
 }
 #define M_1_32 0.03125 // 1/32
 #define M_1_16 0.0625  // 1/16
@@ -66,7 +67,7 @@ cbuffer CB
 RWTexture2D<float4> gOutputColor;
 
 Texture2D<float> gHF;
-Texture2D<float4> gShellHF;
+Texture2D<float4> gShellHF[2];
 Texture2D<float4> gNormalMap;
 Texture2D<float4> gTangentMap;
 Texture2D<float4> gPosMap;
@@ -74,6 +75,7 @@ Texture2D<float4> gPosMap;
 RWBuffer<uint4> packedInput;
 RWBuffer<int> cudaVaildBuffer;
 RWBuffer<float4> hashedUV;
+RWBuffer<int> gSelectBuffer;
 
 SamplerState gSampler;
 SamplerState gMaxSampler;
@@ -526,7 +528,8 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     // =================================================================================================
     // I used rayData.terminated to determine if the ray is terminated.
     // There can be a better way to do this.
-    cudaVaildBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] = rayData.terminated ? 0 : 1;
+    //cudaVaildBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] = rayData.terminated ? 0 : 1;
+    cudaVaildBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] = rayData.terminated ? 0 : (gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x] + 1);
 
     return float4(rayData.radiance, 1.0f);
 }
@@ -604,6 +607,8 @@ bool traceSynthesizedHeightMapEstimated(
     out float intersectedHeight
 )
 {
+    uint2 pixel = DispatchRaysIndex().xy;
+
     uint coarseLength = 32;
     intersectedT = {};
     intersectedHeight = {};
@@ -611,7 +616,7 @@ bool traceSynthesizedHeightMapEstimated(
     float3 viewDirection = endPoint - startPoint;
 
     uint width, height;
-    gShellHF.GetDimensions(width, height);
+    gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].GetDimensions(width, height);
 
     // we assume we only have square a height field texture
     float pixelSizeInTexel = max(length(ddx) * width, length(ddy) * width) * UV_SCALE;
@@ -651,10 +656,10 @@ bool traceSynthesizedHeightMapEstimated(
             float heightData;
             if (gApplySyn)
                 heightData =
-                    AutocovarianceBlendingDual(hfData, gMaxSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING +
+                    AutocovarianceBlendingDual(hfData[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]], gMaxSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale) * HF_SCALING +
                     HF_OFFSET;
             else
-                heightData = gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+                heightData = gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
             const float currentHeightDelta = currentTestPoint.z - heightData;
             if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
                 (sign(lastHeightDelta) != sign(currentHeightDelta)))
@@ -677,12 +682,12 @@ bool traceSynthesizedHeightMapEstimated(
         float heightData;
         if (gApplySyn)
             heightData = AutocovarianceBlendingDual(
-                             hfData, gMaxSampler, ddx * coarseLength, ddy * coarseLength, frac(abs(currentTestPoint.xy)) * UV_SCALE
+                             hfData[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]], gMaxSampler, ddx * coarseLength, ddy * coarseLength, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale
                          ) * HF_SCALING +
                          HF_OFFSET;
         else
             heightData =
-                gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x *HF_SCALING +HF_OFFSET;
+                gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x *HF_SCALING +HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
             (sign(lastHeightDelta) != sign(currentHeightDelta)))
@@ -703,11 +708,11 @@ bool traceSynthesizedHeightMapEstimated(
                 float heightDataFine;
                 if (gApplySyn)
                     heightDataFine =
-                        AutocovarianceBlendingDual(hfData, gSampler, ddx / 2, ddy / 2, frac(abs(currentTestPointFine.xy)) * UV_SCALE) * HF_SCALING +
+                        AutocovarianceBlendingDual(hfData[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]], gSampler, ddx / 2, ddy / 2, frac(abs(currentTestPointFine.xy)) * UV_SCALE, gPatchScale) * HF_SCALING +
                         HF_OFFSET;
                 else
                     heightDataFine =
-                        gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x * HF_SCALING + HF_OFFSET;
+                        gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x * HF_SCALING + HF_OFFSET;
 
                 const float currentHeightDeltaFine = currentTestPointFine.z - heightDataFine;
                 if (((currentHeightDeltaFine <= 0.f) && (currentHeightDeltaFine > -kSurfaceThickness)) ||
@@ -736,12 +741,14 @@ bool traceSynthesizedHeightMapEstimatedNoMip(
     out float intersectedHeight
 )
 {
+    uint2 pixel = DispatchRaysIndex().xy;
+
     intersectedT = {};
     intersectedHeight = {};
 
     float3 viewDirection = endPoint - startPoint;
     uint width, height;
-    gShellHF.GetDimensions(width, height);
+    gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].GetDimensions(width, height);
 
     // ray segement inside the shell
     float shellSize = max(abs(viewDirection.x) * width, abs(viewDirection.y) * width) * UV_SCALE;
@@ -767,9 +774,9 @@ bool traceSynthesizedHeightMapEstimatedNoMip(
         float heightData;
         if (gApplySyn)
             heightData =
-                AutocovarianceBlendingDual(hfData, gMaxSampler, 0, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
+                AutocovarianceBlendingDual(hfData[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]], gMaxSampler, 0, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale) * HF_SCALING + HF_OFFSET;
         else
-            heightData = gShellHF.SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x * HF_SCALING + HF_OFFSET;
+            heightData = gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         //
         if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
@@ -796,12 +803,14 @@ bool traceSynthesizedHeightMapEstimatedSimpleMip(
     out float intersectedHeight
 )
 {
+    uint2 pixel = DispatchRaysIndex().xy;
+
     intersectedT = {};
     intersectedHeight = {};
 
     float3 viewDirection = endPoint - startPoint;
     uint width, height;
-    gShellHF.GetDimensions(width, height);
+    gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].GetDimensions(width, height);
 
     // ray segement inside the shell
     float lengthView = length(float2(abs(viewDirection.x) * width, abs(viewDirection.y) * height)) * UV_SCALE;
@@ -835,10 +844,10 @@ bool traceSynthesizedHeightMapEstimatedSimpleMip(
         if (gApplySyn)
 
             heightData =
-                AutocovarianceBlendingDual(hfData, gMaxSampler, minLod, frac(abs(currentTestPoint.xy)) * UV_SCALE) * HF_SCALING + HF_OFFSET;
+                AutocovarianceBlendingDual(hfData[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]], gMaxSampler, minLod, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale) * HF_SCALING + HF_OFFSET;
         else
-            // heightData = gShellHF.SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy))* UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
-            heightData = gShellHF.SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x * HF_SCALING + HF_OFFSET;
+            // heightData = gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy))* UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+            heightData = gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         //
         // if (currentHeightDelta >= 0.f)
@@ -866,6 +875,7 @@ bool calcSynthesizedDisplacementIntersection(
     out DisplacementIntersection result
 )
 {
+    uint2 pixel = DispatchRaysIndex().xy;
     result = {};
 
     const float2 shellMinMax = float2(0.f, MAX_HEIGHT);
@@ -975,7 +985,7 @@ bool calcSynthesizedDisplacementIntersection(
 
     // start/end point texture space point
     uint width, height;
-    gShellHF.GetDimensions(width, height);
+    gShellHF[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]].GetDimensions(width, height);
     float2 displacementSize = float2(width, height);
     float3 minIntersectionTexSpaceCoord = float3(minIntersectionUV * displacementSize, minIntersection.textureSpaceHeight);
     float3 maxIntersectionTexSpaceCoord = float3(maxIntersectionUV * displacementSize, maxIntersection.textureSpaceHeight);
@@ -1189,6 +1199,11 @@ void rayGen()
     uint2 frameDim = DispatchRaysDimensions().xy;
     // printSetPixel(pixel);
 
+    if(distance(pixel, gSelectedPixel) <= 100)
+    {
+        gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x] = 1;
+    }
+
     float4 outputColor = tracePath(pixel, frameDim);
     // float4 outputColor = tracePathPrism(pixel, frameDim);
     gOutputColor[pixel] = outputColor;
@@ -1235,11 +1250,11 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
             uint4 packedData;
             if (gApplySyn) {
                 // float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-                // float4 uv_hashed = getHashUV(hfData, uv_raw);
+                // float4 uv_hashed = getHashUV(hfData[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]], uv_raw);
                 // packedData = packInputSyn(wi, wo, frac(abs(uv_hashed.xy)), frac(abs(uv_hashed.wz)));
                 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
                 float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-                float4 uv_hashed = getHashUV(hfData, uv_raw);
+                float4 uv_hashed = getHashUV(hfData[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]], uv_raw, gPatchScale);
                 hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = uv_hashed.x;
                 hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = uv_hashed.y;
                 hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = uv_hashed.z;
@@ -1303,11 +1318,11 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         uint4 packedData;
         if (gApplySyn) {
             // float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-            // float4 uv_hashed = getHashUV(hfData, uv_raw);
+            // float4 uv_hashed = getHashUV(hfData[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]], uv_raw);
             // packedData = packInputSyn(wi, wo, frac(abs(uv_hashed.xy)), frac(abs(uv_hashed.wz)));
             packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
             float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-            float4 uv_hashed = getHashUV(hfData, uv_raw);
+            float4 uv_hashed = getHashUV(hfData[gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x]], uv_raw, gPatchScale);
             hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = uv_hashed.x;
             hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = uv_hashed.y;
             hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = uv_hashed.z;

@@ -9,6 +9,8 @@ RWTexture2D<float4> gOutputColor;
 
 Buffer<float> gInputColor;
 Buffer<int> cudaVaildBuffer;
+Buffer<int> gSelectBuffer;
+
 [numthreads(16, 16, 1)]
 void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 {
@@ -41,4 +43,9 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 
 
     gOutputColor[pixel] *= btfVal;
+
+    //if(gSelectBuffer[pixel] == 1)
+    //{
+    //    gOutputColor[pixel] = 1;
+    //}
 }

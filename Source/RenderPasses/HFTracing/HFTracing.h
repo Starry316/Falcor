@@ -120,7 +120,8 @@ public:
     void handleOutput();
     virtual void renderUI(Gui::Widgets& widget) override;
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
-    virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return mpPixelDebug->onMouseEvent(mouseEvent); }
+    // virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return mpPixelDebug->onMouseEvent(mouseEvent); }
+    bool onMouseEvent(const MouseEvent& mouseEvent);
     virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override { return false; }
 
 private:
@@ -178,6 +179,14 @@ private:
     std::string mHFFileName = "ubo/leather11.png";
     bool mHDRBTF = false;
 #endif
+
+#ifdef TEST_MULTI
+    std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "fabric09_m32u8h8d8_int8"};
+    std::string mShellHFFileName[2] = {"ubo/leather11.png", "ubo/fabric09.png"};
+    std::string mHFFileName = "ubo/leather11.png";
+    bool mHDRBTF = false;
+#endif
+
 #ifdef LEATHER10
     std::string mNetInt8Name = "leather10_m32u8h8d8_int8";
     std::string mShellHFFileName = "ubo/leather11.png";
@@ -283,7 +292,7 @@ private:
     ref<Texture> mpHitBuffer;
 
     ref<Texture> mpHF;
-    ref<Texture> mpShellHF;
+    ref<Texture> mpShellHF[2];
     ref<Texture> mpHFMaxMip;
     ref<Texture> mpColor;
     ref<Texture> mpNormalMap;
@@ -297,9 +306,12 @@ private:
     Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.099);
     Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 0.1, 10, 0.3); // z - 10
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
+    float mPatchScale = 1.0f;
     uint mTriID = 0;
     uint mMaxSteps = 1000;
     uint mMaxTriCount = 1000;
+    Falcor::uint2 mSelectedPixel = {0, 0};
+    Falcor::uint2 mFrameDim = {0, 0};
 
     RenderType mRenderType = RenderType::WAVEFRONT_SHADER_NN;
     InferType mInferType = InferType::CUDAINT8;
@@ -318,13 +330,14 @@ private:
     bool mUseFP16 = false;
     bool mMLPDebug = false;
     bool mOutputingVideo = false;
+    bool mEnableEdit = false; 
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
     ref<Fence> mpFence1;
     ref<Fence> mpFence2;
 
-    std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
-    std::unique_ptr<NBTF> mpNBTFInt8;
+    std::unique_ptr<TextureSynthesis> mpTextureSynthesis[2];
+    std::unique_ptr<NBTF> mpNBTFInt8[2];
     std::unique_ptr<NBTF> mpNBTF;
 
     std::unique_ptr<EnvMapSampler> mpEnvMapSampler;
@@ -351,6 +364,7 @@ private:
     ref<Buffer> mpVaildBuffer;
     ref<Buffer> mpPackedInputBuffer;
     ref<Buffer> mpHashedUVBuffer;
+    ref<Buffer> mpSelectBuffer;
 
     uint mCudaAccumulatedFrames = 1;
 };

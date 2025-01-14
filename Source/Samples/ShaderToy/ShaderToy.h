@@ -107,6 +107,13 @@ private:
     bool mHDRBTF = false;
 #endif
 
+#ifdef TEST_MULTI
+    std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
+    std::string mShellHFFileName = "ubo/leather11.png";
+    std::string mHFFileName = "ubo/leather11.png";
+    bool mHDRBTF = false;
+#endif
+
 #ifdef LEATHER10
     std::string mNetInt8Name = "leather10_m32u8h8d8_int8";
     std::string mShellHFFileName = "ubo/leather11.png";

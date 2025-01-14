@@ -162,20 +162,21 @@ float AutocovarianceBlendingDual(
     SamplerState sampler,
     float2 ddx,
     float2 ddy,
-    float2 uv
+    float2 uv,
+    float scale = 1.0f
 )
 {
     float G;
 	float3 b;
     float bSum;
 
-    b = float3(B0cos(uv),
-               B1cos(uv),
-               BSingularity(uv));
+    b = float3(B0cos(uv, scale),
+               B1cos(uv, scale),
+               BSingularity(uv, scale));
     bSum = b.x + b.y + b.z;
     b /= bSum;
-    float2 t0 = floor(uv) * 2.0f;
-    float2 t1 = floor(uv + float2(0.5f, 0.5f)) * 2.0f + 1.0f;
+    float2 t0 = T0(uv, scale);
+    float2 t1 = T1(uv, scale);
 
     int id0 = floor(rnd21(t0) * 2048);
     int id1 = floor(rnd21(t1) * 2048);
@@ -198,20 +199,21 @@ float AutocovarianceBlendingDual(
     HistogramBlendingHFData data,
     SamplerState sampler,
     float lod,
-    float2 uv
+    float2 uv,
+    float scale = 1.0f
 )
 {
     float G;
     float3 b;
     float bSum;
 
-    b = float3(B0cos(uv),
-               B1cos(uv),
-               BSingularity(uv));
+    b = float3(B0cos(uv, scale),
+               B1cos(uv, scale),
+               BSingularity(uv, scale));
     bSum = b.x + b.y + b.z;
     b /= bSum;
-    float2 t0 = floor(uv) * 2.0f;
-    float2 t1 = floor(uv + float2(0.5f, 0.5f)) * 2.0f + 1.0f;
+    float2 t0 = T0(uv, scale);
+    float2 t1 = T1(uv, scale);
 
     int id0 = floor(rnd21(t0) * 2048);
     int id1 = floor(rnd21(t1) * 2048);
@@ -263,11 +265,11 @@ float AutocovarianceBlendingTriangle(
 
 
 
-float4 getHashUV(HistogramBlendingHFData data, float2 uv)
+float4 getHashUV(HistogramBlendingHFData data, float2 uv, float scale = 1.0f)
 {
 
-    float2 t0 = floor(uv) * 2.0f;
-    float2 t1 = floor(uv + float2(0.5f, 0.5f)) * 2.0f + 1.0f;
+    float2 t0 = T0(uv, scale);
+    float2 t1 = T1(uv, scale);
 
     int id0 = floor(rnd21(t0) * 2048);
     int id1 = floor(rnd21(t1) * 2048);

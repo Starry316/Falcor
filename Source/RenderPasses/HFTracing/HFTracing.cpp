@@ -159,8 +159,8 @@ void HFTracing::nnInferPass(RenderContext* pRenderContext, const RenderData& ren
     }
     else
     {
-        mpNBTFInt8->bindShaderData(var["PerFrameCB"]["nbtf"]);
-        mpNBTFInt8->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
+        mpNBTFInt8[0]->bindShaderData(var["PerFrameCB"]["nbtf"]);
+        mpNBTFInt8[0]->mpMLP->bindDebugData(var["PerFrameCB"]["nbtf"]["mlp"], mpNBTFInt8[0]->mpMLPCuda->mpFp32Buffer);
     }
 
     mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
@@ -182,17 +182,22 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
     {
         if (mInferType == InferType::CUDAINT8)
             if (mApplySyn)
-                mpNBTFInt8->mpMLPCuda->inferInt8Hashed(
-                    (int*)mpPackedInputBuffer->getGpuAddress(),
-                    (float*)mpHashedUVBuffer->getGpuAddress(),
-                    (float*)mpOutputBuffer->getGpuAddress(),
-                    targetDim.x,
-                    targetDim.y,
-                    (int*)mpVaildBuffer->getGpuAddress(),
-                    mCurvatureParas.z
-                );
+                for (int matId = 0; matId < 2; matId++)
+                {
+                    mpNBTFInt8[matId]->mpMLPCuda->inferInt8Hashed(
+                        (int*)mpPackedInputBuffer->getGpuAddress(),
+                        (float*)mpHashedUVBuffer->getGpuAddress(),
+                        (float*)mpOutputBuffer->getGpuAddress(),
+                        targetDim.x,
+                        targetDim.y,
+                        (int*)mpVaildBuffer->getGpuAddress(),
+                        mCurvatureParas.z,
+                        1.0f / mPatchScale,
+                        matId + 1
+                    );
+                }
             else
-                mpNBTFInt8->mpMLPCuda->inferInt8(
+                mpNBTFInt8[0]->mpMLPCuda->inferInt8(
                     (int*)mpPackedInputBuffer->getGpuAddress(),
                     (float*)mpOutputBuffer->getGpuAddress(),
                     targetDim.x,
@@ -203,7 +208,7 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
 
         else if (mInferType == InferType::CUDAFP16)
 
-            mpNBTFInt8->mpMLPCuda->inferFp16(
+            mpNBTFInt8[0]->mpMLPCuda->inferFp16(
                 (int*)mpPackedInputBuffer->getGpuAddress(),
                 (float*)mpOutputBuffer->getGpuAddress(),
                 targetDim.x,
@@ -212,7 +217,7 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
                 mCurvatureParas.z
             );
         else
-            mpNBTFInt8->mpMLPCuda->inferFp32(
+            mpNBTFInt8[0]->mpMLPCuda->inferFp32(
                 (int*)mpPackedInputBuffer->getGpuAddress(),
                 (float*)mpOutputBuffer->getGpuAddress(),
                 targetDim.x,
@@ -240,6 +245,7 @@ void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& ren
     var["gOutputColor"] = renderData.getTexture("color");
     var["gInputColor"] = mpOutputBuffer;
     var["cudaVaildBuffer"] = mpVaildBuffer;
+    var["gSelectBuffer"] = mpSelectBuffer;
     mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
     mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, targetDim.x, targetDim.y);
@@ -277,6 +283,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
     createBuffer(mpHashedUVBuffer, mpDevice, targetDim, 4);
+    createBuffer(mpSelectBuffer, mpDevice, targetDim, 1);
 
     // Request the light collection if emissive lights are enabled.
     if (mpScene->getRenderSettings().useEmissiveLights)
@@ -326,9 +333,14 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gShowTracedHF"] = mShowTracedHF;
     var["CB"]["gTracedShadowRay"] = mTracedShadowRay;
     var["CB"]["gRenderTargetDim"] = targetDim;
+    var["CB"]["gPatchScale"] = 1.0f / mPatchScale;
+    var["CB"]["gSelectedPixel"] = mSelectedPixel;
 
-    mpTextureSynthesis->bindHFData(var["CB"]["hfData"]);
-    mpNBTFInt8->mpTextureSynthesis->bindMap(var["CB"]["hfData"]);
+    for (int i = 0; i < 2; i++)
+    {
+        mpTextureSynthesis[i]->bindHFData(var["CB"]["hfData"][i]);
+        mpNBTFInt8[i]->mpTextureSynthesis->bindMap(var["CB"]["hfData"][i]);
+    }
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["envMapSampler"]);
 
@@ -347,12 +359,16 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
 
     // Bind textures
     var["gHF"].setSrv(mpHF->getSRV());
-    var["gShellHF"].setSrv(mpShellHF->getSRV());
+    for (int i = 0; i < 2; i++)
+    {
+        var["gShellHF"][i].setSrv(mpShellHF[i]->getSRV());
+    }
     var["cudaVaildBuffer"] = mpVaildBuffer;
 
     var["packedInput"] = mpPackedInputBuffer;
     var["hashedUV"] = mpHashedUVBuffer;
     var["gMaxSampler"] = mpMaxSampler;
+    var["gSelectBuffer"] = mpSelectBuffer;
 
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
     pRenderContext->submit(false);
@@ -382,6 +398,7 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
         mOptionsChanged = false;
     }
     mFrameCount++;
+    mFrameDim = renderData.getDefaultTextureDims();
 
     // ======================================================================================================
     // Step 1: Trace HF to get BTF input, the input data is packed into mpPackedInputBuffer.
@@ -423,12 +440,19 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     // dirty |= widget.checkbox("Use importance sampling", mUseImportanceSampling);
     // widget.tooltip("Use importance sampling for materials", true);
 
+    dirty |= widget.checkbox("Enable Editing Material", mEnableEdit);
+
+    dirty |= widget.slider("Sample Patch Scale", mPatchScale, 0.1f, 10.0f);
+    widget.tooltip("Scale the sample patch", true);
+
     editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
     editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
-    editCurve |= widget.bezierCurve("TestCurve", getPoint, (void*)point_data, 4);
+    editCurve |= widget.bezierCurve("AcfCurve", getPoint, (void*)point_data, 4, 200, 200);
     dirty |= editCurve;
     if (editCurve)
-        mpNBTFInt8->mpTextureSynthesis->updateMap(mpNBTFInt8->mUP.texDim.x, mpDevice, point_data);
+        mpNBTFInt8[0]->mpTextureSynthesis->updateMap(mpNBTFInt8[0]->mUP.texDim.x, mpDevice, point_data);
+    widget.image("ACF", mpNBTFInt8[0]->mpTextureSynthesis->mpACF.get(), Falcor::float2(200.f));
+    widget.text("ACF visualization", true);
 
     dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
     widget.tooltip("Increse = less marching steps", true);
@@ -711,13 +735,16 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
     );
     // Read in textures, we use a constant texture now
-    mpShellHF = Texture::createFromFile(
-        mpDevice,
-        fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(),
-        true,
-        false,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
-    );
+    for (int i = 0; i < 2; i++)
+    {
+        mpShellHF[i] = Texture::createFromFile(
+            mpDevice,
+            fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName[i]).c_str(),
+            true,
+            false,
+            ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
+        );
+    }
     // mpColor = Texture::createFromFile(
     //     mpDevice,
     //     fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(),
@@ -725,7 +752,10 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     //     true,
     //     ResourceBindFlags::ShaderResource | ResourceBindFlags::RenderTarget
     // );
-    generateMaxMip(pRenderContext, mpShellHF);
+    for (int i = 0; i < 2; i++)
+    {
+        generateMaxMip(pRenderContext, mpShellHF[i]);
+    }
     generateMaxMip(pRenderContext, mpHF);
 
     // Create max sampler for texel fetch.
@@ -736,11 +766,17 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpMaxSampler = mpDevice->createSampler(samplerDesc);
     // mpMaxSampler->breakStrongReferenceToDevice();
 
-    mpTextureSynthesis = std::make_unique<TextureSynthesis>();
-    mpTextureSynthesis->readHFData(fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(), mpDevice);
-    generateMaxMip(pRenderContext, mpTextureSynthesis->mpHFT);
+    // mpTextureSynthesis->readHFData(fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName).c_str(), mpDevice);
+    for (int i = 0; i < 2; i++)
+    {
+        mpTextureSynthesis[i] = std::make_unique<TextureSynthesis>();
+        mpTextureSynthesis[i]->readHFData(fmt::format("{}/media/BTF/scene/textures/{}", mMediaPath, mShellHFFileName[i]).c_str(), mpDevice);
+        generateMaxMip(pRenderContext, mpTextureSynthesis[i]->mpHFT);
 
-    mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
+        mpNBTFInt8[i] = std::make_unique<NBTF>(mpDevice, mNetInt8Name[i], true);
+    }
+
+    //mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
     mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, false);
     DefineList defines = mpScene->getSceneDefines();
     mpGenerateGeometryMapPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/GenerateGeometryMap.cs.slang", "csMain", defines);
@@ -785,4 +821,17 @@ void HFTracing::prepareVars()
     // Bind utility classes into shared data.
     auto var = mTracer.pVars->getRootVar();
     mpSampleGenerator->bindShaderData(var);
+}
+
+bool HFTracing::onMouseEvent(const MouseEvent& mouseEvent)
+{
+    if (mEnableEdit)
+    {
+        if (mouseEvent.type == MouseEvent::Type::ButtonDown && mouseEvent.button == Input::MouseButton::Left)
+        {
+            mSelectedPixel = Falcor::uint2(mouseEvent.pos * Falcor::float2(mFrameDim));
+            return true;
+        }
+    }
+    return false;
 }

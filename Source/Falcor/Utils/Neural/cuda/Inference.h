@@ -97,7 +97,10 @@ void launchInferInt8TexHashed(
     float* output,
     unsigned int width,
     unsigned int height,
-    int* validMask, float uvScale
+    int* validMask,
+    float uvScale,
+    float patchScale,
+    int matId
 );
 
 void launchInferInt8TexHashed(
