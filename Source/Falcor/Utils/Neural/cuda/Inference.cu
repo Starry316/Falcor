@@ -181,6 +181,26 @@ __global__ void inferInt8TexTest(
             val1[k] = __dp4a(val2[j], W[704 + k * HIDDEN_PACKED_NUM + j], val1[k]);
         }
     }
+
+        // val1[0] = 0;
+        // for (int j = 0; j < HIDDEN_PACKED_NUM; j++)
+        // {
+        //     val1[0] = __dp4a(val2[j], W[704 +  j], val1[0]);
+        // }
+
+        // val1[1] = 0;
+        // for (int j = 0; j < HIDDEN_PACKED_NUM; j++)
+        // {
+        //     val1[1] = __dp4a(val2[j], W[704 + 1 * HIDDEN_PACKED_NUM + j], val1[1]);
+        // }
+
+        // val1[2] = 0;
+        // for (int j = 0; j < HIDDEN_PACKED_NUM; j++)
+        // {
+        //     val1[2] = __dp4a(val2[j], W[704 + 2 * HIDDEN_PACKED_NUM + j], val1[2]);
+        // }
+
+
     __syncthreads();
 #if HALF_ACC
     output[4 * (y * width + x) + 0] = dequantizeInt8h_relu(val1[0], dequantizeScale4);
@@ -192,6 +212,7 @@ __global__ void inferInt8TexTest(
     output[4 * (y * width + x) + 2] = dequantizeInt8f_relu(val1[2], dequantizeScale4);
 #endif
 }
+
 
 void launchInferInt8TexTest(
     int* weight,
@@ -723,11 +744,6 @@ __global__ void inferInt8TexHashedOptimized(
     if (validMask[y * width + x] == 0)
         return;
 
-    int offset = 0;
-    int hiddenNum = HIDDEN_NUM;
-    int hiddenPackedNum = HIDDEN_PACKED_NUM;
-    int inPackedNum = IN_PACKED_NUM;
-    int outNum = 3;
 
     int val1[HIDDEN_NUM];
     int val2[HIDDEN_PACKED_NUM];
@@ -774,6 +790,7 @@ __global__ void inferInt8TexHashedOptimized(
     float4 g0 = tex2DLayered<float4>(TP, v1, u1, 0);
     float4 g1 = tex2DLayered<float4>(TP, v2, u2, 0);
     float Gx, Gy, Gz, Gw;
+
     Gx = (g0.x - 0.5f) * b0 + (g1.x - 0.5f) *b1;
     Gy = (g0.y - 0.5f) * b0 + (g1.y - 0.5f) *b1;
     Gz = (g0.z - 0.5f) * b0 + (g1.z - 0.5f) *b1;
@@ -821,18 +838,18 @@ __global__ void inferInt8TexHashedOptimized(
     val = tex2DLayered<float4>(DP, d1, d2, 1);
     val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
 
-    // layer 1
-    for (int k = 0; k < hiddenNum; k++)
+
+   // layer 1
+    for (int k = 0; k < HIDDEN_NUM; k++)
     {
         val1[k] = 0;
-        for (int j = 0; j < inPackedNum; j++)
+        for (int j = 0; j < IN_PACKED_NUM; j++)
         {
-            val1[k] = __dp4a(val2[j], W[offset + k * inPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[k * IN_PACKED_NUM + j], val1[k]);
         }
     }
-    offset += hiddenNum * inPackedNum;
 
-    for (int k = 0; k < hiddenPackedNum; k++)
+    for (int k = 0; k < HIDDEN_PACKED_NUM; k++)
     {
 #if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
@@ -855,16 +872,15 @@ __global__ void inferInt8TexHashedOptimized(
     }
 
     // layer 2
-    for (int k = 0; k < hiddenNum; k++)
+    for (int k = 0; k < HIDDEN_NUM; k++)
     {
         val1[k] = 0;
-        for (int j = 0; j < hiddenPackedNum; j++)
+        for (int j = 0; j < HIDDEN_PACKED_NUM; j++)
         {
-            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[192 + k * HIDDEN_PACKED_NUM + j], val1[k]);
         }
     }
-    offset += hiddenNum * hiddenPackedNum;
-    for (int k = 0; k < hiddenPackedNum; k++)
+    for (int k = 0; k < HIDDEN_PACKED_NUM; k++)
     {
 #if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
@@ -886,16 +902,15 @@ __global__ void inferInt8TexHashedOptimized(
     }
 
     // layer 3
-    for (int k = 0; k < hiddenNum; k++)
+    for (int k = 0; k < HIDDEN_NUM; k++)
     {
         val1[k] = 0;
-        for (int j = 0; j < hiddenPackedNum; j++)
+        for (int j = 0; j < HIDDEN_PACKED_NUM; j++)
         {
-            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[448 + k * HIDDEN_PACKED_NUM + j], val1[k]);
         }
     }
-    offset += hiddenNum * hiddenPackedNum;
-    for (int k = 0; k < hiddenPackedNum; k++)
+    for (int k = 0; k < HIDDEN_PACKED_NUM; k++)
     {
 #if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
@@ -917,12 +932,12 @@ __global__ void inferInt8TexHashedOptimized(
     }
 
     // layer final
-    for (int k = 0; k < outNum; k++)
+    for (int k = 0; k < 3; k++)
     {
         val1[k] = 0;
-        for (int j = 0; j < hiddenPackedNum; j++)
+        for (int j = 0; j < HIDDEN_PACKED_NUM; j++)
         {
-            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[704 + k * HIDDEN_PACKED_NUM + j], val1[k]);
         }
     }
     __syncthreads();
@@ -935,6 +950,7 @@ __global__ void inferInt8TexHashedOptimized(
     output[4 * (y * width + x) + 1] = dequantizeInt8f_relu(val1[1], dequantizeScale4);
     output[4 * (y * width + x) + 2] = dequantizeInt8f_relu(val1[2], dequantizeScale4);
 #endif
+
 }
 void launchInferInt8Tex(
     int* weight,

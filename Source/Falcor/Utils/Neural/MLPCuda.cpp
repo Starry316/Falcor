@@ -25,7 +25,7 @@ void MLPCuda::loadFP32(ref<Device> pDevice, std::string networkPath)
         cudaWeight.data()
     );
 
-    logInfo("Weight buffer size: " + std::to_string(cudaWeight.size()));
+    logInfo("[MLPCuda] Weight buffer size: " + std::to_string(cudaWeight.size()));
 
     std::vector<__half> cudaWeightFP16(cudaWeight.size());
     for (size_t i = 0; i < cudaWeight.size(); i++)
@@ -50,8 +50,8 @@ void MLPCuda::loadInt8(ref<Device> pDevice, std::string networkPath)
 
     mpInt8Buffer =
         pDevice->createBuffer(int8WeightInt.size() * sizeof(int), ResourceBindFlags::Shared, MemoryType::DeviceLocal, int8WeightInt.data());
-    logInfo("QINT8 buffer size: " + std::to_string(int8Weight.size()));
-    logInfo("QINT8 buffer  {} {} {} {}", int8Weight[0], int8Weight[1], int8Weight[2], int8Weight[3]);
+    logInfo("[MLPCuda] QINT8 buffer size: " + std::to_string(int8Weight.size()));
+    logInfo("[MLPCuda] QINT8 buffer  {} {} {} {}", int8Weight[0], int8Weight[1], int8Weight[2], int8Weight[3]);
 }
 
 // void MLPCuda::inferInt8Histo(int* packedInput, float* output, int width, int height, int* valid, float scale)
