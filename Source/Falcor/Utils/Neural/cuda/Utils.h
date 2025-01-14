@@ -137,7 +137,9 @@ __forceinline__ __device__ int packInt16x2(int a, int b)
 {
     return (a & 0x0000ffff) | ((b << 16) & 0xffff0000);
 }
-
+// =====================================================================================================================
+// Synthesis Functions
+// =====================================================================================================================
 __forceinline__ __device__ float clampG(float x) {
     return fminf(fmaxf(x, 0.0001), 0.999);
 }
@@ -203,4 +205,38 @@ inline __device__ float BSingularity(float u, float v)
     float cosu = sinf(newU * 3.14159265f);
     float cosv = sinf(newV * 3.14159265f);
     return 0.02f * cosu * cosv * cosu * cosv;
+}
+__device__ void TriangleGrid(float& w1, float& w2, float& w3, int2& vertex1, int2& vertex2, int2& vertex3, float2 st)
+{
+    st = float2{3.4641016f * st.x, 3.4641016f * st.y};
+    float2 skewedCoord = float2{st.x - 0.57735027f * st.y, 1.15470054f * st.y};
+    int2 baseId = int2{(int)floor(skewedCoord.x), (int)floor(skewedCoord.y)};
+    float2 fracPart = float2{abs(skewedCoord.x - trunc(skewedCoord.x)), abs(skewedCoord.y - trunc(skewedCoord.y))};
+    float3 temp = float3{fracPart.x, fracPart.y, 1.0f - fracPart.x - fracPart.y};
+    if (temp.z > 0)
+    {
+        w1 = temp.z;
+        w2 = temp.y;
+        w3 = temp.x;
+        vertex1 = int2{baseId.x, baseId.y};
+        vertex2 = int2{baseId.x, baseId.y + 1};
+        vertex2 = int2{baseId.x + 1, baseId.y};
+    }
+    else
+    {
+        w1 = -temp.z;
+        w2 = 1.0f - temp.y;
+        w3 = 1.0f - temp.x;
+        vertex1 = int2{baseId.x + 1, baseId.y + 1};
+        vertex2 = int2{baseId.x + 1, baseId.y};
+        vertex2 = int2{baseId.x, baseId.y + 1};
+    }
+}
+inline __device__ float2 hash22(float2 p)
+{
+    float2 r = float2{127.1f * p.x + 311.7f * p.y, 269.5f * p.x + 183.3f * p.y};
+    //float2 temp = float2{sinf(r.x) * 43758.5453f, sinf(r.y) * 43758.5453f};
+    float2 temp = float2{sinf(r.x), sinf(r.y)};
+    //return float2{temp.x - floor(temp.x), temp.y - floor(temp.y)};
+    return temp;
 }

@@ -13,7 +13,7 @@
 
 extern void launchInferInt8TexTest(
     int* weight,
-    float* packedInput,
+    int* packedInput,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
     cudaTextureObject_t UP,
@@ -26,7 +26,7 @@ extern void launchInferInt8TexTest(
 
 extern void launchInferInt8TexACFTest(
     int* weight,
-    float* packedInput,
+    int* packedInput,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
     cudaTextureObject_t UP,
@@ -41,7 +41,7 @@ extern void launchInferInt8TexACFTest(
 
 extern void launchInferFp32TexTest(
     float* weight,
-    float* packedInput,
+    int* packedInput,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
     cudaTextureObject_t UP,
@@ -53,7 +53,7 @@ extern void launchInferFp32TexTest(
 
 extern void launchInferFp16TexTest(
     __half* weight,
-    float* packedInput,
+    int* packedInput,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
     cudaTextureObject_t UP,

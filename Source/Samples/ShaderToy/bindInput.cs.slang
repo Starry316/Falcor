@@ -39,7 +39,7 @@ cbuffer CB
     float2 gWi;
 };
 
-RWBuffer<float> testInput;
+RWBuffer<uint> testInput;
 
 uint packInt8x4(int4 v)
 {
@@ -68,10 +68,13 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 
     h = hemisphereDirToDiskSquare(vh);
     d = hemisphereDirToDiskSquare(vd);
-    testInput[4 * (pixel.y * iResolution.x + pixel.x)] = h.x;
-    testInput[4 * (pixel.y * iResolution.x + pixel.x) + 1] = h.y;
-    testInput[4 * (pixel.y * iResolution.x + pixel.x) + 2] = d.x;
-    testInput[4 * (pixel.y * iResolution.x + pixel.x) + 3] = d.y;
+
+    testInput[2 * (pixel.y * iResolution.x + pixel.x)] = packUnorm2x16(h);
+    testInput[2 * (pixel.y * iResolution.x + pixel.x)+1] = packUnorm2x16(d);
+    // testInput[4 * (pixel.y * iResolution.x + pixel.x)] = h.x;
+    // testInput[4 * (pixel.y * iResolution.x + pixel.x) + 1] = h.y;
+    // testInput[4 * (pixel.y * iResolution.x + pixel.x) + 2] = d.x;
+    // testInput[4 * (pixel.y * iResolution.x + pixel.x) + 3] = d.y;
 
 
 

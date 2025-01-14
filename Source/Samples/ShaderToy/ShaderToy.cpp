@@ -190,14 +190,14 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     {
         if (mRenderType == RenderType::CUDAINT8)
             if (mSynthesis)
-                mpNBTFInt8->mpMLPCuda->inferInt8ACFTest((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+                mpNBTFInt8->mpMLPCuda->inferInt8ACFTest((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
             else
-                mpNBTFInt8->mpMLPCuda->inferInt8Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+                mpNBTFInt8->mpMLPCuda->inferInt8Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
         else if (mRenderType == RenderType::CUDAFP16)
-            mpNBTFInt8->mpMLPCuda->inferFp16Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+            mpNBTFInt8->mpMLPCuda->inferFp16Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
 
         else
-            mpNBTFInt8->mpMLPCuda->inferFp32Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+            mpNBTFInt8->mpMLPCuda->inferFp32Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
     }
 
     // timer end
