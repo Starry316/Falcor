@@ -38,13 +38,21 @@ __global__ void inferInt8TexTest(
 
     float u = (float)x / (float)height;
     float v = (float)y / (float)height;
-    float h1 = 0.0;
-    float h2 = 0.0;
-    float d1 = 0.0;
-    float d2 = 0.0;
+
+    // float u ;
+    // float v ;
+    float h1 ;
+    float h2 ;
+    float d1 ;
+    float d2 ;
 
     unpackUnorm2x16(packedInput[2 * (y * width + x) + 0], h1, h2);
     unpackUnorm2x16(packedInput[2 * (y * width + x) + 1], d1, d2);
+
+
+    // unpackUnorm2x16(packedInput[3 * (y * width + x) + 0], h1, h2);
+    // unpackUnorm2x16(packedInput[3 * (y * width + x) + 1], d1, d2);
+    // unpackUnorm2x16(packedInput[3 * (y * width + x) + 2], u, v);
 
     // float h1 = testInput[4 * (y * width + x)];
     // float h2 = testInput[4 * (y * width + x) + 1];
@@ -1685,10 +1693,10 @@ __global__ void inferInt8TexACFTest(
 
     float u = (float)x / (float)height;
     float v = (float)y / (float)height;
-    float h1 = 0.0;
-    float h2 = 0.0;
-    float d1 = 0.0;
-    float d2 = 0.0;
+    float h1;
+    float h2;
+    float d1;
+    float d2;
 
     unpackUnorm2x16(packedInput[2 * (y * width + x) + 0], h1, h2);
     unpackUnorm2x16(packedInput[2 * (y * width + x) + 1], d1, d2);
@@ -1728,12 +1736,12 @@ __global__ void inferInt8TexACFTest(
 
     norm = sqrt(b0 * b0 + b1 * b1 + bs * bs);
 
-    float2 t0 = float2{floor(u) * 2.0f, floor(v) * 2.0f};
-    float2 t1 = float2{floor(u + 0.5f) * 2.0f + 1.0f, floor(v + 0.5f) * 2.0f + 1.0f};
+    // float2 t0 = float2{floor(u) * 2.0f, floor(v) * 2.0f};
+    // float2 t1 = float2{floor(u + 0.5f) * 2.0f + 1.0f, floor(v + 0.5f) * 2.0f + 1.0f};
 
     // =======================================================================
-    int id0 = (int)floor(rnd21(t0) * 2048);
-    int id1 = (int)floor(rnd21(t1) * 2048);
+    int id0 = (int)floor(rnd21(floor(u) * 2.0f, floor(v) * 2.0f) * 2048);
+    int id1 = (int)floor(rnd21(floor(u + 0.5f) * 2.0f + 1.0f, floor(v + 0.5f) * 2.0f + 1.0f) * 2048);
 
     float u1 = sampleList[2 * id0];
     float v1 = sampleList[2 * id0 + 1];

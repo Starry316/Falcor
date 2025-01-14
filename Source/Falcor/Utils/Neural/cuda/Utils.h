@@ -102,13 +102,15 @@ __forceinline__ __device__ float dequantizeInt8(const int packedData, const floa
 
 __forceinline__ __device__ float dequantizeInt8f_relu(const int packedData, const float scale)
 {
-    return relu(__int2float_rn(packedData) * scale);
+    // return relu(__int2float_rn(packedData) * scale);
+    return __int2float_rn(relu(packedData)) * scale;
 }
 
 
 __forceinline__ __device__ __half dequantizeInt8h_relu(const int packedData, const __half scale)
 {
-    return relu(__hmul(__int2half_rn(packedData), scale));
+    // return relu(__hmul(__int2half_rn(packedData), scale));
+    return __hmul(__int2half_rn(relu(packedData)), scale);
 }
 
 __forceinline__ __device__ void dequantizeInt8x4(const int packedData, __half& a, __half& b, __half& c, __half& d, const __half scale)
@@ -149,6 +151,13 @@ inline __device__ float rnd21(float2 p)
     return (temp - floor(temp));
 }
 
+__forceinline__  __device__ float rnd21(float p1, float p2)
+{
+    float temp = sinf(12.9898f * p1 + 78.233f * p2) * 43758.5453f;
+    return (temp - floor(temp));
+}
+
+
 inline __device__ float B0cos(float2 uv)
 {
     float cosu = sinf(uv.x * 3.14159265f);
@@ -157,7 +166,7 @@ inline __device__ float B0cos(float2 uv)
 }
 
 
-inline __device__ float B0cos(float u, float v)
+__forceinline__  __device__ float B0cos(float u, float v)
 {
     float cosu = sinf(u * 3.14159265f);
     float cosv = sinf(v * 3.14159265f);
@@ -165,7 +174,7 @@ inline __device__ float B0cos(float u, float v)
 }
 
 
-inline __device__ float B1cos(float2 uv)
+__forceinline__  __device__ float B1cos(float2 uv)
 {
     uv = float2{uv.x + 0.5f, uv.y + 0.5f};
     float cosu = sinf(uv.x * 3.14159265f);
