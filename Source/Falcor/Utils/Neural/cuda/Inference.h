@@ -23,6 +23,22 @@ extern void launchInferInt8TexTest(
      float uvScale
 );
 
+
+extern void launchInferInt8TexACFTest(
+    int* weight,
+    float* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* sampleList,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+     float uvScale
+);
+
 extern void launchInferFp32TexTest(
     float* weight,
     float* packedInput,

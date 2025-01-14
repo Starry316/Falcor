@@ -136,7 +136,6 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     // mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
 
-
     mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
 
     cudaEventCreate(&mCudaStart);
@@ -190,9 +189,13 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     for (size_t i = 0; i < mCudaInferTimes; i++)
     {
         if (mRenderType == RenderType::CUDAINT8)
-            mpNBTFInt8->mpMLPCuda->inferInt8Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+            if (mSynthesis)
+                mpNBTFInt8->mpMLPCuda->inferInt8ACFTest((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+            else
+                mpNBTFInt8->mpMLPCuda->inferInt8Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
         else if (mRenderType == RenderType::CUDAFP16)
             mpNBTFInt8->mpMLPCuda->inferFp16Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+
         else
             mpNBTFInt8->mpMLPCuda->inferFp32Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
     }

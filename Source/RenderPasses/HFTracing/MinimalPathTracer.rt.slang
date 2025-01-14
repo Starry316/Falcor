@@ -1242,6 +1242,12 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
                 packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packUnorm2x16(frac(abs(uv_hashed.xy)));
                 packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 4] = packUnorm2x16(frac(abs(uv_hashed.zw)));
+
+                // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+                // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+                // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+                // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+
             }
             else {
                 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
@@ -1311,13 +1317,14 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
             packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packUnorm2x16(frac(abs(uv_hashed.xy)));
             packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 4] = packUnorm2x16(frac(abs(uv_hashed.zw)));
         }
-        else
+        else {
             packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+        }
 
-        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
-        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
-        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
-        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
 
 
         rayData.origin = newPos;

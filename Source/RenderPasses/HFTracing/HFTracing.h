@@ -271,12 +271,24 @@ private:
     std::string mHFFileName = "TilesCeramicChevron001_DISP_6K.jpg";
     bool mHDRBTF = false;
 #endif
+#ifdef TILE4
+    std::string mNetInt8Name = "tile4_m32u8h8d8_int8";
+    std::string mShellHFFileName = "Tiles11_DISP_3K_cut.jpg";
+    std::string mHFFileName = "Tiles11_DISP_3K_cut.jpg";
+    bool mHDRBTF = true;
+#endif
 
 #ifdef FABRIC
     std::string mNetInt8Name = "fabric_m32u8h8d8_int8";
     std::string mShellHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
     std::string mHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
     bool mHDRBTF = false;
+#endif
+#ifdef FABRIC2
+    std::string mNetInt8Name = "fabric2_m32u8h8d8_int8";
+    std::string mShellHFFileName = "FabricVelvetEmbossed004_DISP_4K_SPECULAR_small.png";
+    std::string mHFFileName = "FabricVelvetEmbossed004_DISP_4K_SPECULAR_small.png";
+    bool mHDRBTF = true;
 #endif
 #ifdef FABRIC12
     std::string mNetInt8Name = "fabric12_m32u8h8d8_int8";
@@ -306,6 +318,7 @@ private:
     // std::string mNetName = "leather11_m32u16h8d8";
     // std::string mNetName = "leather11_tile_m32u16h8d8";
     // std::string mNetName = "tile2_m32u16h8d8";
+    // std::string mNetName = "tile4_m32u16h8d8";
     // std::string mNetName = "tile2_small_m32u16h8d8";
     // std::string mNetName = "metal2_m32u16h8d8";
     // std::string mNetName = "weave_m32u16h8d8";

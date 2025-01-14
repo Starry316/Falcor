@@ -30,6 +30,7 @@ public:
     void inferInt8Test(float* testInput, float* output, int width, int height, float scale);
     void inferFp32Test(float* testInput, float* output, int width, int height, float scale);
     void inferFp16Test(float* testInput, float* output, int width, int height, float scale);
+    void inferInt8ACFTest(float* testInput, float* output, int width, int height, float scale);
 
     ref<Buffer> mpInt8Buffer;
     ref<Buffer> mpSampleBuffer;

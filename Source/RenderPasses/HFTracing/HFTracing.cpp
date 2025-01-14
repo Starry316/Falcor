@@ -305,6 +305,9 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         mTracer.pProgram->addDefine("CONTACT_REFINEMENT");
     else
         mTracer.pProgram->removeDefine("CONTACT_REFINEMENT");
+
+
+
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.
     mTracer.pProgram->addDefines(getValidResourceDefines(kInputChannels, renderData));

@@ -495,7 +495,7 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
 
         val = val > 0 ? val : 0;
           val = (val - min) / (max - min);
-        // val = acfTransform(val);
+        val = acfTransform(val);
 //
         acf_pdf.push_back(val);
     }

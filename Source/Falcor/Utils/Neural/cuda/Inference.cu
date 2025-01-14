@@ -2297,3 +2297,277 @@ void launchInferFP16Tex(
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
     inferFP16Tex<<<dimGrid, dimBlock>>>(weight, packedInput, HP, DP, UP, output, width, height, validMask, uvScale);
 }
+
+
+
+__global__ void inferInt8TexACFTest(
+    int* weight,
+    float* testInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* sampleList,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    float uvScale
+)
+{
+   __shared__ int W[768];
+    unsigned int localIdx = threadIdx.y * blockDim.x + threadIdx.x;
+    if (localIdx < 256)
+    {
+        W[3 * localIdx] = weight[3 * localIdx];
+        W[3 * localIdx + 1] = weight[3 * localIdx + 1];
+        W[3 * localIdx + 2] = weight[3 * localIdx + 2];
+    }
+    __syncthreads();
+
+    unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= width || y >= height)
+        return;
+
+    int offset = 0;
+    int hiddenNum = HIDDEN_NUM;
+    int hiddenPackedNum = HIDDEN_PACKED_NUM;
+    int inPackedNum = IN_PACKED_NUM;
+    int outNum = 3;
+
+    int val1[HIDDEN_NUM];
+    int val2[HIDDEN_PACKED_NUM];
+
+    float u = (float)x / (float)height;
+    float v = (float)y / (float)height;
+    float h1 = testInput[4 * (y * width + x)];
+    float h2 = testInput[4 * (y * width + x) + 1];
+    float d1 = testInput[4 * (y * width + x) + 2];
+    float d2 = testInput[4 * (y * width + x) + 3];
+
+    float4 val = tex2DLayered<float4>(HP, h1, h2, 0);
+    val2[0] = quantizeInt8x4f_safe(val, scaleIn1);
+
+    val = tex2DLayered<float4>(HP, h1, h2, 1);
+    val2[1] = quantizeInt8x4f_safe(val, scaleIn1);
+
+
+    val = tex2DLayered<float4>(DP, d1, d2, 0);
+    val2[4] = quantizeInt8x4f_safe(val, scaleIn1);
+
+    val = tex2DLayered<float4>(DP, d1, d2, 1);
+    val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
+
+
+    u *= uvScale;
+    v *= uvScale;
+    float norm;
+    float b0, b1, bs;
+
+    b0 = B0cos(u, v);
+    b1 = B1cos(u, v);
+    bs = BSingularity(u, v);
+    norm = b0 + b1 + bs;
+
+    b0 /= norm;
+    b1 /= norm;
+    bs /= norm;
+
+    norm = sqrt(b0 * b0 + b1 * b1 + bs * bs);
+
+    float2 t0 = float2{floor(u) * 2.0f, floor(v) * 2.0f};
+    float2 t1 = float2{floor(u + 0.5f) * 2.0f + 1.0f, floor(v + 0.5f) * 2.0f + 1.0f};
+
+    // =======================================================================
+    int id0 = (int)floor(rnd21(t0) * 2048);
+    int id1 = (int)floor(rnd21(t1) * 2048);
+
+    float u1 = sampleList[2 * id0];
+    float v1 = sampleList[2 * id0 + 1];
+
+    float u2 = sampleList[2 * id1];
+    float v2 = sampleList[2 * id1 + 1];
+    // =======================================================================
+
+
+    float4 g0 = tex2DLayered<float4>(TP, v - v1, u - u1, 0);
+    float4 g1 = tex2DLayered<float4>(TP, v -v2, u - u2, 0);
+    float Gx, Gy, Gz, Gw;
+    Gx = (g0.x - 0.5f) * b0 + (g1.x - 0.5f) *b1;
+    Gy = (g0.y - 0.5f) * b0 + (g1.y - 0.5f) *b1;
+    Gz = (g0.z - 0.5f) * b0 + (g1.z - 0.5f) *b1;
+    Gw = (g0.w - 0.5f) * b0 + (g1.w - 0.5f) *b1;
+
+
+
+
+    Gx = clampG(Gx / norm + 0.5f);
+    Gy = clampG(Gy / norm + 0.5f);
+    Gz = clampG(Gz / norm + 0.5f);
+    Gw = clampG(Gw / norm + 0.5f);
+
+
+
+    val.x = tex2DLayered<float4>(InvP, Gx, 0.0f, 0).x;
+    val.y = tex2DLayered<float4>(InvP, Gy, 0.0f, 0).y;
+    val.z = tex2DLayered<float4>(InvP, Gz, 0.0f, 0).z;
+    val.w = tex2DLayered<float4>(InvP, Gw, 0.0f, 0).w;
+    val2[2] = quantizeInt8x4f_safe(val, scaleIn1);
+
+    g0 = tex2DLayered<float4>(TP, v1, u1, 1);
+    g1 = tex2DLayered<float4>(TP, v2, u2, 1);
+
+    Gx = (g0.x - 0.5f) * b0 + (g1.x - 0.5f) *b1;
+    Gy = (g0.y - 0.5f) * b0 + (g1.y - 0.5f) *b1;
+    Gz = (g0.z - 0.5f) * b0 + (g1.z - 0.5f) *b1;
+    Gw = (g0.w - 0.5f) * b0 + (g1.w - 0.5f) *b1;
+     Gx = clampG(Gx / norm + 0.5f);
+    Gy = clampG(Gy / norm + 0.5f);
+    Gz = clampG(Gz / norm + 0.5f);
+    Gw = clampG(Gw / norm + 0.5f);
+
+    val.x = tex2DLayered<float4>(InvP, Gx, 0.0f, 1).x;
+    val.y = tex2DLayered<float4>(InvP, Gy, 0.0f, 1).y;
+    val.z = tex2DLayered<float4>(InvP, Gz, 0.0f, 1).z;
+    val.w = tex2DLayered<float4>(InvP, Gw, 0.0f, 1).w;
+    val2[3] = quantizeInt8x4f_safe(val, scaleIn1);
+    // =======================================================================
+
+    // layer 1
+    for (int k = 0; k < hiddenNum; k++)
+    {
+        val1[k] = 0;
+        for (int j = 0; j < inPackedNum; j++)
+        {
+            val1[k] = __dp4a(val2[j], W[offset + k * inPackedNum + j], val1[k]);
+        }
+    }
+    offset += hiddenNum * inPackedNum;
+
+    for (int k = 0; k < hiddenPackedNum; k++)
+    {
+#if HALF_ACC
+        val2[k] = quantizeInt8x4h_safe(
+            dequantizeInt8h_relu(val1[4 * k], dequantizeScale1),
+            dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale1),
+            dequantizeInt8h_relu(val1[4 * k + 2], dequantizeScale1),
+            dequantizeInt8h_relu(val1[4 * k + 3], dequantizeScale1),
+            scaleIn2
+        );
+
+#else
+        val2[k] = quantizeInt8x4f_safe(
+            dequantizeInt8f_relu(val1[4 * k], dequantizeScale1),
+            dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale1),
+            dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale1),
+            dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale1),
+            scaleIn2
+        );
+#endif
+    }
+
+    // layer 2
+    for (int k = 0; k < hiddenNum; k++)
+    {
+        val1[k] = 0;
+        for (int j = 0; j < hiddenPackedNum; j++)
+        {
+            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
+        }
+    }
+    offset += hiddenNum * hiddenPackedNum;
+    for (int k = 0; k < hiddenPackedNum; k++)
+    {
+#if HALF_ACC
+        val2[k] = quantizeInt8x4h_safe(
+            dequantizeInt8h_relu(val1[4 * k], dequantizeScale2),
+            dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale2),
+            dequantizeInt8h_relu(val1[4 * k + 2], dequantizeScale2),
+            dequantizeInt8h_relu(val1[4 * k + 3], dequantizeScale2),
+            scaleIn3
+        );
+#else
+        val2[k] = quantizeInt8x4f_safe(
+            dequantizeInt8f_relu(val1[4 * k], dequantizeScale2),
+            dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale2),
+            dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale2),
+            dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale2),
+            scaleIn3
+        );
+#endif
+    }
+
+    // layer 3
+    for (int k = 0; k < hiddenNum; k++)
+    {
+        val1[k] = 0;
+        for (int j = 0; j < hiddenPackedNum; j++)
+        {
+            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
+        }
+    }
+    offset += hiddenNum * hiddenPackedNum;
+    for (int k = 0; k < hiddenPackedNum; k++)
+    {
+#if HALF_ACC
+        val2[k] = quantizeInt8x4h_safe(
+            dequantizeInt8h_relu(val1[4 * k], dequantizeScale3),
+            dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale3),
+            dequantizeInt8h_relu(val1[4 * k + 2], dequantizeScale3),
+            dequantizeInt8h_relu(val1[4 * k + 3], dequantizeScale3),
+            scaleIn4
+        );
+#else
+        val2[k] = quantizeInt8x4f_safe(
+            dequantizeInt8f_relu(val1[4 * k], dequantizeScale3),
+            dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale3),
+            dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale3),
+            dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale3),
+            scaleIn4
+        );
+#endif
+    }
+
+    // layer final
+    for (int k = 0; k < outNum; k++)
+    {
+        val1[k] = 0;
+        for (int j = 0; j < hiddenPackedNum; j++)
+        {
+            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
+        }
+    }
+    __syncthreads();
+#if HALF_ACC
+    output[4 * (y * width + x) + 0] = dequantizeInt8h_relu(val1[0], dequantizeScale4);
+    output[4 * (y * width + x) + 1] = dequantizeInt8h_relu(val1[1], dequantizeScale4);
+    output[4 * (y * width + x) + 2] = dequantizeInt8h_relu(val1[2], dequantizeScale4);
+#else
+    output[4 * (y * width + x) + 0] = dequantizeInt8f_relu(val1[0], dequantizeScale4);
+    output[4 * (y * width + x) + 1] = dequantizeInt8f_relu(val1[1], dequantizeScale4);
+    output[4 * (y * width + x) + 2] = dequantizeInt8f_relu(val1[2], dequantizeScale4);
+#endif
+}
+
+
+void launchInferInt8TexACFTest(
+    int* weight,
+    float* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* sampleList,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+     float uvScale
+){
+
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+    inferInt8TexACFTest<<<dimGrid, dimBlock>>>(weight, packedInput, HP, DP, UP,TP,InvP,sampleList, output, width, height, uvScale);
+
+}
