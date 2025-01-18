@@ -2,11 +2,16 @@
 #include "Core/Macros.h"
 #include "Core/API/Buffer.h"
 #include "Core/Program/ShaderVar.h"
+#include "SynthesisUtils.h"
 #include <memory>
 #include <random>
 
 namespace Falcor
 {
+
+
+
+
 /**
  * Implements Texture Synthesis
  */
@@ -28,7 +33,7 @@ public:
     void bindHFData(const ShaderVar& var);
     void bindMap(const ShaderVar& var);
     void updateMap(uint dim, ref<Device> pDevice);
-    void updateMap(uint dim, ref<Device> pDevice, float2* ctrl_point);
+    void updateMap(uint dim, ref<Device> pDevice, float2* ctrl_point, ACFCurve curve);
     void precomputeFeatureData(std::vector<float> data, uint2 dataDim, ref<Device> pDevice);
     void bindFeatureData(const ShaderVar& var);
 
@@ -38,13 +43,14 @@ public:
     std::vector<float> getSampleUV() { return sample_uv_list; }
 
     ref<Texture> mpHFT;
+    ref<Texture> mpACF;
+
 private:
     float HTRotStength = 0.5f;
     ref<Texture> mpColor;
     ref<Texture> mpHFInvT;
     ref<Texture> mpFeatureT;
     ref<Texture> mpFeatureInvT;
-    ref<Texture> mpACF;
     ref<Buffer> mpACFBuffer;
     ref<Buffer> mpACFInputBuffer;
 
@@ -53,6 +59,8 @@ private:
     std::vector<float> TData;
     std::vector<float> invTData;
     std::vector<float> acfWeight;
+    std::vector<float> acfPDF;
+    std::vector<float> acfPDFImg;
     std::vector<float> sample_uv_list;
     ref<Buffer> mpMap;
 };

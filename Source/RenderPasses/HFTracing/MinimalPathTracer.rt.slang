@@ -959,11 +959,11 @@ bool calcSynthesizedDisplacementIntersection(
     maxIntersection.max(baseTriangleIntersectAttri);
 
     // Early out when no hit.
-    if (!(minIntersection.intersected && maxIntersection.intersected) || (minIntersection.t == maxIntersection.t) ||
-        (minIntersection.t > ray.tMax) || (maxIntersection.t < ray.tMin))
-    {
-        return false;
-    }
+    // if (!(minIntersection.intersected && maxIntersection.intersected) || (minIntersection.t == maxIntersection.t) ||
+    //     (minIntersection.t > ray.tMax) || (maxIntersection.t < ray.tMin))
+    // {
+    //     return false;
+    // }
 
     // 2. convert intersection data from object space to trace space
     float2 minIntersectionUV = minIntersection.barycentric[0] * vertices[0].texCrd.xy +

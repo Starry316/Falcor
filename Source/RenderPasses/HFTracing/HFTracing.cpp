@@ -413,22 +413,17 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.dropdown("Render Type", mRenderType);
     dirty |= widget.dropdown("Infer Type", mInferType);
+    editCurve |= widget.dropdown("Curve Type", mCurveType);
 
-    // dirty |= widget.var("Max bounces", mMaxBounces, 0u, 1u << 16);
-    // widget.tooltip("Maximum path length for indirect illumination.\n0 = direct only\n1 = one indirect bounce etc.", true);
-
-    // dirty |= widget.checkbox("Evaluate direct illumination", mComputeDirect);
-    // widget.tooltip("Compute direct illumination.\nIf disabled only indirect is computed (when max bounces > 0).", true);
-
-    // dirty |= widget.checkbox("Use importance sampling", mUseImportanceSampling);
-    // widget.tooltip("Use importance sampling for materials", true);
 
     editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
     editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
-    editCurve |= widget.bezierCurve("TestCurve", getPoint, (void*)point_data, 4, 200, 200);
+    editCurve |= widget.bezierCurve("TestCurve", getPoint, (void*)point_data, 4, 400, 400);
     dirty |= editCurve;
     if (editCurve)
-        mpNBTFInt8->mpTextureSynthesis->updateMap(mpNBTFInt8->mUP.texDim.x, mpDevice, point_data);
+        mpNBTFInt8->mpTextureSynthesis->updateMap(mpNBTFInt8->mUP.texDim.x, mpDevice, point_data, mCurveType);
+    widget.image("ACF", mpNBTFInt8->mpTextureSynthesis->mpACF.get(), Falcor::float2(400.f));
+    widget.text("ACF visualization", true);
 
     dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
     widget.tooltip("Increse = less marching steps", true);

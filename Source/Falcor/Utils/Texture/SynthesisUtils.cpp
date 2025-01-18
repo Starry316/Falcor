@@ -465,20 +465,26 @@ void calculateAutocovariance(TextureDataFloat& image, TextureDataFloat& acf, std
     }
 }
 
-float acfTransform(float val){
-    // return val;
-    return  val * val * val ;
-    // return  cos(val * M_1_2PI);
-    // return  val * val;
-    // return  powf(val, 1.5);
-    // val = 1-val;
-    // return  val * val;
+float acfTransform(float val, ACFCurve curve){
+    if (curve == ACFCurve::X2)
+    {
+        return val * val;
+    }
+    else if(curve ==   ACFCurve::X3){
+        return val * val * val;
+    }
+    else if(curve ==   ACFCurve::X5){
+        return val * val * val * val * val;
+    }
+    else if(curve ==   ACFCurve::X6){
+        return val * val * val * val * val * val;
+    }
+    else
+        return  val ;
 }
 
-void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_list, uint dim)
+void updateSample(std::vector<float>& acf_weight, std::vector<float>& acf_pdf, std::vector<float>& sample_uv_list, uint dim, ACFCurve curve)
 {
-    std::vector<float> acf_pdf;
-    acf_pdf.reserve(acf_weight.size());
     float min = FLT_MAX;
     float max = -FLT_MAX;
     for (int i = 0; i < acf_weight.size(); ++i)
@@ -487,16 +493,65 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
         min = std::min(min, val);
         max = std::max(max, val);
     }
-    logInfo("[SynthesisUtils] Min: {}, Max: {}", min, max);
+
+
+    for (int i = 0; i < acf_weight.size(); ++i)
+    {
+
+
+        float val = acf_weight[i];
+        val = (val - min) / (max - min);
+        //val = val > 0 ? val : 0;
+        val = acfTransform(val, curve);
+
+        acf_pdf[i] = val;
+    }
+    // std::random_device rd;
+    // std::default_random_engine rng{rd()};
+    std::default_random_engine rng;
+    std::discrete_distribution<> d(acf_pdf.begin(), acf_pdf.end());
+    // for (int i = 0; i < sample_uv_list.capacity() / 2; i++)
+    // {
+    //     int id = d(rng);
+    //     // sample_uv_list.push_back(float2((id / input.width) / float(input.height), (id % input.width) / float(input.width)));
+    //     //sample_uv_list.push_back(float2((id / dim) / float(dim), (id % dim) / float(dim)));
+    //     sample_uv_list.push_back((id / dim) / float(dim));
+    //     sample_uv_list.push_back((id % dim) / float(dim));
+    // }
+
+    for (int i = 0; i < sample_uv_list.capacity() / 2; i++)
+    {
+        int id = d(rng);
+        // sample_uv_list.push_back(float2((id / input.width) / float(input.height), (id % input.width) / float(input.width)));
+        //sample_uv_list.push_back(float2((id / dim) / float(dim), (id % dim) / float(dim)));
+        sample_uv_list[2 * i] = (id / dim) / float(dim);
+        sample_uv_list[2 * i+1] = (id % dim) / float(dim);
+
+        // sample_uv_list.push_back((id / dim) / float(dim));
+        // sample_uv_list.push_back((id % dim) / float(dim));
+
+    }
+}
+
+void updateSample(std::vector<float>& acf_weight, std::vector<float>& acf_pdf, std::vector<float>& sample_uv_list, uint dim)
+{
+    float min = FLT_MAX;
+    float max = -FLT_MAX;
 
     for (int i = 0; i < acf_weight.size(); ++i)
     {
         float val = acf_weight[i];
-        // val = (val - min) / (max - min);
-        val = val > 0 ? val : 0;
-        // val = acfTransform(val);
+        min = std::min(min, val);
+        max = std::max(max, val);
+    }
+    logInfo("[SynthesisUtils] ACF Min: {}, Max: {}", min, max);
+    for (int i = 0; i < acf_weight.size(); ++i)
+    {
 
-        acf_pdf.push_back(val);
+        float val = acf_weight[i];
+        val = (val - min) / (max - min);
+        //val = val > 0 ? val : 0;
+        acf_pdf[i] = val;
     }
 
     // std::random_device rd;
@@ -509,15 +564,22 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
         int id = d(rng);
         // sample_uv_list.push_back(float2((id / input.width) / float(input.height), (id % input.width) / float(input.width)));
         //sample_uv_list.push_back(float2((id / dim) / float(dim), (id % dim) / float(dim)));
-        sample_uv_list.push_back((id / dim) / float(dim));
-        sample_uv_list.push_back((id % dim) / float(dim));
+        sample_uv_list[2 * i] = (id / dim) / float(dim);
+        sample_uv_list[2 * i+1] = (id % dim) / float(dim);
+
+        // sample_uv_list.push_back((id / dim) / float(dim));
+        // sample_uv_list.push_back((id % dim) / float(dim));
+
     }
 }
-
-void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_list, uint dim, float2* ctrl_point)
+void updateSample(
+    std::vector<float>& acf_weight,
+    std::vector<float>& acf_pdf,
+    std::vector<float>& sample_uv_list,
+    uint dim,
+    float2* ctrl_point
+)
 {
-    std::vector<float> acf_pdf;
-    acf_pdf.reserve(acf_weight.size());
     float min = FLT_MAX;
     float max = -FLT_MAX;
     for (int i = 0; i < acf_weight.size(); ++i)
@@ -548,7 +610,7 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
 
         val = 3 * t * (1 - t) * (1 - t) * (1 - ctrl_point[1].y) + 3 * t * t * (1 - t) * (1 - ctrl_point[2].y) + t * t * t;
 
-        acf_pdf.push_back(val);
+        acf_pdf[i] = val;
     }
 
     // std::random_device rd;
@@ -556,12 +618,11 @@ void updateSample(std::vector<float>& acf_weight, std::vector<float>& sample_uv_
     std::default_random_engine rng;
     std::discrete_distribution<> d(acf_pdf.begin(), acf_pdf.end());
 
-    for (int i = 0; i < sample_uv_list.size() / 2; i++)
+    for (int i = 0; i < sample_uv_list.capacity() / 2; i++)
     {
         int id = d(rng);
         sample_uv_list[2 * i] = (id / dim) / float(dim);
         sample_uv_list[2 * i + 1] = (id % dim) / float(dim);
     }
 }
-
 } // namespace Falcor
