@@ -53,7 +53,7 @@ const uint32_t kMaxRecursionDepth = 2u;
 const char kInputViewDir[] = "viewW";
 const ChannelList kInputChannels = {
     // clang-format off
-    // { "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
+    //{ "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
     // { kInputViewDir,    "gViewW",       "World-space view direction (xyz float format)", true /* optional */ },
     // clang-format on
 };
@@ -422,6 +422,11 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
       displayPass(pRenderContext, renderData);
 }
 
+float getPoint(void* data, int32_t index)
+{
+    return ((float*)data)[index];
+}
+
 void HFTracing::renderUI(Gui::Widgets& widget)
 {
     bool dirty = false;
@@ -444,6 +449,15 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.slider("Sample Patch Scale", mPatchScale, 0.1f, 10.0f);
     widget.tooltip("Scale the sample patch", true);
+
+    editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
+    editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
+    editCurve |= widget.bezierCurve("AcfCurve", getPoint, (void*)point_data, 4, 200, 200);
+    dirty |= editCurve;
+    if (editCurve)
+        mpNBTFInt8[0]->mpTextureSynthesis->updateMap(mpNBTFInt8[0]->mUP.texDim.x, mpDevice, point_data);
+    widget.image("ACF", mpNBTFInt8[0]->mpTextureSynthesis->mpACF.get(), Falcor::float2(200.f));
+    widget.text("ACF visualization", true);
 
     dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
     widget.tooltip("Increse = less marching steps", true);

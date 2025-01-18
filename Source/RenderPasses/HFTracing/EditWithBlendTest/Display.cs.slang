@@ -43,6 +43,7 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
 
 
     gOutputColor[pixel] *= btfVal;
+    //gOutputColor[pixel] *= btfVal * (1 - gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] + 3]);
 
     //if(gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] == 0)
     //{

@@ -63,6 +63,8 @@ cbuffer CB
 #define M_1_32 0.03125 // 1/32
 #define M_1_16 0.0625  // 1/16
 
+// Inputs
+//Texture2D<PackedHitInfo> gVBuffer;
 
 // Outputs
 RWTexture2D<float4> gOutputColor;
@@ -524,6 +526,17 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     rayData.origin = primaryRayOrigin;
     rayData.direction = primaryRayDir;
 
+    //const HitInfo hit = HitInfo(gVBuffer[pixel]);
+    //if (hit.isValid())
+    //{
+    //    ShadingData sd = loadShadingData(hit, primaryRayOrigin, primaryRayDir);
+    //    int id = 4 * (floor(frac(abs(sd.uv)).y * gRenderTargetDim.y) * gRenderTargetDim.x + floor(frac(abs(sd.uv)).x * gRenderTargetDim.x));
+    //    gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = id;
+    //    if(distance(pixel, gSelectedPixel) <= 100)
+    //    {
+    //        gSelectBuffer[id] = gMatId;
+    //    }
+    //}
 
     traceScatterRay(rayData);
     // =================================================================================================
@@ -1200,6 +1213,10 @@ void rayGen()
     uint2 frameDim = DispatchRaysDimensions().xy;
     // printSetPixel(pixel);
 
+    //if(distance(pixel, gSelectedPixel) <= 100)
+    //{
+    //    gSelectBuffer[pixel.y * gRenderTargetDim.x + pixel.x] = 1;
+    //}
 
     float4 outputColor = tracePath(pixel, frameDim);
     // float4 outputColor = tracePathPrism(pixel, frameDim);
@@ -1224,14 +1241,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
     // always true for common surface
     rayData.terminated = true;
-    
-    uint2 pixel = DispatchRaysIndex().xy;
-    int id = 4 * (floor(frac(abs(sd.uv)).y * gRenderTargetDim.y) * gRenderTargetDim.x + floor(frac(abs(sd.uv)).x * gRenderTargetDim.x));
-    gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = id;
-    if(distance(pixel, gSelectedPixel) <= 100)
-    {
-        gSelectBuffer[id] = gMatId;
-    }
+
 
     float3 wo = sd.frame.toLocal(sd.V);
     float3 envLi;
@@ -1247,6 +1257,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
             ddx *= FOOTPRINT_SCALING;
             ddy *= FOOTPRINT_SCALING;
 
+            uint2 pixel = DispatchRaysIndex().xy;
 
             float3 wi = sd.frame.toLocal(envDir);
             float NdotL = wi.z > 0 ? wi.z : 0;
@@ -1271,6 +1282,12 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
             packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
             packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
 
+            int id = 4 * (floor(frac(abs(sd.uv)).y * gRenderTargetDim.y) * gRenderTargetDim.x + floor(frac(abs(sd.uv)).x * gRenderTargetDim.x));
+            gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = id;
+            if(distance(pixel, gSelectedPixel) <= 100)
+            {
+                gSelectBuffer[id] = gMatId;
+            }
 
             rayData.radiance = envLi * NdotL;
             rayData.terminated = false;
@@ -1285,7 +1302,14 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
 void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
 {
-    
+    if (gShowTracedHF)
+    {
+        rayData.radiance = pow(hit.getDisplacedTriangleHit().displacement, 1 / 1.4);
+        // rayData.radiance = hit.getDisplacedTriangleHit().displacement;
+        // rayData.terminated = false;
+        rayData.terminated = true;
+        return;
+    }
     // we use terminated to indicate that if the cuda inference is needed
     rayData.terminated = false;
     // Load shading data.
@@ -1302,28 +1326,12 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     computeRayDifferentials(instanceID, primitiveIndex, -sd.V, hitT, gScene.camera, 1.0f / float2(gRenderTargetDim), ddx, ddy);
     ddx *= FOOTPRINT_SCALING;
     ddy *= FOOTPRINT_SCALING;
-    
-    uint2 pixel = DispatchRaysIndex().xy;
-    int id = 4 * (floor(frac(abs(sd.uv)).y * gRenderTargetDim.y) * gRenderTargetDim.x + floor(frac(abs(sd.uv)).x * gRenderTargetDim.x));
-    gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = id;
-    if(distance(pixel, gSelectedPixel) <= 100)
-    {
-        gSelectBuffer[id] = gMatId;
-    }
-
-    if (gShowTracedHF)
-    {
-        rayData.radiance = pow(hit.getDisplacedTriangleHit().displacement, 1 / 1.4);
-        // rayData.radiance = hit.getDisplacedTriangleHit().displacement;
-        // rayData.terminated = false;
-        rayData.terminated = true;
-        return;
-    }
 
     rayData.radiance = float3(0, 0, 0);
     float3 newPos = sd.posW + sd.frame.N * gCurvatureParas.y;
     if (generateEnvMapSample(newPos, rayData.sg, envLi, envDir, envPdf))
     {
+        uint2 pixel = DispatchRaysIndex().xy;
         float3 wi = sd.frame.toLocal(envDir);
         float NdotL = wi.z > 0 ? wi.z : 0;
 
@@ -1349,6 +1357,12 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
         packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
         
+        int id = 4 * (floor(frac(abs(sd.uv)).y * gRenderTargetDim.y) * gRenderTargetDim.x + floor(frac(abs(sd.uv)).x * gRenderTargetDim.x));
+        gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = id;
+        if(distance(pixel, gSelectedPixel) <= 100)
+        {
+            gSelectBuffer[id] = gMatId;
+        }
 
         rayData.origin = newPos;
         rayData.radiance = envLi * NdotL;
