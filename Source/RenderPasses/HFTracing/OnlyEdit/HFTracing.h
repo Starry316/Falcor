@@ -317,12 +317,9 @@ private:
     RenderType mRenderType = RenderType::WAVEFRONT_SHADER_NN;
     InferType mInferType = InferType::CUDAINT8;
     
-    Falcor::float2 point_data[5] =
-        {Falcor::float2(0.0f, 1.0f), Falcor::float2(0.0f, 1.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(0.0f, 0.0f)};
-
     bool mContactRefinement = false;
     bool mMipGenerated = false;
-    bool mApplySyn = true;
+    bool mApplySyn = false;
     bool mNNInfer = true;
     bool mScaleUV = false;
     bool mHFBound = true;

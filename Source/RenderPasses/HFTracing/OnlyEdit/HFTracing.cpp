@@ -422,11 +422,6 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
       displayPass(pRenderContext, renderData);
 }
 
-float getPoint(void* data, int32_t index)
-{
-    return ((float*)data)[index];
-}
-
 void HFTracing::renderUI(Gui::Widgets& widget)
 {
     bool dirty = false;
@@ -449,16 +444,6 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.slider("Sample Patch Scale", mPatchScale, 0.1f, 10.0f);
     widget.tooltip("Scale the sample patch", true);
-
-    editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
-    editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
-    editCurve |= widget.bezierCurve("AcfCurve", getPoint, (void*)point_data, 4, 200, 200);
-    dirty |= editCurve;
-    if (editCurve)
-        for (int i = 0; i < 2; i++)
-            mpNBTFInt8[i]->mpTextureSynthesis->updateMap(mpNBTFInt8[i]->mUP.texDim.x, mpDevice, point_data);
-    widget.image("ACF", mpNBTFInt8[0]->mpTextureSynthesis->mpACF.get(), Falcor::float2(200.f));
-    widget.text("ACF visualization", true);
 
     dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
     widget.tooltip("Increse = less marching steps", true);

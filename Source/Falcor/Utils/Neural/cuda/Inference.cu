@@ -6,6 +6,8 @@
 #define HIDDEN_NUM 32
 #define HIDDEN_PACKED_NUM HIDDEN_NUM / 4
 #define HALF_ACC 1
+
+#ifndef TEST_MULTI
 __global__ void inferInt8TexTest(
     int* weight,
     float* testInput,
@@ -665,6 +667,8 @@ inline __device__ float rnd21(float2 p)
     return (temp - floor(temp));
 }
 
+#endif
+
 inline __device__ float B0(float2 uv, float scale = 1.0f)
 {
     float u = uv.x * scale;
@@ -706,7 +710,7 @@ inline __device__ float BSingularity(float2 uv, float scale = 1.0f)
     return 0.02f * cosu * cosv * cosu * cosv;
 }
 
-
+#ifndef TEST_MULTI
 __global__ void inferInt8TexAutocov(
     int* weight,
     int* packedInput,
@@ -1093,6 +1097,9 @@ __global__ void inferInt8TexAutocov(
 #endif
 }
 
+#endif
+
+#ifdef TEST_MULTI
 
 __global__ void inferInt8TexHashed(
     int* weight,
@@ -1137,6 +1144,8 @@ __global__ void inferInt8TexHashed(
     int inPackedNum = IN_PACKED_NUM;
     int outNum = 3;
 
+    int trueMatId = matId - 1;
+
     int val1[HIDDEN_NUM];
     int val2[HIDDEN_PACKED_NUM];
 
@@ -1148,10 +1157,10 @@ __global__ void inferInt8TexHashed(
     unpackUnorm2x16(packedInput[4 * (y * width + x) + 2], u, v);
 
     float4 val = tex2DLayered<float4>(HP, h1, h2, 0);
-    val2[0] = quantizeInt8x4f_safe(val, scaleIn1);
+    val2[0] = quantizeInt8x4f_safe(val, scaleIn1[trueMatId]);
 
     val = tex2DLayered<float4>(HP, h1, h2, 1);
-    val2[1] = quantizeInt8x4f_safe(val, scaleIn1);
+    val2[1] = quantizeInt8x4f_safe(val, scaleIn1[trueMatId]);
 
     // ======================================
     // edit here!!
@@ -1218,7 +1227,7 @@ __global__ void inferInt8TexHashed(
     val.y = tex2DLayered<float4>(InvP, G.y, 0.0f, 0).y;
     val.z = tex2DLayered<float4>(InvP, G.z, 0.0f, 0).z;
     val.w = tex2DLayered<float4>(InvP, G.w, 0.0f, 0).w;
-    val2[2] = quantizeInt8x4f_safe(val, scaleIn1);
+    val2[2] = quantizeInt8x4f_safe(val, scaleIn1[trueMatId]);
 
     g0 = tex2DLayered<float4>(TP, st0.y, st0.x, 1);
     g1 = tex2DLayered<float4>(TP, st1.y, st1.x, 1);
@@ -1267,15 +1276,15 @@ __global__ void inferInt8TexHashed(
     val.y = tex2DLayered<float4>(InvP, G.y, 0.0f, 1).y;
     val.z = tex2DLayered<float4>(InvP, G.z, 0.0f, 1).z;
     val.w = tex2DLayered<float4>(InvP, G.w, 0.0f, 1).w;
-    val2[3] = quantizeInt8x4f_safe(val, scaleIn1);
+    val2[3] = quantizeInt8x4f_safe(val, scaleIn1[trueMatId]);
     // =======================================
 
 
     val = tex2DLayered<float4>(DP, d1, d2, 0);
-    val2[4] = quantizeInt8x4f_safe(val, scaleIn1);
+    val2[4] = quantizeInt8x4f_safe(val, scaleIn1[trueMatId]);
 
     val = tex2DLayered<float4>(DP, d1, d2, 1);
-    val2[5] = quantizeInt8x4f_safe(val, scaleIn1);
+    val2[5] = quantizeInt8x4f_safe(val, scaleIn1[trueMatId]);
 
     // layer 1
     for (int k = 0; k < hiddenNum; k++)
@@ -1292,20 +1301,20 @@ __global__ void inferInt8TexHashed(
     {
 #if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
-            dequantizeInt8h_relu(val1[4 * k], dequantizeScale1),
-            dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale1),
-            dequantizeInt8h_relu(val1[4 * k + 2], dequantizeScale1),
-            dequantizeInt8h_relu(val1[4 * k + 3], dequantizeScale1),
-            scaleIn2
+            dequantizeInt8h_relu(val1[4 * k], dequantizeScale1[trueMatId]),
+            dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale1[trueMatId]),
+            dequantizeInt8h_relu(val1[4 * k + 2], dequantizeScale1[trueMatId]),
+            dequantizeInt8h_relu(val1[4 * k + 3], dequantizeScale1[trueMatId]),
+            scaleIn2[trueMatId]
         );
 
 #else
         val2[k] = quantizeInt8x4f_safe(
-            dequantizeInt8f_relu(val1[4 * k], dequantizeScale1),
-            dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale1),
-            dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale1),
-            dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale1),
-            scaleIn2
+            dequantizeInt8f_relu(val1[4 * k], dequantizeScale1[trueMatId]),
+            dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale1[trueMatId]),
+            dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale1[trueMatId]),
+            dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale1[trueMatId]),
+            scaleIn2[trueMatId]
         );
 #endif
     }
@@ -1324,18 +1333,18 @@ __global__ void inferInt8TexHashed(
     {
 #if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
-            dequantizeInt8h_relu(val1[4 * k], dequantizeScale2),
-            dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale2),
-            dequantizeInt8h_relu(val1[4 * k + 2], dequantizeScale2),
-            dequantizeInt8h_relu(val1[4 * k + 3], dequantizeScale2),
-            scaleIn3
+            dequantizeInt8h_relu(val1[4 * k], dequantizeScale2[trueMatId]),
+            dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale2[trueMatId]),
+            dequantizeInt8h_relu(val1[4 * k + 2], dequantizeScale2[trueMatId]),
+            dequantizeInt8h_relu(val1[4 * k + 3], dequantizeScale2[trueMatId]),
+            scaleIn3[trueMatId]
         );
 #else
         val2[k] = quantizeInt8x4f_safe(
-            dequantizeInt8f_relu(val1[4 * k], dequantizeScale2),
-            dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale2),
-            dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale2),
-            dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale2),
+            dequantizeInt8f_relu(val1[4 * k], dequantizeScale2[trueMatId]),
+            dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale2[trueMatId]),
+            dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale2[trueMatId]),
+            dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale2[trueMatId]),
             scaleIn3
         );
 #endif
@@ -1355,19 +1364,19 @@ __global__ void inferInt8TexHashed(
     {
 #if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
-            dequantizeInt8h_relu(val1[4 * k], dequantizeScale3),
-            dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale3),
-            dequantizeInt8h_relu(val1[4 * k + 2], dequantizeScale3),
-            dequantizeInt8h_relu(val1[4 * k + 3], dequantizeScale3),
-            scaleIn4
+            dequantizeInt8h_relu(val1[4 * k], dequantizeScale3[trueMatId]),
+            dequantizeInt8h_relu(val1[4 * k + 1], dequantizeScale3[trueMatId]),
+            dequantizeInt8h_relu(val1[4 * k + 2], dequantizeScale3[trueMatId]),
+            dequantizeInt8h_relu(val1[4 * k + 3], dequantizeScale3[trueMatId]),
+            scaleIn4[trueMatId]
         );
 #else
         val2[k] = quantizeInt8x4f_safe(
-            dequantizeInt8f_relu(val1[4 * k], dequantizeScale3),
-            dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale3),
-            dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale3),
-            dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale3),
-            scaleIn4
+            dequantizeInt8f_relu(val1[4 * k], dequantizeScale3[trueMatId]),
+            dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale3[trueMatId]),
+            dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale3[trueMatId]),
+            dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale3[trueMatId]),
+            scaleIn4[trueMatId]
         );
 #endif
     }
@@ -1383,15 +1392,182 @@ __global__ void inferInt8TexHashed(
     }
     __syncthreads();
 #if HALF_ACC
-    output[4 * (y * width + x) + 0] = dequantizeInt8h_relu(val1[0], dequantizeScale4);
-    output[4 * (y * width + x) + 1] = dequantizeInt8h_relu(val1[1], dequantizeScale4);
-    output[4 * (y * width + x) + 2] = dequantizeInt8h_relu(val1[2], dequantizeScale4);
+    output[4 * (y * width + x) + 0] = dequantizeInt8h_relu(val1[0], dequantizeScale4[trueMatId]);
+    output[4 * (y * width + x) + 1] = dequantizeInt8h_relu(val1[1], dequantizeScale4[trueMatId]);
+    output[4 * (y * width + x) + 2] = dequantizeInt8h_relu(val1[2], dequantizeScale4[trueMatId]);
 #else
-    output[4 * (y * width + x) + 0] = dequantizeInt8f_relu(val1[0], dequantizeScale4);
-    output[4 * (y * width + x) + 1] = dequantizeInt8f_relu(val1[1], dequantizeScale4);
-    output[4 * (y * width + x) + 2] = dequantizeInt8f_relu(val1[2], dequantizeScale4);
+    output[4 * (y * width + x) + 0] = dequantizeInt8f_relu(val1[0], dequantizeScale4[trueMatId]);
+    output[4 * (y * width + x) + 1] = dequantizeInt8f_relu(val1[1], dequantizeScale4[trueMatId]);
+    output[4 * (y * width + x) + 2] = dequantizeInt8f_relu(val1[2], dequantizeScale4[trueMatId]);
 #endif
 }
+
+void launchInferInt8TexHashed(
+    int* weight,
+    int* packedInput,
+    float* hashedUV,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* sampleList,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask,
+    float uvScale,
+    float patchScale,
+    int matId
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+    inferInt8TexHashed<<<dimGrid, dimBlock>>>(
+        weight, packedInput, hashedUV, HP, DP, UP, TP, InvP, sampleList, output, width, height, validMask, uvScale, patchScale, matId
+    );
+}
+
+void launchInferInt8TexTest(
+    int* weight,
+    float* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    float uvScale
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+}
+
+void launchInferFp32TexTest(
+    float* weight,
+    float* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    float uvScale
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+}
+
+void launchInferFp16TexTest(
+    __half* weight,
+    float* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    float uvScale
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+}
+
+void launchInferInt8Tex(
+    int* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask,
+    float uvScale
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+}
+
+void launchInferInt8TexHisto(
+    int* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask,
+    float uvScale
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+}
+
+void launchInferInt8TexAutocov(
+    int* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* sampleList,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask,
+    float uvScale
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+}
+
+void launchInferFP32Tex(
+    float* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask,
+    float uvScale
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+}
+
+void launchInferFP16Tex(
+    __half* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    int* validMask,
+    float uvScale
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+}
+#endif 
+
+#ifndef TEST_MULTI
 
 void launchInferInt8Tex(
     int* weight,
@@ -1452,29 +1628,6 @@ void launchInferInt8TexAutocov(
     inferInt8TexAutocov<<<dimGrid, dimBlock>>>(weight, packedInput, HP, DP, UP, TP, InvP, sampleList, output, width, height, validMask, uvScale);
 }
 
-void launchInferInt8TexHashed(
-    int* weight,
-    int* packedInput,
-    float* hashedUV,
-    cudaTextureObject_t HP,
-    cudaTextureObject_t DP,
-    cudaTextureObject_t UP,
-    cudaTextureObject_t TP,
-    cudaTextureObject_t InvP,
-    float* sampleList,
-    float* output,
-    unsigned int width,
-    unsigned int height,
-    int* validMask,
-    float uvScale,
-    float patchScale,
-    int matId
-)
-{
-    dim3 dimBlock(16, 16);
-    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
-    inferInt8TexHashed<<<dimGrid, dimBlock>>>(weight, packedInput, hashedUV, HP, DP, UP, TP, InvP, sampleList, output, width, height, validMask, uvScale, patchScale, matId);
-}
 
 __global__ void inferFP32Tex(
     float* weight2,
@@ -2097,3 +2250,4 @@ void launchInferFP16Tex(
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
     inferFP16Tex<<<dimGrid, dimBlock>>>(weight, packedInput, HP, DP, UP, output, width, height, validMask, uvScale);
 }
+#endif
