@@ -6778,12 +6778,11 @@ bool ImGui::PlotBezierCurveEx(
     if (!ItemAdd(total_bb, 0, &frame_bb))
         return false;
         //return -1;
-    //const bool hovered = ItemHoverable(frame_bb, id);
-    const bool hovered = ItemHoverable(inner_bb, id);
+    const bool hovered = ItemHoverable(frame_bb, id);
+    //const bool hovered = ItemHoverable(inner_bb, id);
 
     RenderFrame(frame_bb.Min, frame_bb.Max, GetColorU32(ImGuiCol_FrameBg), true, style.FrameRounding);
 
-    int idx_hovered = -1;
     ImVec2 pos[4];
     for (int i = 0; i < values_count; i++)
     {
@@ -6792,17 +6791,17 @@ bool ImGui::PlotBezierCurveEx(
 
     window->DrawList->AddBezierCurve(pos[0], pos[1], pos[2], pos[3], IM_COL32(255, 255, 255, 255), 2.0f);
 
-    window->DrawList->AddCircle(pos[1], 4, IM_COL32(255, 255, 255, 255), 12);
-    window->DrawList->AddCircle(pos[2], 4, IM_COL32(255, 255, 255, 255), 12);
+    window->DrawList->AddCircle(pos[1], 9, IM_COL32(255, 255, 255, 255), 12);
+    window->DrawList->AddCircle(pos[2], 9, IM_COL32(255, 255, 255, 255), 12);
     window->DrawList->AddLine(pos[0], pos[1], IM_COL32(255, 255, 255, 255));
     window->DrawList->AddLine(pos[2], pos[3], IM_COL32(255, 255, 255, 255));
 
     bool flag_edit = false;
-    if (hovered && frame_bb.Contains(g.IO.MousePos) && g.IO.MouseClicked[0])
+    if (hovered && g.IO.MouseClicked[0])
     {
-        if (ImLengthSqr(g.IO.MousePos - pos[1]) < 16)
+        if (ImLengthSqr(g.IO.MousePos - pos[1]) < 100)
             ((float*)data)[2 * values_count] = 1.0f;
-        else if (ImLengthSqr(g.IO.MousePos - pos[2]) < 16)
+        else if (ImLengthSqr(g.IO.MousePos - pos[2]) < 100)
             ((float*)data)[2 * values_count + 1] = 1.0f;
     }
 
@@ -6822,7 +6821,7 @@ bool ImGui::PlotBezierCurveEx(
         }
     }
 
-    if (!hovered || !frame_bb.Contains(g.IO.MousePos) || g.IO.MouseReleased[0])
+    if (!hovered || g.IO.MouseReleased[0])
     {
         ((float*)data)[2 * values_count] = 0.0f;
         ((float*)data)[2 * values_count + 1] = 0.0f;
