@@ -662,7 +662,7 @@ bool traceSynthesizedHeightMapEstimated(
                     AutocovarianceBlendingDual(hfData[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]], gMaxSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale) * HF_SCALING +
                     HF_OFFSET;
             else
-                heightData = ((1 - gSelectBuffer[id + 3]) * gShellHF[gSelectBuffer[id]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x + gSelectBuffer[id + 3] * gShellHF[gSelectBuffer[id + 2]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x) * HF_SCALING + HF_OFFSET;
+                heightData = ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x) * HF_SCALING + HF_OFFSET;
                 // heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
             const float currentHeightDelta = currentTestPoint.z - heightData;
             if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
@@ -691,7 +691,7 @@ bool traceSynthesizedHeightMapEstimated(
                          HF_OFFSET;
         else
             heightData =
-                ((1 - gSelectBuffer[id + 3]) * gShellHF[gSelectBuffer[id]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x + gSelectBuffer[id + 3] * gShellHF[gSelectBuffer[id + 2]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x) *HF_SCALING +HF_OFFSET;
+                ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x) *HF_SCALING +HF_OFFSET;
                 // gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x *HF_SCALING +HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
@@ -717,7 +717,7 @@ bool traceSynthesizedHeightMapEstimated(
                         HF_OFFSET;
                 else
                     heightDataFine =
-                        ((1 - gSelectBuffer[id + 3]) * gShellHF[gSelectBuffer[id]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x + gSelectBuffer[id + 3] * gShellHF[gSelectBuffer[id + 2]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x) * HF_SCALING + HF_OFFSET;
+                        ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x) * HF_SCALING + HF_OFFSET;
                         // gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x * HF_SCALING + HF_OFFSET;
 
                 const float currentHeightDeltaFine = currentTestPointFine.z - heightDataFine;
@@ -784,7 +784,7 @@ bool traceSynthesizedHeightMapEstimatedNoMip(
             heightData =
                 AutocovarianceBlendingDual(hfData[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]], gMaxSampler, 0, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale) * HF_SCALING + HF_OFFSET;
         else
-            heightData = ((1 - gSelectBuffer[id + 3]) * gShellHF[gSelectBuffer[id]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x + gSelectBuffer[id + 3] * gShellHF[gSelectBuffer[id + 2]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x) * HF_SCALING + HF_OFFSET;
+            heightData = ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x) * HF_SCALING + HF_OFFSET;
             // heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         //
@@ -858,7 +858,7 @@ bool traceSynthesizedHeightMapEstimatedSimpleMip(
                 AutocovarianceBlendingDual(hfData[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]], gMaxSampler, minLod, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale) * HF_SCALING + HF_OFFSET;
         else
             // heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy))* UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
-            heightData = ((1 - gSelectBuffer[id + 3]) * gShellHF[gSelectBuffer[id]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x + gSelectBuffer[id + 3] * gShellHF[gSelectBuffer[id + 2]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x) * HF_SCALING + HF_OFFSET;
+            heightData = ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x) * HF_SCALING + HF_OFFSET;
             // heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         //
@@ -1260,7 +1260,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
                     gSelectBuffer[id_trans + 2] = gSelectBuffer[4 * (pixel_uv_out.y * gRenderTargetDim.x + pixel_uv_out.x)];
 
                     if(gSelectBuffer[id_trans + 2] != gMatId)
-                        gSelectBuffer[id_trans + 3] = max((len - 40) * 0.1, 0);
+                        gSelectBuffer[id_trans + 3] = max((len - 40) * 100, 0);
                 }
             }
         }
@@ -1361,7 +1361,7 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
                     gSelectBuffer[id_trans + 2] = gSelectBuffer[4 * (pixel_uv_out.y * gRenderTargetDim.x + pixel_uv_out.x)];
 
                     if(gSelectBuffer[id_trans + 2] != gMatId)
-                        gSelectBuffer[id_trans + 3] = max((len - 40) * 0.1, 0);
+                        gSelectBuffer[id_trans + 3] = max((len - 40) * 100, 0);
                 }
             }
         }
