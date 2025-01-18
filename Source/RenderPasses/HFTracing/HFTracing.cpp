@@ -425,7 +425,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
     editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
-    editCurve |= widget.bezierCurve("TestCurve", getPoint, (void*)point_data, 4);
+    editCurve |= widget.bezierCurve("TestCurve", getPoint, (void*)point_data, 4, 200, 200);
     dirty |= editCurve;
     if (editCurve)
         mpNBTFInt8->mpTextureSynthesis->updateMap(mpNBTFInt8->mUP.texDim.x, mpDevice, point_data);
