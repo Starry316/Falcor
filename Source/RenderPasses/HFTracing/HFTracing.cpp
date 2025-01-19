@@ -531,41 +531,8 @@ void HFTracing::handleOutput()
         pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
         mOutputIndx++;
 #ifdef MIP
-        mCurvatureParas.w += 0.1f;
-        if (mCurvatureParas.w > 55)
-        {
-            mPhi = 0;
-            mOutputStep = 0;
-            mOutputIndx = 0;
-            mOutputSPP = 1;
-            mpScene->getCamera()->setResetFlag(true);
-            mpScene->getCamera()->setNextStep(false);
-            mOutputingVideo = false;
-            mpScene->getCamera()->setAccumulating(mOutputingVideo);
-        }
-
-
-
-        // Falcor::float3 pos = pCamera->getPosition();
-        // Falcor::float3 lookat = pCamera->getTarget();
-        // mPhi += float(2 * M_PI) / 360;
-        // float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
-
-        // float phi = atan2f(pos.z / r, pos.x / r);
-        // r+= 0.05f;
-        // pos.x = r * cosf(phi + float(2 * M_PI) / 360);
-        // pos.z = r * sinf(phi + float(2 * M_PI) / 360);
-
-        // pCamera->setPosition(pos);
-
-        // // float lookatR = sqrtf(lookat.x * lookat.x + lookat.z * lookat.z);;
-        // // float lookatPhi = atan2f(lookat.z / lookatR, lookat.x / lookatR);
-        // // lookatR += 0.01f;
-        // // lookat.x = lookatR * cosf(lookatPhi + float(2 * M_PI) / 360);
-        // // lookat.z = lookatR * sinf(lookatPhi + float(2 * M_PI) / 360);
-
-        // pCamera->setTarget(lookat);
-        // if (mPhi > float(2 * M_PI * 4))
+        // mCurvatureParas.w += 0.5f;
+        // if (mCurvatureParas.w > 101)
         // {
         //     mPhi = 0;
         //     mOutputStep = 0;
@@ -576,6 +543,39 @@ void HFTracing::handleOutput()
         //     mOutputingVideo = false;
         //     mpScene->getCamera()->setAccumulating(mOutputingVideo);
         // }
+
+
+
+        Falcor::float3 pos = pCamera->getPosition();
+        Falcor::float3 lookat = pCamera->getTarget();
+        // mPhi += float(2 * M_PI) / 360;
+        // float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
+
+        // float phi = atan2f(pos.z / r, pos.x / r);
+        // r+= 0.05f;
+        // pos.x = r * cosf(phi + float(2 * M_PI) / 360);
+        // pos.z = r * sinf(phi + float(2 * M_PI) / 360);
+        pos.x += 0.5f;
+        pCamera->setPosition(pos);
+
+        // float lookatR = sqrtf(lookat.x * lookat.x + lookat.z * lookat.z);;
+        // float lookatPhi = atan2f(lookat.z / lookatR, lookat.x / lookatR);
+        // lookatR += 0.01f;
+        // lookat.x = lookatR * cosf(lookatPhi + float(2 * M_PI) / 360);
+        // lookat.z = lookatR * sinf(lookatPhi + float(2 * M_PI) / 360);
+
+        pCamera->setTarget(lookat);
+        if (pos.x > 70)
+        {
+            mPhi = 0;
+            mOutputStep = 0;
+            mOutputIndx = 0;
+            mOutputSPP = 1;
+            mpScene->getCamera()->setResetFlag(true);
+            mpScene->getCamera()->setNextStep(false);
+            mOutputingVideo = false;
+            mpScene->getCamera()->setAccumulating(mOutputingVideo);
+        }
 #else
         if (mOutputStep == 0)
         {
@@ -591,35 +591,35 @@ void HFTracing::handleOutput()
         }
         else if (mOutputStep == 1)
         {
-            mEnvRotAngle.x += float(2 * M_PI) / 180;
-            if (mScaleUV)
+               mEnvRotAngle.y += float(2 * M_PI) / 180;
+            // if (mScaleUV)
                 // mCurvatureParas.z += uvscaleFactor / 180.0f;
-                mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.x * 0.5) / 180.0f * float(M_PI_2);
+                // mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.y * 0.5) / 180.0f * float(M_PI_2);
 
-            if (mEnvRotAngle.x > float(2 * M_PI))
+            if (mEnvRotAngle.y > float(2 * M_PI))
             {
-                mEnvRotAngle.x = 0;
+                mEnvRotAngle.y = 0;
                 mOutputStep = 2;
             }
         }
         else if (mOutputStep == 2)
         {
-            mEnvRotAngle.z += float(2 * M_PI) / 180;
+            mEnvRotAngle += float(2 * M_PI) / 180;
             if (mScaleUV)
                 // mCurvatureParas.z -= uvscaleFactor / 180.0f;
                 mCurvatureParas.z += uvscaleFactor * sinf(float(M_PI) + mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI_2);
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
-                mEnvRotAngle.z = 0;
+                mEnvRotAngle = Falcor::float3(0);
                 mOutputStep = 3;
             }
         }
         else if (mOutputStep == 3)
         {
             mEnvRotAngle += float(2 * M_PI) / 180;
-            if (mScaleUV)
+            // if (mScaleUV)
                 // mCurvatureParas.z -= uvscaleFactor / 180.0f;
-                mCurvatureParas.z += uvscaleFactor * sinf(float(M_PI) + mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI_2);
+                // mCurvatureParas.z += uvscaleFactor * sinf(float(M_PI) + mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI_2);
             if (mEnvRotAngle.z > float(2 * M_PI))
             {
                 mEnvRotAngle = Falcor::float3(0);
@@ -668,6 +668,99 @@ void HFTracing::handleOutput()
                 mpScene->getCamera()->setAccumulating(mOutputingVideo);
             }
         }
+
+
+        // if (mOutputStep == 0)
+        // {
+        //     mEnvRotAngle.y += float(2 * M_PI) / 180;
+        //     if (mScaleUV)
+        //         mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.y * 0.5) / 180.0f * float(M_PI_2);
+        //     // mCurvatureParas.z += uvscaleFactor / 180.0f;
+        //     if (mEnvRotAngle.y > float(2 * M_PI))
+        //     {
+        //         mEnvRotAngle.y = 0;
+        //         mOutputStep = 1;
+        //     }
+        // }
+        // else if (mOutputStep == 1)
+        // {
+        //     mEnvRotAngle.x += float(2 * M_PI) / 180;
+        //     if (mScaleUV)
+        //         // mCurvatureParas.z += uvscaleFactor / 180.0f;
+        //         mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.x * 0.5) / 180.0f * float(M_PI_2);
+
+        //     if (mEnvRotAngle.x > float(2 * M_PI))
+        //     {
+        //         mEnvRotAngle.x = 0;
+        //         mOutputStep = 2;
+        //     }
+        // }
+        // else if (mOutputStep == 2)
+        // {
+        //     mEnvRotAngle.z += float(2 * M_PI) / 180;
+        //     if (mScaleUV)
+        //         // mCurvatureParas.z -= uvscaleFactor / 180.0f;
+        //         mCurvatureParas.z += uvscaleFactor * sinf(float(M_PI) + mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI_2);
+        //     if (mEnvRotAngle.z > float(2 * M_PI))
+        //     {
+        //         mEnvRotAngle.z = 0;
+        //         mOutputStep = 3;
+        //     }
+        // }
+        // else if (mOutputStep == 3)
+        // {
+        //     mEnvRotAngle += float(2 * M_PI) / 180;
+        //     if (mScaleUV)
+        //         // mCurvatureParas.z -= uvscaleFactor / 180.0f;
+        //         mCurvatureParas.z += uvscaleFactor * sinf(float(M_PI) + mEnvRotAngle.z * 0.5) / 180.0f * float(M_PI_2);
+        //     if (mEnvRotAngle.z > float(2 * M_PI))
+        //     {
+        //         mEnvRotAngle = Falcor::float3(0);
+        //         mOutputStep = 4;
+
+        //         //         // mEnvRotAngle = Falcor::float3(0);
+        //         //         // mOutputStep = 0;
+        //         //         // mOutputIndx = 0;
+        //         //         // mOutputSPP = 1;
+        //         //         // mpScene->getCamera()->setResetFlag(true);
+        //         //         // mpScene->getCamera()->setNextStep(false);
+        //         //         // mOutputingVideo = false;
+        //         //         // mpScene->getCamera()->setAccumulating(mOutputingVideo);
+        //     }
+        // }
+        // else if (mOutputStep == 4)
+        // {
+        //     Falcor::float3 pos = pCamera->getPosition();
+        //     Falcor::float3 lookat = pCamera->getTarget();
+        //     mPhi += float(2 * M_PI) / 360;
+        //     float r = sqrtf(pos.x * pos.x + pos.z * pos.z);
+        //     float phi = atan2f(pos.z / r, pos.x / r);
+        //     if (mScaleUV)
+        //         mCurvatureParas.z += uvscaleFactor * sinf(mPhi) / 180.0f * float(M_PI);
+        //     pos.x = r * cosf(phi + float(2 * M_PI) / 360);
+        //     pos.z = r * sinf(phi + float(2 * M_PI) / 360);
+
+        //     pCamera->setPosition(pos);
+
+        //     float lookatR = sqrtf(lookat.x * lookat.x + lookat.z * lookat.z);
+        //     float lookatPhi = atan2f(lookat.z / lookatR, lookat.x / lookatR);
+
+        //     lookat.x = lookatR * cosf(lookatPhi + float(2 * M_PI) / 360);
+        //     lookat.z = lookatR * sinf(lookatPhi + float(2 * M_PI) / 360);
+
+        //     pCamera->setTarget(lookat);
+        //     if (mPhi > float(2 * M_PI))
+        //     {
+        //         mPhi = 0;
+        //         mOutputStep = 0;
+        //         mOutputIndx = 0;
+        //         mOutputSPP = 1;
+        //         mpScene->getCamera()->setResetFlag(true);
+        //         mpScene->getCamera()->setNextStep(false);
+        //         mOutputingVideo = false;
+        //         mpScene->getCamera()->setAccumulating(mOutputingVideo);
+        //     }
+        // }
 #endif
     }
 }

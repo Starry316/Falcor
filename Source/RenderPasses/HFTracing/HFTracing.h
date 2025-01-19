@@ -277,7 +277,12 @@ private:
     std::string mHFFileName = "Tiles11_DISP_3K_cut.jpg";
     bool mHDRBTF = true;
 #endif
-
+#ifdef TILE4_SML
+    std::string mNetInt8Name = "tile4_small_m32u8h8d8_int8";
+    std::string mShellHFFileName = "Tiles11_DISP_3K_sml.jpg";
+    std::string mHFFileName = "Tiles11_DISP_3K_sml.jpg";
+    bool mHDRBTF = true;
+#endif
 #ifdef FABRIC
     std::string mNetInt8Name = "fabric_m32u8h8d8_int8";
     std::string mShellHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
@@ -316,13 +321,13 @@ private:
 #endif
 
     // std::string mNetName = "leather11_m32u16h8d8";
-    // std::string mNetName = "leather11_tile_m32u16h8d8";
+    std::string mNetName = "leather11_tile_m32u16h8d8";
     // std::string mNetName = "tile2_m32u16h8d8";
-    // std::string mNetName = "tile4_m32u16h8d8";
+    // std::string mNetName = "tile4_small_m32u16h8d8";
     // std::string mNetName = "tile2_small_m32u16h8d8";
     // std::string mNetName = "metal2_m32u16h8d8";
     // std::string mNetName = "weave_m32u16h8d8";
-    std::string mNetName = "weave_small_m32u16h8d8";
+    // std::string mNetName = "weave_small_m32u16h8d8";
     ref<Texture> mpHitBuffer;
 
     ref<Texture> mpHF;
@@ -381,7 +386,7 @@ private:
     Falcor::float3 mEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     Falcor::float3 mOriginEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     uint mOutputStep = 4;
-    float uvscaleFactor =2.0f;
+    float uvscaleFactor =4.0f;
     // cuda
     float mCudaTime = 0.0;
     float mPhi = 0.0;
