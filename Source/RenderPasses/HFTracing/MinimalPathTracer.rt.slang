@@ -59,6 +59,7 @@ cbuffer CB
     float gPatchScale;
     uint2 gSelectedPixel;
     uint gMatId;
+    bool gUseEditMap;
 }
 #define M_1_32 0.03125 // 1/32
 #define M_1_16 0.0625  // 1/16
@@ -72,6 +73,7 @@ Texture2D<float4> gShellHF[2];
 Texture2D<float4> gNormalMap;
 Texture2D<float4> gTangentMap;
 Texture2D<float4> gPosMap;
+Texture2D<float4> gEditMap;
 
 RWBuffer<uint4> packedInput;
 RWBuffer<int> cudaVaildBuffer;
@@ -648,8 +650,6 @@ bool traceSynthesizedHeightMapEstimated(
 
     float lastHeightDelta = 0.0001;
 
-    int id = gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1];
-
     if (fineSteps <= coarseLength)
     {
         for (int i = 0; i < fineSteps; i++)
@@ -662,8 +662,7 @@ bool traceSynthesizedHeightMapEstimated(
                     AutocovarianceBlendingDual(hfData[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]], gMaxSampler, ddx, ddy, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale) * HF_SCALING +
                     HF_OFFSET;
             else
-                heightData = ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x) * HF_SCALING + HF_OFFSET;
-                // heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
+                heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
             const float currentHeightDelta = currentTestPoint.z - heightData;
             if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
                 (sign(lastHeightDelta) != sign(currentHeightDelta)))
@@ -691,8 +690,7 @@ bool traceSynthesizedHeightMapEstimated(
                          HF_OFFSET;
         else
             heightData =
-                ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x) *HF_SCALING +HF_OFFSET;
-                // gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x *HF_SCALING +HF_OFFSET;
+                gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, ddx * coarseLength, ddy * coarseLength).x *HF_SCALING +HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
             (sign(lastHeightDelta) != sign(currentHeightDelta)))
@@ -717,8 +715,7 @@ bool traceSynthesizedHeightMapEstimated(
                         HF_OFFSET;
                 else
                     heightDataFine =
-                        ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x) * HF_SCALING + HF_OFFSET;
-                        // gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x * HF_SCALING + HF_OFFSET;
+                        gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPointFine.xy)) * UV_SCALE, ddx / 2, ddy / 2).x * HF_SCALING + HF_OFFSET;
 
                 const float currentHeightDeltaFine = currentTestPointFine.z - heightDataFine;
                 if (((currentHeightDeltaFine <= 0.f) && (currentHeightDeltaFine > -kSurfaceThickness)) ||
@@ -773,8 +770,6 @@ bool traceSynthesizedHeightMapEstimatedNoMip(
     float3 currentTestPoint = startPoint;
     float lastHeightDelta = 0.0001;
 
-    int id = gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1];
-
     for (int i = 0; i < maxCount; i++)
     {
         lastTestPoint = currentTestPoint;
@@ -784,8 +779,7 @@ bool traceSynthesizedHeightMapEstimatedNoMip(
             heightData =
                 AutocovarianceBlendingDual(hfData[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]], gMaxSampler, 0, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale) * HF_SCALING + HF_OFFSET;
         else
-            heightData = ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x) * HF_SCALING + HF_OFFSET;
-            // heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x * HF_SCALING + HF_OFFSET;
+            heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, 0).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         //
         if (((currentHeightDelta <= 0.f) && (currentHeightDelta > -kSurfaceThickness)) ||
@@ -845,8 +839,6 @@ bool traceSynthesizedHeightMapEstimatedSimpleMip(
     float3 currentTestPoint = startPoint;
     float lastHeightDelta = 0.0001;
 
-    int id = gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1];
-
     for (int i = 0; i < maxCount; i++)
     {
         lastTestPoint = currentTestPoint;
@@ -858,8 +850,7 @@ bool traceSynthesizedHeightMapEstimatedSimpleMip(
                 AutocovarianceBlendingDual(hfData[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]], gMaxSampler, minLod, frac(abs(currentTestPoint.xy)) * UV_SCALE, gPatchScale) * HF_SCALING + HF_OFFSET;
         else
             // heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleGrad(gMaxSampler, frac(abs(currentTestPoint.xy))* UV_SCALE, ddx, ddy).x * HF_SCALING + HF_OFFSET;
-            heightData = ((1 - gSelectBuffer[id + 3] * 0.001) * gShellHF[gSelectBuffer[id]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x + gSelectBuffer[id + 3] * 0.001 * gShellHF[gSelectBuffer[id + 2]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x) * HF_SCALING + HF_OFFSET;
-            // heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x * HF_SCALING + HF_OFFSET;
+            heightData = gShellHF[gSelectBuffer[gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1]]].SampleLevel(gMaxSampler, frac(abs(currentTestPoint.xy)) * UV_SCALE, minLod).x * HF_SCALING + HF_OFFSET;
         const float currentHeightDelta = currentTestPoint.z - heightData;
         //
         // if (currentHeightDelta >= 0.f)
@@ -1237,33 +1228,19 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     rayData.terminated = true;
     
     uint2 pixel = DispatchRaysIndex().xy;
-    int2 pixel_uv = int2(floor(frac(abs(sd.uv)).x * gRenderTargetDim.x), floor(frac(abs(sd.uv)).y * gRenderTargetDim.y));
-    int id = 4 * (pixel_uv.y * gRenderTargetDim.x + pixel_uv.x);
+    int id = 4 * (floor(frac(abs(sd.uv)).y * gRenderTargetDim.y) * gRenderTargetDim.x + floor(frac(abs(sd.uv)).x * gRenderTargetDim.x));
     gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = id;
-    if(pixel.x == gSelectedPixel.x && pixel.y == gSelectedPixel.y)  // select in texture space
+    if(gUseEditMap)
     {
-        uint maxId = gRenderTargetDim.x * gRenderTargetDim.y - 1;
-        for(int v = -50; v < 50; v++)
-        {
-            for(int u = -50; u < 50; u++)
-            {
-                int2 pixel_uv_trans = int2(min(max(pixel_uv.x + u, 0), gRenderTargetDim.x - 1), min(max(pixel_uv.y + v, 0), gRenderTargetDim.y - 1));
-                int id_trans = 4 * (pixel_uv_trans.y * gRenderTargetDim.x + pixel_uv_trans.x);
-                float len = distance(pixel_uv_trans, pixel_uv);
-                if(len <= 50)
-                {
-                    gSelectBuffer[id_trans] = gMatId;
+        uint width, height;
+        gEditMap.GetDimensions(width, height);
+        uint2 texel_map = uint2(floor(frac(abs(sd.uv)).x * width), floor(frac(abs(sd.uv)).y * height));
 
-                    float2 dir = normalize(pixel_uv_trans - pixel_uv);
-                    int2 pixel_uv_out = pixel_uv + ceil(dir * 50);
-                    pixel_uv_out = int2(min(max(pixel_uv_out.x, 0), gRenderTargetDim.x - 1), min(max(pixel_uv_out.y, 0), gRenderTargetDim.y - 1));
-                    gSelectBuffer[id_trans + 2] = gSelectBuffer[4 * (pixel_uv_out.y * gRenderTargetDim.x + pixel_uv_out.x)];
-
-                    if(gSelectBuffer[id_trans + 2] != gMatId)
-                        gSelectBuffer[id_trans + 3] = max((len - 40) * 100, 0);
-                }
-            }
-        }
+        gSelectBuffer[id] = gEditMap[texel_map].x;
+    }
+    else if(distance(pixel, gSelectedPixel) <= 100)
+    {
+        gSelectBuffer[id] = gMatId;
     }
 
 
@@ -1304,7 +1281,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
             packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
             packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
             packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
-            
+
 
             rayData.radiance = envLi * NdotL;
             rayData.terminated = false;
@@ -1338,33 +1315,19 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     ddy *= FOOTPRINT_SCALING;
     
     uint2 pixel = DispatchRaysIndex().xy;
-    int2 pixel_uv = int2(floor(frac(abs(sd.uv)).x * gRenderTargetDim.x), floor(frac(abs(sd.uv)).y * gRenderTargetDim.y));
-    int id = 4 * (pixel_uv.y * gRenderTargetDim.x + pixel_uv.x);
+    int id = 4 * (floor(frac(abs(sd.uv)).y * gRenderTargetDim.y) * gRenderTargetDim.x + floor(frac(abs(sd.uv)).x * gRenderTargetDim.x));
     gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = id;
-    if(pixel.x == gSelectedPixel.x && pixel.y == gSelectedPixel.y)  // select in texture space
+    if(gUseEditMap)
     {
-        uint maxId = gRenderTargetDim.x * gRenderTargetDim.y - 1;
-        for(int v = -50; v < 50; v++)
-        {
-            for(int u = -50; u < 50; u++)
-            {
-                int2 pixel_uv_trans = int2(min(max(pixel_uv.x + u, 0), gRenderTargetDim.x - 1), min(max(pixel_uv.y + v, 0), gRenderTargetDim.y - 1));
-                int id_trans = 4 * (pixel_uv_trans.y * gRenderTargetDim.x + pixel_uv_trans.x);
-                float len = distance(pixel_uv_trans, pixel_uv);
-                if(len <= 50)
-                {
-                    gSelectBuffer[id_trans] = gMatId;
+        uint width, height;
+        gEditMap.GetDimensions(width, height);
+        uint2 texel_map = uint2(floor(frac(abs(sd.uv)).x * width), floor(frac(abs(sd.uv)).y * height));
 
-                    float2 dir = normalize(pixel_uv_trans - pixel_uv);
-                    int2 pixel_uv_out = pixel_uv + ceil(dir * 50);
-                    pixel_uv_out = int2(min(max(pixel_uv_out.x, 0), gRenderTargetDim.x - 1), min(max(pixel_uv_out.y, 0), gRenderTargetDim.y - 1));
-                    gSelectBuffer[id_trans + 2] = gSelectBuffer[4 * (pixel_uv_out.y * gRenderTargetDim.x + pixel_uv_out.x)];
-
-                    if(gSelectBuffer[id_trans + 2] != gMatId)
-                        gSelectBuffer[id_trans + 3] = max((len - 40) * 100, 0);
-                }
-            }
-        }
+        gSelectBuffer[id] = gEditMap[texel_map].x;
+    }
+    else if(distance(pixel, gSelectedPixel) <= 100)
+    {
+        gSelectBuffer[id] = gMatId;
     }
 
     if (gShowTracedHF)

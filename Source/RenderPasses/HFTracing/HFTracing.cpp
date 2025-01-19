@@ -339,6 +339,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gPatchScale"] = 1.0f / mPatchScale;
     var["CB"]["gSelectedPixel"] = mSelectedPixel;
     var["CB"]["gMatId"] = mMatId;
+    var["CB"]["gUseEditMap"] = mUseEditMap;
 
     for (int i = 0; i < 2; i++)
     {
@@ -368,6 +369,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
         var["gShellHF"][i].setSrv(mpShellHF[i]->getSRV());
     }
     var["cudaVaildBuffer"] = mpVaildBuffer;
+    var["gEditMap"] = mpEditMap;
 
     var["packedInput"] = mpPackedInputBuffer;
     var["hashedUV"] = mpHashedUVBuffer;
@@ -446,6 +448,22 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.checkbox("Enable Editing Material", mEnableEdit);
     dirty |= widget.slider("Edit Material ID", mMatId, 0u, 1u);
+    dirty |= widget.checkbox("Use Material Map To Edit", mUseEditMap);
+    widget.image("MatMap", mpEditMap.get(), Falcor::float2(100.f));
+    if (widget.button("Reset MatMap"))
+    {
+        std::filesystem::path filename;
+        if (openFileDialog(Bitmap::getFileDialogFilters(ResourceFormat::Unknown), filename))
+        {
+            mpEditMap = Texture::createFromFile(
+                mpDevice,
+                filename,
+                false,
+                false,
+                ResourceBindFlags::ShaderResource
+            );
+        }
+    }
 
     dirty |= widget.slider("Sample Patch Scale", mPatchScale, 0.1f, 10.0f);
     widget.tooltip("Scale the sample patch", true);
@@ -763,6 +781,14 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         generateMaxMip(pRenderContext, mpShellHF[i]);
     }
     generateMaxMip(pRenderContext, mpHF);
+
+    mpEditMap = Texture::createFromFile(
+        mpDevice,
+        fmt::format("{}/media/BTF/scene/textures/TestEdit.exr", mMediaPath).c_str(),
+        false,
+        false,
+        ResourceBindFlags::ShaderResource
+    );
 
     // Create max sampler for texel fetch.
     Sampler::Desc samplerDesc = Sampler::Desc();

@@ -181,8 +181,8 @@ private:
 #endif
 
 #ifdef TEST_MULTI
-    std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "fabric09_m32u8h8d8_int8"};
-    std::string mShellHFFileName[2] = {"ubo/leather11.png", "ubo/fabric09.png"};
+    std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "weave_m32u8h8d8_int8"};
+    std::string mShellHFFileName[2] = {"ubo/leather11.png", "WickerWeavesBrownRattan001_DISP_6K.jpg"};
     std::string mHFFileName = "ubo/leather11.png";
     bool mHDRBTF = false;
 #endif
@@ -322,7 +322,7 @@ private:
 
     bool mContactRefinement = false;
     bool mMipGenerated = false;
-    bool mApplySyn = false;
+    bool mApplySyn = true;
     bool mNNInfer = true;
     bool mScaleUV = false;
     bool mHFBound = true;

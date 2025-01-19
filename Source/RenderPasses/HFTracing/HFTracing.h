@@ -183,6 +183,10 @@ private:
 #ifdef TEST_MULTI
     std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "fabric09_m32u8h8d8_int8"};
     std::string mShellHFFileName[2] = {"ubo/leather11.png", "ubo/fabric09.png"};
+    //std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "metal2_m32u8h8d8_int8"};
+    //std::string mShellHFFileName[2] = {"ubo/leather11.png", "MetalGoldHammered001_DISP_6K.png"};
+    //std::string mNetInt8Name[2] = {"metal2_m32u8h8d8_int8", "leather11_m32u8h8d8_int8"};
+    //std::string mShellHFFileName[2] = {"MetalGoldHammered001_DISP_6K.png", "ubo/leather11.png"};
     std::string mHFFileName = "ubo/leather11.png";
     bool mHDRBTF = false;
 #endif
@@ -298,6 +302,7 @@ private:
     ref<Texture> mpNormalMap;
     ref<Texture> mpTangentMap;
     ref<Texture> mpPosMap;
+    ref<Texture> mpEditMap;
 
     ref<Sampler> mpMaxSampler;
 
@@ -316,10 +321,11 @@ private:
 
     RenderType mRenderType = RenderType::WAVEFRONT_SHADER_NN;
     InferType mInferType = InferType::CUDAINT8;
-    
-    Falcor::float2 point_data[5] =
-        {Falcor::float2(0.0f, 1.0f), Falcor::float2(0.0f, 1.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(0.0f, 0.0f)};
 
+    Falcor::float2 point_data[5] = {
+        Falcor::float2(0.0f, 1.0f), Falcor::float2(0.0f, 1.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(0.0f, 0.0f)
+    };
+    
     bool mContactRefinement = false;
     bool mMipGenerated = false;
     bool mApplySyn = true;
@@ -331,7 +337,8 @@ private:
     bool mUseFP16 = false;
     bool mMLPDebug = false;
     bool mOutputingVideo = false;
-    bool mEnableEdit = false; 
+    bool mEnableEdit = false;
+    bool mUseEditMap = false;
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
     ref<Fence> mpFence1;

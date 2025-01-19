@@ -53,7 +53,7 @@ const uint32_t kMaxRecursionDepth = 2u;
 const char kInputViewDir[] = "viewW";
 const ChannelList kInputChannels = {
     // clang-format off
-    //{ "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
+    // { "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
     // { kInputViewDir,    "gViewW",       "World-space view direction (xyz float format)", true /* optional */ },
     // clang-format on
 };
@@ -455,7 +455,8 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     editCurve |= widget.bezierCurve("AcfCurve", getPoint, (void*)point_data, 4, 200, 200);
     dirty |= editCurve;
     if (editCurve)
-        mpNBTFInt8[0]->mpTextureSynthesis->updateMap(mpNBTFInt8[0]->mUP.texDim.x, mpDevice, point_data);
+        for (int i = 0; i < 2; i++)
+            mpNBTFInt8[i]->mpTextureSynthesis->updateMap(mpNBTFInt8[i]->mUP.texDim.x, mpDevice, point_data);
     widget.image("ACF", mpNBTFInt8[0]->mpTextureSynthesis->mpACF.get(), Falcor::float2(200.f));
     widget.text("ACF visualization", true);
 
