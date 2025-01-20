@@ -337,9 +337,11 @@ private:
 #endif
 
     // std::string mNetName = "leather11_m32u16h8d8";
-    std::string mNetName = "leather11_tile_m32u16h8d8";
+    // std::string mNetName = "fabric12_m32u16h8d8";
+    std::string mNetName = "leather04_resampled_m32u16h8d8";
+    // std::string mNetName = "leather11_tile_m32u16h8d8";
     // std::string mNetName = "tile2_m32u16h8d8";
-    // std::string mNetName = "tile4_m32u16h8d8";
+    // std::string mNetName = "tile4_small_m32u16h8d8";
     // std::string mNetName = "tile2_small_m32u16h8d8";
     // std::string mNetName = "metal2_m32u16h8d8";
     // std::string mNetName = "weave_m32u16h8d8";

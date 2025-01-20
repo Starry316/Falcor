@@ -91,6 +91,8 @@ private:
     ref<ComputePass> mpDebugPass;
     float mUVScale = 1.0f;
     std::unique_ptr<NBTF> mpNBTFInt8;
+    std::unique_ptr<NBTF> mpNBTF;
+
     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
 
 #ifdef PEBBLE
@@ -107,12 +109,6 @@ private:
     bool mHDRBTF = false;
 #endif
 
-#ifdef LEATHER10
-    std::string mNetInt8Name = "leather10_m32u8h8d8_int8";
-    std::string mShellHFFileName = "ubo/leather11.png";
-    std::string mHFFileName = "ubo/leather11.png";
-    bool mHDRBTF = false;
-#endif
 
 #ifdef LEATHER_04R
     std::string mNetInt8Name = "leather04r_m32u8h8d8_int8";
@@ -185,7 +181,34 @@ private:
     std::string mHFFileName = "roof_tiles_14_disp_1k.png";
     bool mHDRBTF = false;
 #endif
+#ifdef FABRIC12
+    std::string mNetInt8Name = "fabric12_m32u8h8d8_int8";
+    std::string mShellHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
+    std::string mHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
+    bool mHDRBTF = false;
+#endif
+#ifdef WEAVE
+    std::string mNetInt8Name = "weave_m32u8h8d8_int8";
+    std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K.jpg";
+    std::string mHFFileName = mShellHFFileName;
+    bool mHDRBTF = false;
+#endif
+#ifdef WEAVE_SML
+    std::string mNetInt8Name = "weave_small2_m32u8h8d8_int8";
+    // std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K_small.jpg";
+    std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K_sml.jpg";
+    std::string mHFFileName = mShellHFFileName;
+    bool mHDRBTF = false;
+#endif
+#ifdef DUMMY
+    std::string mNetInt8Name = "Dummy";
+    std::string mShellHFFileName = "roof_tiles_14_disp_1k.png";
+    std::string mHFFileName = "roof_tiles_14_disp_1k.png";
+    bool mHDRBTF = false;
+#endif
 
+    // std::string mNetName = "leather11_m32u16h8d8";
+    std::string mNetName = "fabric12_m32u16h8d8";
 
     uint mFrames = 1;
 

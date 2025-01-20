@@ -514,7 +514,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
     }
     mpPixelDebug->renderUI(widget);
-    Gui::Window w(widget, "Debug");
+
 
     // If rendering options that modify the output have changed, set flag to indicate that.
     // In execute() we will pass the flag to other passes for reset of temporal data etc.

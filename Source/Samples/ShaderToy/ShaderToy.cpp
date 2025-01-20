@@ -136,8 +136,8 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     // mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
 
-
     mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
+    mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, false);
 
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
@@ -167,7 +167,8 @@ void ShaderToy::shaderInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarg
     var["gWi"] = mWi;
     mpDebugPass->getRootVar()["ouputColor"] = mpOutColor;
     // mpTextureSynthesis->bindHFData(mpDebugPass->getRootVar()["ToyCB"]["hfData"]);
-    mpNBTFInt8->bindShaderData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]);
+    // mpNBTFInt8->bindShaderData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]);
+    mpNBTF->bindShaderData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]);
     mpNBTFInt8->mpMLP->bindDebugData(mpDebugPass->getRootVar()["ToyCB"]["nbtf"]["mlp"], mpNBTFInt8->mpMLPCuda->mpFp32Buffer);
 
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
@@ -190,11 +191,15 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     for (size_t i = 0; i < mCudaInferTimes; i++)
     {
         if (mRenderType == RenderType::CUDAINT8)
-            mpNBTFInt8->mpMLPCuda->inferInt8Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+            if (mSynthesis)
+                mpNBTFInt8->mpMLPCuda->inferInt8ACFTest((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+            else
+                mpNBTFInt8->mpMLPCuda->inferInt8Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
         else if (mRenderType == RenderType::CUDAFP16)
-            mpNBTFInt8->mpMLPCuda->inferFp16Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+            mpNBTFInt8->mpMLPCuda->inferFp16Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+
         else
-            mpNBTFInt8->mpMLPCuda->inferFp32Test((float*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+            mpNBTFInt8->mpMLPCuda->inferFp32Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
     }
 
     // timer end

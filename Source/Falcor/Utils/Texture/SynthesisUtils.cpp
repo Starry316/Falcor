@@ -479,6 +479,18 @@ float acfTransform(float val, ACFCurve curve){
     else if(curve ==   ACFCurve::X6){
         return val * val * val * val * val * val;
     }
+    else if(curve ==   ACFCurve::INV_X6){
+        val = 1 - val;
+        return val * val * val * val * val * val;
+    }
+    else if(curve ==   ACFCurve::INV_X3){
+        val = 1 - val;
+        return val * val * val;
+    }
+    else if(curve ==   ACFCurve::INV_X2){
+        val = 1 - val;
+        return val * val;
+    }
     else
         return  val ;
 }
