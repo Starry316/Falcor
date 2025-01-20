@@ -13,7 +13,7 @@
 
 extern void launchInferInt8TexTest(
     int* weight,
-    float* packedInput,
+    int* packedInput,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
     cudaTextureObject_t UP,
@@ -23,9 +23,25 @@ extern void launchInferInt8TexTest(
      float uvScale
 );
 
+
+extern void launchInferInt8TexACFTest(
+    int* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    cudaTextureObject_t TP,
+    cudaTextureObject_t InvP,
+    float* sampleList,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+     float uvScale
+);
+
 extern void launchInferFp32TexTest(
     float* weight,
-    float* packedInput,
+    int* packedInput,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
     cudaTextureObject_t UP,
@@ -37,7 +53,7 @@ extern void launchInferFp32TexTest(
 
 extern void launchInferFp16TexTest(
     __half* weight,
-    float* packedInput,
+    int* packedInput,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
     cudaTextureObject_t UP,
@@ -57,33 +73,33 @@ void launchInferInt8Tex(
     unsigned int height,
     int* validMask, float uvScale
 );
-void launchInferInt8TexHisto(
-    int* weight,
-    int* packedInput,
-    cudaTextureObject_t HP,
-    cudaTextureObject_t DP,
-    cudaTextureObject_t UP,
-    cudaTextureObject_t TP,
-    cudaTextureObject_t InvP,
-    float* output,
-    unsigned int width,
-    unsigned int height,
-    int* validMask, float uvScale
-);
-void launchInferInt8TexAutocov(
-    int* weight,
-    int* packedInput,
-    cudaTextureObject_t HP,
-    cudaTextureObject_t DP,
-    cudaTextureObject_t UP,
-    cudaTextureObject_t TP,
-    cudaTextureObject_t InvP,
-    float* sampleList,
-    float* output,
-    unsigned int width,
-    unsigned int height,
-    int* validMask, float uvScale
-);
+// void launchInferInt8TexHisto(
+//     int* weight,
+//     int* packedInput,
+//     cudaTextureObject_t HP,
+//     cudaTextureObject_t DP,
+//     cudaTextureObject_t UP,
+//     cudaTextureObject_t TP,
+//     cudaTextureObject_t InvP,
+//     float* output,
+//     unsigned int width,
+//     unsigned int height,
+//     int* validMask, float uvScale
+// );
+// void launchInferInt8TexAutocov(
+//     int* weight,
+//     int* packedInput,
+//     cudaTextureObject_t HP,
+//     cudaTextureObject_t DP,
+//     cudaTextureObject_t UP,
+//     cudaTextureObject_t TP,
+//     cudaTextureObject_t InvP,
+//     float* sampleList,
+//     float* output,
+//     unsigned int width,
+//     unsigned int height,
+//     int* validMask, float uvScale
+// );
 void launchInferInt8TexHashed(
     int* weight,
     int* packedInput,

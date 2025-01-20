@@ -959,11 +959,11 @@ bool calcSynthesizedDisplacementIntersection(
     maxIntersection.max(baseTriangleIntersectAttri);
 
     // Early out when no hit.
-    // if (!(minIntersection.intersected && maxIntersection.intersected) || (minIntersection.t == maxIntersection.t) ||
-    //     (minIntersection.t > ray.tMax) || (maxIntersection.t < ray.tMin))
-    // {
-    //     return false;
-    // }
+    if (!(minIntersection.intersected && maxIntersection.intersected) || (minIntersection.t == maxIntersection.t) ||
+        (minIntersection.t > ray.tMax) || (maxIntersection.t < ray.tMin))
+    {
+        return false;
+    }
 
     // 2. convert intersection data from object space to trace space
     float2 minIntersectionUV = minIntersection.barycentric[0] * vertices[0].texCrd.xy +
@@ -1065,10 +1065,10 @@ bool intersectSynthesizedDisplacedTriangle(
     vertices[0].normal = mul(worldMat, float4(vertices[0].position + vertices[0].normal, 1.f)).xyz - vertPosTr[0];
     vertices[1].normal = mul(worldMat, float4(vertices[1].position + vertices[1].normal, 1.f)).xyz - vertPosTr[1];
     vertices[2].normal = mul(worldMat, float4(vertices[2].position + vertices[2].normal, 1.f)).xyz - vertPosTr[2];
-    if (dot(ray.dir, vertices[0].normal) > 0 || dot(ray.dir, vertices[1].normal) > 0 || dot(ray.dir, vertices[2].normal) > 0)
-    {
-        return false;
-    }
+    // if (dot(ray.dir, vertices[0].normal) > 0 || dot(ray.dir, vertices[1].normal) > 0 || dot(ray.dir, vertices[2].normal) > 0)
+    // {
+    //     return false;
+    // }
 
 
     vertices[0].position = vertPosTr[0];
@@ -1234,24 +1234,30 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
             float NdotL = wi.z > 0 ? wi.z : 0;
             uint4 packedData;
             if (gApplySyn) {
-                // float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-                // float4 uv_hashed = getHashUV(hfData, uv_raw);
-                // packedData = packInputSyn(wi, wo, frac(abs(uv_hashed.xy)), frac(abs(uv_hashed.wz)));
                 packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
                 float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
                 float4 uv_hashed = getHashUV(hfData, uv_raw);
-                hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = uv_hashed.x;
-                hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = uv_hashed.y;
-                hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = uv_hashed.z;
-                hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = uv_hashed.w;
-            }
-            else
-                packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packUnorm2x16(frac(abs(uv_hashed.xy)));
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 4] = packUnorm2x16(frac(abs(uv_hashed.zw)));
 
-            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
-            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
-            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
-            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+                // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+                // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+                // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+                // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+
+            }
+            else {
+                packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+            }
+
+
 
 
             rayData.radiance = envLi * NdotL;
@@ -1302,25 +1308,23 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
 
         uint4 packedData;
         if (gApplySyn) {
-            // float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-            // float4 uv_hashed = getHashUV(hfData, uv_raw);
-            // packedData = packInputSyn(wi, wo, frac(abs(uv_hashed.xy)), frac(abs(uv_hashed.wz)));
             packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
             float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
             float4 uv_hashed = getHashUV(hfData, uv_raw);
-            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = uv_hashed.x;
-            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = uv_hashed.y;
-            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = uv_hashed.z;
-            hashedUV[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = uv_hashed.w;
-
+            packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+            packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+            packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+            packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packUnorm2x16(frac(abs(uv_hashed.xy)));
+            packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 4] = packUnorm2x16(frac(abs(uv_hashed.zw)));
         }
-        else
+        else {
             packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+            packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+        }
 
-        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
-        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
-        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
-        packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
 
 
         rayData.origin = newPos;

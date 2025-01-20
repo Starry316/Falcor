@@ -61,7 +61,7 @@ void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
     mTPInv.featureData = mpTextureSynthesis->getInvTData();
     mTP.texDim = int2(PlaneMetaBuffer[0], PlaneMetaBuffer[1]);
     mTPInv.texDim = int2(mTPInv.featureData.size() / (4 * int(PlaneMetaBuffer[1])), PlaneMetaBuffer[1]);
-    //mTPInv.texDim = int2(8192, PlaneMetaBuffer[1]);
+    // mTPInv.texDim = int2(8192, PlaneMetaBuffer[1]);
     logInfo("[NBTF] T: {}, InvT: {}", mTP.texDim, mTPInv.texDim);
 
     mUP.featureTex = pDevice->createTexture2D(

@@ -406,6 +406,7 @@ private:
     Falcor::float3 mEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     Falcor::float3 mOriginEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     uint mOutputStep = 4;
+    float uvscaleFactor =4.0f;
     // cuda
     float mCudaTime = 0.0;
     float mPhi = 0.0;
