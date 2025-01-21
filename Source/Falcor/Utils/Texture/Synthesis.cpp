@@ -1,5 +1,5 @@
 #include "Synthesis.h"
-#include "SynthesisUtils.h"
+
 #include "Core/Error.h"
 #include "Core/API/Device.h"
 #include "Utils/Neural/IOHelper.h"
@@ -151,11 +151,13 @@ void TextureSynthesis::precomputeFeatureData(std::vector<float> data, uint2 data
         }
     }
     acfWeight.resize(dataDim.x * dataDim.x );
+    acfPDF.resize(dataDim.x * dataDim.x );
+    acfPDFImg.resize(dataDim.x * dataDim.x*3);
     mpACFBuffer->getBlob(acfWeight.data(), 0, dataDim.x * dataDim.x * 1 * sizeof(float));
     logInfo("[Synthesis] Precomputing ACF done! {} {}", acfWeight.size(), acfWeight[1]);
 
     logInfo("[Synthesis] Precomputation done!");
-    sample_uv_list.reserve(2048 * 2);
+    sample_uv_list.resize(2048 * 2);
     updateMap(dataDim.x, pDevice);
 
     // // TODO generate max mipmap
@@ -172,24 +174,41 @@ void TextureSynthesis::precomputeFeatureData(std::vector<float> data, uint2 data
 
 void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice)
 {
-    std::vector<float> acf_pdf;
-    acf_pdf.reserve(acfWeight.size());
-    updateSample(acfWeight, acf_pdf, sample_uv_list, dim);
+
+    updateSample(acfWeight, acfPDF, sample_uv_list, dim);
+    logInfo("[Synthesis] Precomputing ACF done!updateMap {} {}", sample_uv_list.size(), acfPDF.size());
     mpMap = pDevice->createTypedBuffer(
         ResourceFormat::R32Float, sample_uv_list.size(), ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, sample_uv_list.data()
     );
-    mpACF = pDevice->createTexture2D(dim, dim, ResourceFormat::R32Float, 1, 1, acf_pdf.data(), ResourceBindFlags::ShaderResource);
+    for (int i = 0; i < acfPDF.size(); i++)
+    {
+        acfPDFImg[i * 3] = acfPDF[i];
+        acfPDFImg[i * 3 + 1] = acfPDF[i];
+        acfPDFImg[i * 3 + 2] = acfPDF[i];
+    }
+
+
+    mpACF = pDevice->createTexture2D(dim, dim, ResourceFormat::RGB32Float, 1, 1, acfPDFImg.data(), ResourceBindFlags::ShaderResource);
 }
 
-void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice, float2* ctrl_point)
+void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice, float2* ctrl_point, ACFCurve curve)
 {
-    std::vector<float> acf_pdf;
-    acf_pdf.reserve(acfWeight.size());
-    updateSample(acfWeight, acf_pdf, sample_uv_list, dim, ctrl_point);
+    if (curve == ACFCurve::BEZIER)
+        updateSample(acfWeight, acfPDF, sample_uv_list, dim, ctrl_point);
+    else
+    updateSample(acfWeight, acfPDF, sample_uv_list, dim, curve);
+
+
     mpMap = pDevice->createTypedBuffer(
         ResourceFormat::R32Float, sample_uv_list.size(), ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, sample_uv_list.data()
     );
-    mpACF = pDevice->createTexture2D(dim, dim, ResourceFormat::R32Float, 1, 1, acf_pdf.data(), ResourceBindFlags::ShaderResource);
+    for (int i = 0; i < acfPDF.size(); i++)
+    {
+        acfPDFImg[i * 3] = acfPDF[i];
+        acfPDFImg[i * 3 + 1] = acfPDF[i];
+        acfPDFImg[i * 3 + 2] = acfPDF[i];
+    }
+    mpACF = pDevice->createTexture2D(dim, dim, ResourceFormat::RGB32Float, 1, 1, acfPDFImg.data(), ResourceBindFlags::ShaderResource);
 }
 
 void TextureSynthesis::bindHFData(const ShaderVar& var)

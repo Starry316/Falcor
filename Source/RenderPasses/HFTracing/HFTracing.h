@@ -122,7 +122,8 @@ public:
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
     // virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return mpPixelDebug->onMouseEvent(mouseEvent); }
     bool onMouseEvent(const MouseEvent& mouseEvent);
-    virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override { return false; }
+    // virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override { return false; }
+    bool onKeyEvent(const KeyboardEvent& keyEvent) ;
 
 private:
     void parseProperties(const Properties& props);
@@ -181,8 +182,13 @@ private:
 #endif
 
 #ifdef TEST_MULTI
-    std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "fabric09_m32u8h8d8_int8"};
-    std::string mShellHFFileName[2] = {"ubo/leather11.png", "ubo/fabric09.png"};
+    std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "weave_small_m32u8h8d8_int8"};
+    std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","WickerWeavesBrownRattan001_DISP_6K_small.jpg"};
+
+    // std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "leather11_tile_m32u8h8d8_int8"};
+    // std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","ubo/leather11_tile.png"};
+
+
     //std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "metal2_m32u8h8d8_int8"};
     //std::string mShellHFFileName[2] = {"ubo/leather11.png", "MetalGoldHammered001_DISP_6K.png"};
     //std::string mNetInt8Name[2] = {"metal2_m32u8h8d8_int8", "leather11_m32u8h8d8_int8"};
@@ -309,7 +315,7 @@ private:
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
     Falcor::float4 mControlParas = Falcor::float4(1, 0.6, 0, 0.099);
-    Falcor::float4 mCurvatureParas = Falcor::float4(0.1, 0.1, 10, 0.3); // z - 10
+    Falcor::float4 mCurvatureParas = Falcor::float4(0.15, 0.1, 10, 0.3); // z - 10
     Falcor::float4 mLightZPR = Falcor::float4(0.056, 1, 0.15, 0.1);
     float mPatchScale = 1.0f;
     uint mTriID = 0;
@@ -318,14 +324,14 @@ private:
     Falcor::uint2 mSelectedPixel = {19200, 10800};
     Falcor::uint2 mFrameDim = {0, 0};
     uint mMatId = 0;
-
+    ACFCurve mCurveType = ACFCurve::X;
     RenderType mRenderType = RenderType::WAVEFRONT_SHADER_NN;
     InferType mInferType = InferType::CUDAINT8;
 
     Falcor::float2 point_data[5] = {
         Falcor::float2(0.0f, 1.0f), Falcor::float2(0.0f, 1.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(0.0f, 0.0f)
     };
-    
+
     bool mContactRefinement = false;
     bool mMipGenerated = false;
     bool mApplySyn = true;
@@ -339,6 +345,9 @@ private:
     bool mOutputingVideo = false;
     bool mEnableEdit = false;
     bool mUseEditMap = false;
+
+    bool mRefresh = false;
+    bool mPaint = false;
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
     ref<Fence> mpFence1;
@@ -362,9 +371,16 @@ private:
     Falcor::float3 mEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     Falcor::float3 mOriginEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     uint mOutputStep = 4;
+
+    // camera controll
+    Falcor::float3 mCameraPos = Falcor::float3(0.0f, 0.0f, 0.0f);
+    Falcor::float3 mCameraTarget = Falcor::float3(0.0f, 0.0f, 0.0f);
+
+
     // cuda
     float mCudaTime = 0.0;
     float mPhi = 0.0;
+    float mBrushSize = 10;
     double mCudaAvgTime = 0.0;
     int cudaInferTimes = 1;
     cudaEvent_t mCudaStart, mCudaStop;
@@ -373,6 +389,8 @@ private:
     ref<Buffer> mpPackedInputBuffer;
     ref<Buffer> mpHashedUVBuffer;
     ref<Buffer> mpSelectBuffer;
+
+    ref<Buffer> mpSelectUVBuffer;
 
     uint mCudaAccumulatedFrames = 1;
 };

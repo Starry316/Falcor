@@ -246,6 +246,7 @@ void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& ren
     var["gInputColor"] = mpOutputBuffer;
     var["cudaVaildBuffer"] = mpVaildBuffer;
     var["gSelectBuffer"] = mpSelectBuffer;
+
     mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
     mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, targetDim.x, targetDim.y);
@@ -284,6 +285,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
     createBuffer(mpHashedUVBuffer, mpDevice, targetDim, 4);
     createBuffer(mpSelectBuffer, mpDevice, targetDim, 4);
+    // createBuffer(mpSelectUVBuffer, mpDevice, Falcor::uint2(1), 3);
 
     // Request the light collection if emissive lights are enabled.
     if (mpScene->getRenderSettings().useEmissiveLights)
@@ -340,6 +342,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["CB"]["gSelectedPixel"] = mSelectedPixel;
     var["CB"]["gMatId"] = mMatId;
     var["CB"]["gUseEditMap"] = mUseEditMap;
+    var["CB"]["gBrushSize"] = mBrushSize;
 
     for (int i = 0; i < 2; i++)
     {
@@ -375,6 +378,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["hashedUV"] = mpHashedUVBuffer;
     var["gMaxSampler"] = mpMaxSampler;
     var["gSelectBuffer"] = mpSelectBuffer;
+    // var["gSelectUVBuffer"] = mpSelectUVBuffer;
 
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
     pRenderContext->submit(false);
@@ -406,6 +410,12 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     mFrameCount++;
     mFrameDim = renderData.getDefaultTextureDims();
 
+    if(mEnableEdit){
+
+        mpScene->getCamera()->setPosition(mCameraPos);
+        mpScene->getCamera()->setTarget(mCameraTarget);
+    }
+
     // ======================================================================================================
     // Step 1: Trace HF to get BTF input, the input data is packed into mpPackedInputBuffer.
     // A valid hit mask mpVaildBuffer stores the screen space valid hits (1: valid, 0: invalid)
@@ -421,7 +431,7 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     {
         cudaInferPass(pRenderContext, renderData);
     }
-      displayPass(pRenderContext, renderData);
+    displayPass(pRenderContext, renderData);
 }
 
 float getPoint(void* data, int32_t index)
@@ -433,78 +443,84 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 {
     bool dirty = false;
     bool editCurve = false;
+    mUseEditMap = false;
+    if(mRefresh){
+        dirty = true;
+        mRefresh = false;
+    }
+    // dirty |= widget.dropdown("Render Type", mRenderType);
+    // dirty |= widget.dropdown("Infer Type", mInferType);
+    widget.text("Inference Time: " + std::to_string(mCudaTime) + " ms");
+    widget.text("Avg Inference Time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
 
-    dirty |= widget.dropdown("Render Type", mRenderType);
-    dirty |= widget.dropdown("Infer Type", mInferType);
-
-    // dirty |= widget.var("Max bounces", mMaxBounces, 0u, 1u << 16);
-    // widget.tooltip("Maximum path length for indirect illumination.\n0 = direct only\n1 = one indirect bounce etc.", true);
-
-    // dirty |= widget.checkbox("Evaluate direct illumination", mComputeDirect);
-    // widget.tooltip("Compute direct illumination.\nIf disabled only indirect is computed (when max bounces > 0).", true);
-
-    // dirty |= widget.checkbox("Use importance sampling", mUseImportanceSampling);
     // widget.tooltip("Use importance sampling for materials", true);
+    if (widget.checkbox("Enable Editing Material", mEnableEdit))
+    {
+        // mpScene->setCameraControlsEnabled(!mEnableEdit);
+        mCameraPos = mpScene->getCamera()->getPosition();
+        mCameraTarget =mpScene->getCamera()->getTarget();
+        dirty = true;
+    }
+    dirty |= widget.slider("Selected Material ID", mMatId, 0u, 1u);
+    dirty |= widget.slider("UV Scale", mCurvatureParas.z, 0.0f, 50.0f);
+    editCurve |= widget.dropdown("Curve Type", mCurveType);
+    dirty |= widget.slider("Sample Patch Scale", mPatchScale, 0.1f, 10.0f);
+    widget.tooltip("Scale the sample patch", true);
+    dirty |= widget.slider("Brush Size", mBrushSize, 1.0f, 150.0f);
+    editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
+    editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
+    editCurve |= widget.bezierCurve("ACFCurve", getPoint, (void*)point_data, 4, 200, 200);
+    dirty |= editCurve;
+    if (editCurve)
+        // for (int i = 0; i < 2; i++)
+            mpNBTFInt8[mMatId]->mpTextureSynthesis->updateMap(mpNBTFInt8[mMatId]->mUP.texDim.x, mpDevice, point_data, mCurveType);
+    widget.text("ACF visualization");
+    widget.image("ACF", mpNBTFInt8[mMatId]->mpTextureSynthesis->mpACF.get(), Falcor::float2(200.f), true);
 
-    dirty |= widget.checkbox("Enable Editing Material", mEnableEdit);
-    dirty |= widget.slider("Edit Material ID", mMatId, 0u, 1u);
-    dirty |= widget.checkbox("Use Material Map To Edit", mUseEditMap);
-    widget.image("MatMap", mpEditMap.get(), Falcor::float2(100.f));
-    if (widget.button("Reset MatMap"))
+    if(widget.button("Apply Guide Map")){
+        mUseEditMap = true;
+        dirty = true;
+    }
+    widget.image("GuideMap", mpEditMap.get(), Falcor::float2(100.f));
+    if (widget.button("Reset GuideMap"))
     {
         std::filesystem::path filename;
         if (openFileDialog(Bitmap::getFileDialogFilters(ResourceFormat::Unknown), filename))
         {
-            mpEditMap = Texture::createFromFile(
-                mpDevice,
-                filename,
-                false,
-                false,
-                ResourceBindFlags::ShaderResource
-            );
+            mpEditMap = Texture::createFromFile(mpDevice, filename, false, false, ResourceBindFlags::ShaderResource);
         }
     }
 
-    dirty |= widget.slider("Sample Patch Scale", mPatchScale, 0.1f, 10.0f);
-    widget.tooltip("Scale the sample patch", true);
+    // widget.image("ACF 2", mpNBTFInt8[1]->mpTextureSynthesis->mpACF.get(), Falcor::float2(200.f), true, true);
 
-    editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
-    editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
-    editCurve |= widget.bezierCurve("AcfCurve", getPoint, (void*)point_data, 4, 200, 200);
-    dirty |= editCurve;
-    if (editCurve)
-        for (int i = 0; i < 2; i++)
-            mpNBTFInt8[i]->mpTextureSynthesis->updateMap(mpNBTFInt8[i]->mUP.texDim.x, mpDevice, point_data);
-    widget.image("ACF", mpNBTFInt8[0]->mpTextureSynthesis->mpACF.get(), Falcor::float2(200.f));
-    widget.text("ACF visualization", true);
-
-    dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
-    widget.tooltip("Increse = less marching steps", true);
-    dirty |= widget.slider("LoD Scale", mControlParas.y, 0.001f, 0.1f);
-    widget.tooltip("Scale the LoD", true);
+    // dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
+    // widget.tooltip("Increse = less marching steps", true);
+    // dirty |= widget.slider("LoD Scale", mControlParas.y, 0.001f, 0.1f);
+    // widget.tooltip("Scale the LoD", true);
     dirty |= widget.slider("HF Offset", mControlParas.z, 0.0f, 1.0f);
     widget.tooltip("height = Scale * h + Offset", true);
     dirty |= widget.slider("HF Scale", mControlParas.w, 0.0f, 1.0f);
     widget.tooltip("height = Scale * h + Offset", true);
 
-    dirty |= widget.slider("D", mCurvatureParas.x, 0.0f, 1.0f);
-    widget.tooltip("Max height to mesh surface, i.e., the HF tracing starting height", true);
-    dirty |= widget.slider("UV Scale", mCurvatureParas.z, 0.0f, 50.0f);
-    dirty |= widget.var("UV Scale_", mCurvatureParas.z);
+    // dirty |= widget.slider("D", mCurvatureParas.x, 0.0f, 1.0f);
+    // widget.tooltip("Max height to mesh surface, i.e., the HF tracing starting height", true);
+
+
+    // dirty |= widget.var("UV Scale_", mCurvatureParas.z);
     widget.tooltip("Scale the uv coords", true);
 
     dirty |= widget.checkbox("Traced Shadow Ray", mTracedShadowRay);
-    dirty |= widget.slider("Shadow ray offset", mCurvatureParas.y, 0.0f, 1.0f);
-    widget.tooltip("Position offset along with the normal dir. To avoid self-occlusion", true);
+    // dirty |= widget.slider("Shadow ray offset", mCurvatureParas.y, 0.0f, 1.0f);
+    // widget.tooltip("Position offset along with the normal dir. To avoid self-occlusion", true);
     // dirty |= widget.slider("mip scale", mCurvatureParas.w, 0.0f, 11.0f);
 
-    dirty |= widget.checkbox("Contact Refinement", mContactRefinement);
-    widget.tooltip("use contact refinement tracing", true);
+    // dirty |= widget.checkbox("Contact Refinement", mContactRefinement);
+    // widget.tooltip("use contact refinement tracing", true);
     dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
 
-    dirty |= widget.checkbox("Show Traced HF", mShowTracedHF);
-    dirty |= widget.checkbox("Use float4", mMLPDebug);
-    widget.tooltip("Use float4 in shader inference (debug only)", true);
+    // dirty |= widget.checkbox("Show Traced HF", mShowTracedHF);
+    // dirty |= widget.checkbox("Use float4", mMLPDebug);
+    // widget.tooltip("Use float4 in shader inference (debug only)", true);
 
     if (widget.button("Reset Envmap"))
     {
@@ -512,12 +528,12 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         dirty = true;
     }
 
-    dirty |= widget.slider("CUDA infer times", cudaInferTimes, 1, 20);
-    widget.tooltip("For speed test, run cuda infer multiple times to get the avg running time.", true);
-    widget.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
-    widget.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
-    widget.text("CUDA real avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames / cudaInferTimes) + " ms");
-    widget.tooltip("This is the real cuda running time", true);
+    // dirty |= widget.slider("CUDA infer times", cudaInferTimes, 1, 20);
+    // widget.tooltip("For speed test, run cuda infer multiple times to get the avg running time.", true);
+    // widget.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
+    // widget.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
+    // widget.text("CUDA real avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames / cudaInferTimes) + " ms");
+    // widget.tooltip("This is the real cuda running time", true);
 
     if (widget.button("Reset Timer"))
     {
@@ -525,48 +541,54 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         mCudaAccumulatedFrames = 1;
     }
 
-    if (mOutputingVideo)
-        handleOutput();
+    // if (mOutputingVideo)
+    //     handleOutput();
 
     dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));
     dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));
     dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
-    widget.textbox("Output Path", mOutputPath);
-    widget.var("OutputSPP", mOutputSPP);
-    dirty |= widget.checkbox("Scale UV", mScaleUV);
-    if (widget.button("Output video"))
-    {
-        auto pCamera = mpScene->getCamera();
-        pCamera->setOutputFrameCount(mOutputSPP);
-        pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
-        pCamera->setAccumulating(true);
-        mOutputStep = 0;
-        mOutputingVideo = true;
-        dirty = true;
-    }
-    if (widget.button("Stop", true) || mOutputSPP > 200000)
-    {
-        auto pCamera = mpScene->getCamera();
-        pCamera->setOutputFrameCount(mOutputSPP);
-        pCamera->setAccumulating(false);
-        mOutputingVideo = false;
-        dirty = true;
-    }
-    if (widget.button("Reset index"))
-    {
-        mOutputIndx = 0;
-        mOutputSPP = 1;
-        mOutputStep = 0;
-        mpScene->getCamera()->setResetFlag(true);
-        mEnvRotAngle = Falcor::float3(0);
 
-        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
-    }
-    if (mOutputingVideo && mpScene->getEnvMap())
+    if (mpScene->getEnvMap())
     {
-        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
+        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle));
     }
-    mpPixelDebug->renderUI(widget);
+
+    // widget.textbox("Output Path", mOutputPath);
+    // widget.var("OutputSPP", mOutputSPP);
+    // dirty |= widget.checkbox("Scale UV", mScaleUV);
+    // if (widget.button("Output video"))
+    // {
+    //     auto pCamera = mpScene->getCamera();
+    //     pCamera->setOutputFrameCount(mOutputSPP);
+    //     pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
+    //     pCamera->setAccumulating(true);
+    //     mOutputStep = 0;
+    //     mOutputingVideo = true;
+    //     dirty = true;
+    // }
+    // if (widget.button("Stop", true) || mOutputSPP > 200000)
+    // {
+    //     auto pCamera = mpScene->getCamera();
+    //     pCamera->setOutputFrameCount(mOutputSPP);
+    //     pCamera->setAccumulating(false);
+    //     mOutputingVideo = false;
+    //     dirty = true;
+    // }
+    // if (widget.button("Reset index"))
+    // {
+    //     mOutputIndx = 0;
+    //     mOutputSPP = 1;
+    //     mOutputStep = 0;
+    //     mpScene->getCamera()->setResetFlag(true);
+    //     mEnvRotAngle = Falcor::float3(0);
+
+    //     mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
+    // }
+    // if (mOutputingVideo && mpScene->getEnvMap())
+    // {
+    //     mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
+    // }
+    // mpPixelDebug->renderUI(widget);
 
     // If rendering options that modify the output have changed, set flag to indicate that.
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
@@ -593,7 +615,7 @@ void HFTracing::handleOutput()
             mEnvRotAngle.y += float(2 * M_PI) / 180;
             if (mScaleUV)
                 mCurvatureParas.z += uvscaleFactor * sinf(mEnvRotAngle.y * 0.5) / 180.0f * float(M_PI_2);
-                // mCurvatureParas.z += uvscaleFactor / 180.0f;
+            // mCurvatureParas.z += uvscaleFactor / 180.0f;
             if (mEnvRotAngle.y > float(2 * M_PI))
             {
                 mEnvRotAngle.y = 0;
@@ -784,7 +806,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
 
     mpEditMap = Texture::createFromFile(
         mpDevice,
-        fmt::format("{}/media/BTF/scene/textures/TestEdit.exr", mMediaPath).c_str(),
+        fmt::format("{}/media/BTF/scene/textures/TestEdit2.png", mMediaPath).c_str(),
         false,
         false,
         ResourceBindFlags::ShaderResource
@@ -808,7 +830,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
         mpNBTFInt8[i] = std::make_unique<NBTF>(mpDevice, mNetInt8Name[i], true);
     }
 
-    //mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
+    // mpNBTFInt8 = std::make_unique<NBTF>(mpDevice, mNetInt8Name, true);
     mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, false);
     DefineList defines = mpScene->getSceneDefines();
     mpGenerateGeometryMapPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/GenerateGeometryMap.cs.slang", "csMain", defines);
@@ -833,6 +855,7 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     if (mpScene->getEnvMap() != nullptr)
     {
         mOriginEnvRotAngle = mpScene->getEnvMap()->getRotation();
+        mEnvRotAngle = mOriginEnvRotAngle / 180.0f * float(M_PI);
         logInfo("Env map rotation: {}", mOriginEnvRotAngle);
     }
 }
@@ -855,13 +878,32 @@ void HFTracing::prepareVars()
     mpSampleGenerator->bindShaderData(var);
 }
 
-bool HFTracing::onMouseEvent(const MouseEvent& mouseEvent)
+
+bool HFTracing::onKeyEvent(const KeyboardEvent& keyboardEvent)
 {
     if (mEnableEdit)
     {
-        if (mouseEvent.type == MouseEvent::Type::ButtonDown && mouseEvent.button == Input::MouseButton::Left)
+        if ( (keyboardEvent.type ==KeyboardEvent::Type::KeyRepeated || keyboardEvent.type ==KeyboardEvent::Type::KeyPressed && keyboardEvent.key == Input::Key::Space) )
+        {
+            mPaint = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+
+
+bool HFTracing::onMouseEvent(const MouseEvent& mouseEvent)
+{
+    if (mEnableEdit && mPaint)
+    {
+        // if ( (mouseEvent.type ==MouseEvent::Type::ButtonDown && mouseEvent.button == Input::MouseButton::Left) )
+        if ( (mouseEvent.type ==MouseEvent::Type::Move) )
         {
             mSelectedPixel = Falcor::uint2(mouseEvent.pos * Falcor::float2(mFrameDim));
+            mRefresh = true;
+            mPaint = false;
             return true;
         }
     }

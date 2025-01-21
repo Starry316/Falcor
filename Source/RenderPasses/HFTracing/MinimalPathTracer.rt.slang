@@ -60,6 +60,7 @@ cbuffer CB
     uint2 gSelectedPixel;
     uint gMatId;
     bool gUseEditMap;
+    float gBrushSize;
 }
 #define M_1_32 0.03125 // 1/32
 #define M_1_16 0.0625  // 1/16
@@ -79,6 +80,7 @@ RWBuffer<uint4> packedInput;
 RWBuffer<int> cudaVaildBuffer;
 RWBuffer<float4> hashedUV;
 RWBuffer<int> gSelectBuffer;
+RWBuffer<float> gSelectUVBuffer;
 
 SamplerState gSampler;
 SamplerState gMaxSampler;
@@ -612,7 +614,7 @@ bool traceSynthesizedHeightMapEstimated(
 {
     uint2 pixel = DispatchRaysIndex().xy;
 
-    uint coarseLength = 32;
+    uint coarseLength = 16;
     intersectedT = {};
     intersectedHeight = {};
 
@@ -1078,10 +1080,10 @@ bool intersectSynthesizedDisplacedTriangle(
     vertices[0].normal = mul(worldMat, float4(vertices[0].position + vertices[0].normal, 1.f)).xyz - vertPosTr[0];
     vertices[1].normal = mul(worldMat, float4(vertices[1].position + vertices[1].normal, 1.f)).xyz - vertPosTr[1];
     vertices[2].normal = mul(worldMat, float4(vertices[2].position + vertices[2].normal, 1.f)).xyz - vertPosTr[2];
-    if (dot(ray.dir, vertices[0].normal) > 0 || dot(ray.dir, vertices[1].normal) > 0 || dot(ray.dir, vertices[2].normal) > 0)
-    {
-        return false;
-    }
+    // if (dot(ray.dir, vertices[0].normal) > 0 || dot(ray.dir, vertices[1].normal) > 0 || dot(ray.dir, vertices[2].normal) > 0)
+    // {
+    //     return false;
+    // }
 
 
     vertices[0].position = vertPosTr[0];
@@ -1226,7 +1228,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
     // always true for common surface
     rayData.terminated = true;
-    
+
     uint2 pixel = DispatchRaysIndex().xy;
     int id = 4 * (floor(frac(abs(sd.uv)).y * gRenderTargetDim.y) * gRenderTargetDim.x + floor(frac(abs(sd.uv)).x * gRenderTargetDim.x));
     gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = id;
@@ -1238,7 +1240,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
         gSelectBuffer[id] = gEditMap[texel_map].x;
     }
-    else if(distance(pixel, gSelectedPixel) <= 100)
+    else if (distance(pixel, gSelectedPixel) <= gBrushSize)
     {
         gSelectBuffer[id] = gMatId;
     }
@@ -1296,7 +1298,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
 void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
 {
-    
+
     // we use terminated to indicate that if the cuda inference is needed
     rayData.terminated = false;
     // Load shading data.
@@ -1313,10 +1315,21 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
     computeRayDifferentials(instanceID, primitiveIndex, -sd.V, hitT, gScene.camera, 1.0f / float2(gRenderTargetDim), ddx, ddy);
     ddx *= FOOTPRINT_SCALING;
     ddy *= FOOTPRINT_SCALING;
-    
+
     uint2 pixel = DispatchRaysIndex().xy;
+
+
+
     int id = 4 * (floor(frac(abs(sd.uv)).y * gRenderTargetDim.y) * gRenderTargetDim.x + floor(frac(abs(sd.uv)).x * gRenderTargetDim.x));
     gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = id;
+
+    // if(all(pixel == gSelectedPixel))
+    // {
+    //     gSelectUVBuffer[0] = 316;
+    //     gSelectUVBuffer[1] = sd.uv.x;
+    //     gSelectUVBuffer[2] = sd.uv.y;
+    // }
+
     if(gUseEditMap)
     {
         uint width, height;
@@ -1325,7 +1338,8 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
 
         gSelectBuffer[id] = gEditMap[texel_map].x;
     }
-    else if(distance(pixel, gSelectedPixel) <= 100)
+    // || (gSelectUVBuffer[0] == 316 && abs(gSelectUVBuffer[1] - sd.uv.x) < 0.001 && abs(gSelectUVBuffer[2] - sd.uv.y) < 0.001 )
+    else if (distance(pixel, gSelectedPixel) <= gBrushSize)
     {
         gSelectBuffer[id] = gMatId;
     }
@@ -1367,7 +1381,7 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
         packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
         packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
-        
+
 
         rayData.origin = newPos;
         rayData.radiance = envLi * NdotL;
