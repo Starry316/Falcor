@@ -410,20 +410,28 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 {
     bool dirty = false;
     bool editCurve = false;
-
-    dirty |= widget.dropdown("Render Type", mRenderType);
-    dirty |= widget.dropdown("Infer Type", mInferType);
+    widget.text("Inference time: " + std::to_string(mCudaTime) + " ms");
+    widget.text("Avg Inference time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
+    // dirty |= widget.dropdown("Render Type", mRenderType);
+    // dirty |= widget.dropdown("Infer Type", mInferType);
     editCurve |= widget.dropdown("Curve Type", mCurveType);
-
-
+    dirty |= widget.slider("UV Scale", mCurvatureParas.z, 0.0f, 50.0f);
+    dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
     editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
     editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
-    editCurve |= widget.bezierCurve("TestCurve", getPoint, (void*)point_data, 4, 400, 400);
+    editCurve |= widget.bezierCurve("Controll Curve", getPoint, (void*)point_data, 4, 400, 400);
     dirty |= editCurve;
     if (editCurve)
         mpNBTFInt8->mpTextureSynthesis->updateMap(mpNBTFInt8->mUP.texDim.x, mpDevice, point_data, mCurveType);
     widget.image("ACF", mpNBTFInt8->mpTextureSynthesis->mpACF.get(), Falcor::float2(400.f));
     widget.text("ACF visualization", true);
+
+    if (widget.button("Save ACF"))
+    {
+        mpNBTFInt8->mpTextureSynthesis->mpACF.get()->captureToFile(0, 0, "D:/ACF.exr",Bitmap::FileFormat::ExrFile);
+    }
+
+
 
     dirty |= widget.slider("HF Footprint Scale", mControlParas.x, 0.1f, 100.0f);
     widget.tooltip("Increse = less marching steps", true);
@@ -436,7 +444,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.slider("D", mCurvatureParas.x, 0.0f, 1.0f);
     widget.tooltip("Max height to mesh surface, i.e., the HF tracing starting height", true);
-    dirty |= widget.slider("UV Scale", mCurvatureParas.z, 0.0f, 50.0f);
+
     dirty |= widget.var("UV Scale_", mCurvatureParas.z);
     widget.tooltip("Scale the uv coords", true);
 
@@ -447,7 +455,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.checkbox("Contact Refinement", mContactRefinement);
     widget.tooltip("use contact refinement tracing", true);
-    dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
+
 
     dirty |= widget.checkbox("Show Traced HF", mShowTracedHF);
     dirty |= widget.checkbox("Use float4", mMLPDebug);
@@ -459,12 +467,12 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         dirty = true;
     }
 
-    dirty |= widget.slider("CUDA infer times", cudaInferTimes, 1, 20);
-    widget.tooltip("For speed test, run cuda infer multiple times to get the avg running time.", true);
-    widget.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
-    widget.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
-    widget.text("CUDA real avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames / cudaInferTimes) + " ms");
-    widget.tooltip("This is the real cuda running time", true);
+    // dirty |= widget.slider("CUDA infer times", cudaInferTimes, 1, 20);
+    // widget.tooltip("For speed test, run cuda infer multiple times to get the avg running time.", true);
+    // widget.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
+    // widget.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
+    // widget.text("CUDA real avg time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames / cudaInferTimes) + " ms");
+    // widget.tooltip("This is the real cuda running time", true);
 
     if (widget.button("Reset Timer"))
     {
@@ -472,48 +480,48 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         mCudaAccumulatedFrames = 1;
     }
 
-    if (mOutputingVideo)
-        handleOutput();
+    // if (mOutputingVideo)
+    //     handleOutput();
 
-    dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));
-    dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));
-    dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
-    widget.textbox("Output Path", mOutputPath);
-    widget.var("OutputSPP", mOutputSPP);
-    dirty |= widget.checkbox("Scale UV", mScaleUV);
-    if (widget.button("Output video"))
-    {
-        auto pCamera = mpScene->getCamera();
-        pCamera->setOutputFrameCount(mOutputSPP);
-        pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
-        pCamera->setAccumulating(true);
-        mOutputStep = 0;
-        mOutputingVideo = true;
-        dirty = true;
-    }
-    if (widget.button("Stop", true) || mOutputSPP > 200000)
-    {
-        auto pCamera = mpScene->getCamera();
-        pCamera->setOutputFrameCount(mOutputSPP);
-        pCamera->setAccumulating(false);
-        mOutputingVideo = false;
-        dirty = true;
-    }
-    if (widget.button("Reset index"))
-    {
-        mOutputIndx = 0;
-        mOutputSPP = 1;
-        mOutputStep = 0;
-        mpScene->getCamera()->setResetFlag(true);
-        mEnvRotAngle = Falcor::float3(0);
+    // dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));
+    // dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));
+    // dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
+    // widget.textbox("Output Path", mOutputPath);
+    // widget.var("OutputSPP", mOutputSPP);
+    // dirty |= widget.checkbox("Scale UV", mScaleUV);
+    // if (widget.button("Output video"))
+    // {
+    //     auto pCamera = mpScene->getCamera();
+    //     pCamera->setOutputFrameCount(mOutputSPP);
+    //     pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
+    //     pCamera->setAccumulating(true);
+    //     mOutputStep = 0;
+    //     mOutputingVideo = true;
+    //     dirty = true;
+    // }
+    // if (widget.button("Stop", true) || mOutputSPP > 200000)
+    // {
+    //     auto pCamera = mpScene->getCamera();
+    //     pCamera->setOutputFrameCount(mOutputSPP);
+    //     pCamera->setAccumulating(false);
+    //     mOutputingVideo = false;
+    //     dirty = true;
+    // }
+    // if (widget.button("Reset index"))
+    // {
+    //     mOutputIndx = 0;
+    //     mOutputSPP = 1;
+    //     mOutputStep = 0;
+    //     mpScene->getCamera()->setResetFlag(true);
+    //     mEnvRotAngle = Falcor::float3(0);
 
-        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
-    }
-    if (mOutputingVideo && mpScene->getEnvMap())
-    {
-        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
-    }
-    mpPixelDebug->renderUI(widget);
+    //     mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
+    // }
+    // if (mOutputingVideo && mpScene->getEnvMap())
+    // {
+    //     mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
+    // }
+    // mpPixelDebug->renderUI(widget);
 
 
     // If rendering options that modify the output have changed, set flag to indicate that.

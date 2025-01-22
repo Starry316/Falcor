@@ -1,6 +1,6 @@
 // #define PEBBLE
 // #define LEATHER
-// #define LEATHER_TILE
+#define LEATHER_TILE
 // #define LEATHER10
 // #define LEATHER10_TILE
 // #define LEATHER_04R
@@ -10,7 +10,7 @@
 // #define TILE2_SML2
 // #define TILE3
 // #define TILE4
-#define TILE4_SML
+// #define TILE4_SML
 // #define BRICK
 // #define METAL
 // #define METAL2

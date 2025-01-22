@@ -5,7 +5,7 @@
 #define IN_PACKED_NUM 6
 #define HIDDEN_NUM 32
 #define HIDDEN_PACKED_NUM 8
-#define HALF_ACC 0
+#define HALF_ACC 1
 __global__ void inferInt8TexTest(
     int* weight,
     int* packedInput,

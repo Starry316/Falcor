@@ -28,11 +28,11 @@ enum class ACFCurve : uint32_t
     X,
     X2,
     X3,
-    X5,
+    // X5,
     X6,
-    INV_X6,
-    INV_X3,
-    INV_X2,
+    // INV_X6,
+    // INV_X3,
+    // INV_X2,
     BEZIER
 };
 
@@ -41,11 +41,11 @@ FALCOR_ENUM_INFO(
     {{ACFCurve::X, "x"},
      {ACFCurve::X2, "x^2"},
      {ACFCurve::X3, "x^3"},
-     {ACFCurve::X5, "x^5"},
+    //  {ACFCurve::X5, "x^5"},
      {ACFCurve::X6, "x^6"},
-     {ACFCurve::INV_X6, "invx^6"},
-     {ACFCurve::INV_X3, "invx^3"},
-     {ACFCurve::INV_X2, "invx^2"},
+    //  {ACFCurve::INV_X6, "invx^6"},
+    //  {ACFCurve::INV_X3, "invx^3"},
+    //  {ACFCurve::INV_X2, "invx^2"},
      {ACFCurve::BEZIER, "Bezier Curve"}}
 );
 FALCOR_ENUM_REGISTER(ACFCurve);
