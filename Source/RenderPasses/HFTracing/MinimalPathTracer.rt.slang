@@ -71,10 +71,9 @@ RWTexture2D<float4> gOutputColor;
 
 Texture2D<float> gHF;
 Texture2D<float4> gShellHF[2];
-RWTexture2D<float4> gAngleMap;
-RWTexture2D<float4> gNMap;
-RWTexture2D<float4> gTMap;
-
+Texture2D<float4> gNormalMap;
+Texture2D<float4> gTangentMap;
+Texture2D<float4> gPosMap;
 Texture2D<float4> gEditMap;
 
 RWBuffer<uint4> packedInput;
@@ -1353,10 +1352,7 @@ void handleDisplacementHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.terminated = true;
         return;
     }
-    gNMap[pixel].xyz = sd.frame.N;
-    gTMap[pixel].xyz = sd.frame.T;
-    gTMap[pixel].w = 1;
-    gAngleMap[pixel].xyz = wo;
+
     rayData.radiance = float3(0, 0, 0);
     float3 newPos = sd.posW + sd.frame.N * gCurvatureParas.y;
     if (generateEnvMapSample(newPos, rayData.sg, envLi, envDir, envPdf))

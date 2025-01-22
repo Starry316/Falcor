@@ -236,29 +236,6 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
     mCudaAccumulatedFrames++;
 }
 
-void HFTracing::generateSamplePass(RenderContext* pRenderContext, const RenderData& renderData)
-{
-    Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
-    FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-    auto var = mpVisualizeMapsPass->getRootVar();
-
-    // mpVisualizeMapsPass->getProgram()->addDefine("SAMPLE_GENERATOR_TYPE", "SAMPLE_GENERATOR_TINY_UNIFORM");
-    mpSampleGenerator->bindShaderData(var);
-    var["PerFrameCB"]["gRenderTargetDim"] = targetDim;
-    var["PerFrameCB"]["gFrameCount"] = mFrameCount + mCurrentSampleCount;
-
-    var["gNNInput"] = mpPackedInputBuffer;
-    var["cudaVaildBuffer"] = mpVaildBuffer;
-    var["gSelectBuffer"] = mpSelectBuffer;
-    var["gAngleMap"] = mpAngleMap;
-    var["gLightSampleMap"] = mpLightSampleMap;
-    var["gTMap"] = mpTMap;
-    var["gNMap"] = mpNMap;
-    mpScene->getEnvMap()->bindShaderData(var["PerFrameCB"]["envMap"]);
-    mpEnvMapSampler->bindShaderData(var["PerFrameCB"]["envMapSampler"]);
-
-    mpVisualizeMapsPass->execute(pRenderContext, targetDim.x, targetDim.y);
-}
 void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
     Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
@@ -269,9 +246,7 @@ void HFTracing::displayPass(RenderContext* pRenderContext, const RenderData& ren
     var["gInputColor"] = mpOutputBuffer;
     var["cudaVaildBuffer"] = mpVaildBuffer;
     var["gSelectBuffer"] = mpSelectBuffer;
-    var["gLightSampleMap"] = mpLightSampleMap;
-    var["PerFrameCB"]["gTotalSampleCount"] = mTotalSampleCount;
-    var["PerFrameCB"]["gCurrentSampleCount"] = mCurrentSampleCount;
+
     mpPixelDebug->beginFrame(pRenderContext, renderData.getDefaultTextureDims());
     mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, targetDim.x, targetDim.y);
@@ -310,10 +285,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
     createBuffer(mpHashedUVBuffer, mpDevice, targetDim, 4);
     createBuffer(mpSelectBuffer, mpDevice, targetDim, 4);
-    createTex(mpAngleMap, mpDevice, targetDim, false, false);
-    createTex(mpLightSampleMap, mpDevice, targetDim, false, false);
-    createTex(mpTMap, mpDevice, targetDim, false, false);
-    createTex(mpNMap, mpDevice, targetDim, false, false);
     // createBuffer(mpSelectUVBuffer, mpDevice, Falcor::uint2(1), 3);
 
     // Request the light collection if emissive lights are enabled.
@@ -407,9 +378,6 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     var["hashedUV"] = mpHashedUVBuffer;
     var["gMaxSampler"] = mpMaxSampler;
     var["gSelectBuffer"] = mpSelectBuffer;
-    var["gAngleMap"] = mpAngleMap;
-    var["gTMap"] = mpTMap;
-    var["gNMap"] = mpNMap;
     // var["gSelectUVBuffer"] = mpSelectUVBuffer;
 
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
@@ -442,8 +410,8 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     mFrameCount++;
     mFrameDim = renderData.getDefaultTextureDims();
 
-    if (mEnableEdit)
-    {
+    if(mEnableEdit){
+
         mpScene->getCamera()->setPosition(mCameraPos);
         mpScene->getCamera()->setTarget(mCameraTarget);
     }
@@ -458,18 +426,12 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     if (mInferType == InferType::SHADER || mInferType == InferType::SHADERTP)
     {
         nnInferPass(pRenderContext, renderData);
-        // displayPass(pRenderContext, renderData);
     }
     else
     {
-
-        for (mCurrentSampleCount = 0; mCurrentSampleCount < mTotalSampleCount; mCurrentSampleCount++)
-        {
-            generateSamplePass(pRenderContext, renderData);
-      cudaInferPass(pRenderContext, renderData);
-            displayPass(pRenderContext, renderData);
-        }
+        cudaInferPass(pRenderContext, renderData);
     }
+    displayPass(pRenderContext, renderData);
 }
 
 float getPoint(void* data, int32_t index)
@@ -482,22 +444,21 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     bool dirty = false;
     bool editCurve = false;
     mUseEditMap = false;
-    if (mRefresh)
-    {
+    if(mRefresh){
         dirty = true;
         mRefresh = false;
     }
     // dirty |= widget.dropdown("Render Type", mRenderType);
     // dirty |= widget.dropdown("Infer Type", mInferType);
-    widget.text("Inference Time: " + std::to_string(mCudaTime) + "  ms");
+    widget.text("Inference Time: " + std::to_string(mCudaTime) + " ms");
     widget.text("Avg Inference Time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
 
     // widget.tooltip("Use importance sampling for materials", true);
-    if (widget.checkbox("Enable Material Editing", mEnableEdit))
+    if (widget.checkbox("Enable Editing Material", mEnableEdit))
     {
         // mpScene->setCameraControlsEnabled(!mEnableEdit);
         mCameraPos = mpScene->getCamera()->getPosition();
-        mCameraTarget = mpScene->getCamera()->getTarget();
+        mCameraTarget =mpScene->getCamera()->getTarget();
         dirty = true;
     }
     dirty |= widget.slider("Selected Material ID", mMatId, 0u, 1u);
@@ -512,12 +473,11 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= editCurve;
     if (editCurve)
         // for (int i = 0; i < 2; i++)
-        mpNBTFInt8[mMatId]->mpTextureSynthesis->updateMap(mpNBTFInt8[mMatId]->mUP.texDim.x, mpDevice, point_data, mCurveType);
+            mpNBTFInt8[mMatId]->mpTextureSynthesis->updateMap(mpNBTFInt8[mMatId]->mUP.texDim.x, mpDevice, point_data, mCurveType);
     widget.text("ACF visualization");
     widget.image("ACF", mpNBTFInt8[mMatId]->mpTextureSynthesis->mpACF.get(), Falcor::float2(200.f), true);
 
-    if (widget.button("Apply Guide Map"))
-    {
+    if(widget.button("Apply Guide Map")){
         mUseEditMap = true;
         dirty = true;
     }
@@ -545,10 +505,11 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     // dirty |= widget.slider("D", mCurvatureParas.x, 0.0f, 1.0f);
     // widget.tooltip("Max height to mesh surface, i.e., the HF tracing starting height", true);
 
+
     // dirty |= widget.var("UV Scale_", mCurvatureParas.z);
     widget.tooltip("Scale the uv coords", true);
 
-    // dirty |= widget.checkbox("Traced Shadow Ray", mTracedShadowRay);
+    dirty |= widget.checkbox("Traced Shadow Ray", mTracedShadowRay);
     // dirty |= widget.slider("Shadow ray offset", mCurvatureParas.y, 0.0f, 1.0f);
     // widget.tooltip("Position offset along with the normal dir. To avoid self-occlusion", true);
     // dirty |= widget.slider("mip scale", mCurvatureParas.w, 0.0f, 11.0f);
@@ -556,7 +517,7 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     // dirty |= widget.checkbox("Contact Refinement", mContactRefinement);
     // widget.tooltip("use contact refinement tracing", true);
     dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
-    dirty |= widget.slider("SPP", mTotalSampleCount, 1u, 100u);
+
     // dirty |= widget.checkbox("Show Traced HF", mShowTracedHF);
     // dirty |= widget.checkbox("Use float4", mMLPDebug);
     // widget.tooltip("Use float4 in shader inference (debug only)", true);
@@ -586,10 +547,6 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));
     dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));
     dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
-
-    dirty |= widget.var("Env rot X var", mEnvRotAngle.x);
-    dirty |= widget.var("Env rot Y var", mEnvRotAngle.y);
-    dirty |= widget.var("Env rot Z var", mEnvRotAngle.z);
 
     if (mpScene->getEnvMap())
     {
@@ -877,16 +834,10 @@ void HFTracing::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene
     mpNBTF = std::make_unique<NBTF>(mpDevice, mNetName, false);
     DefineList defines = mpScene->getSceneDefines();
     mpGenerateGeometryMapPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/GenerateGeometryMap.cs.slang", "csMain", defines);
+    mpVisualizeMapsPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/VisualizeMaps.cs.slang", "csMain", defines);
     mpCreateMaxMipPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/CreateMaxMip.cs.slang", "csMain", defines);
     mpInferPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/Inference.cs.slang", "csMain", defines);
     mpDisplayPass = ComputePass::create(mpDevice, "RenderPasses/HFTracing/Display.cs.slang", "csMain", defines);
-
-    ProgramDesc desc;
-    desc.addShaderModules(mpScene->getShaderModules());
-    desc.addShaderLibrary("RenderPasses/HFTracing/VisualizeMaps.cs.slang").csEntry("csMain");
-    desc.addTypeConformances(mpScene->getTypeConformances());
-
-    mpVisualizeMapsPass = ComputePass::create(mpDevice, desc, defines.add(mpSampleGenerator->getDefines()));
 
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
@@ -916,7 +867,6 @@ void HFTracing::prepareVars()
 
     // Configure program.
     mTracer.pProgram->addDefines(mpSampleGenerator->getDefines());
-
     mTracer.pProgram->setTypeConformances(mpScene->getTypeConformances());
 
     // Create program variables for the current program.
@@ -928,12 +878,12 @@ void HFTracing::prepareVars()
     mpSampleGenerator->bindShaderData(var);
 }
 
+
 bool HFTracing::onKeyEvent(const KeyboardEvent& keyboardEvent)
 {
     if (mEnableEdit)
     {
-        if ((keyboardEvent.type == KeyboardEvent::Type::KeyRepeated ||
-             keyboardEvent.type == KeyboardEvent::Type::KeyPressed && keyboardEvent.key == Input::Key::Space))
+        if ( (keyboardEvent.type ==KeyboardEvent::Type::KeyRepeated || keyboardEvent.type ==KeyboardEvent::Type::KeyPressed && keyboardEvent.key == Input::Key::Space) )
         {
             mPaint = true;
             return true;
@@ -942,12 +892,14 @@ bool HFTracing::onKeyEvent(const KeyboardEvent& keyboardEvent)
     return false;
 }
 
+
+
 bool HFTracing::onMouseEvent(const MouseEvent& mouseEvent)
 {
     if (mEnableEdit && mPaint)
     {
         // if ( (mouseEvent.type ==MouseEvent::Type::ButtonDown && mouseEvent.button == Input::MouseButton::Left) )
-        if ((mouseEvent.type == MouseEvent::Type::Move))
+        if ( (mouseEvent.type ==MouseEvent::Type::Move) )
         {
             mSelectedPixel = Falcor::uint2(mouseEvent.pos * Falcor::float2(mFrameDim));
             mRefresh = true;

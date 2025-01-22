@@ -2,11 +2,9 @@ import Utils.Debug.PixelDebug;
 cbuffer PerFrameCB
 {
     uint2 gRenderTargetDim;
-    uint gTotalSampleCount;
-    uint gCurrentSampleCount;
 }
 RWTexture2D<float4> gOutputColor;
-Texture2D<float4> gLightSampleMap;
+
 
 
 Buffer<float> gInputColor;
@@ -44,18 +42,10 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
     //float4 test_hash = float4(floor(rnd21(t0) * 2048), floor(rnd21(t1) * 2048), 0, 1);
 
 
+    gOutputColor[pixel] *= btfVal;
 
-
-    if(gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] ==0)
-    {
-        btfVal = exp(btfVal) - 1;
-
-    }
-
-    // gOutputColor[pixel] *= btfVal;
-    if (gCurrentSampleCount ==0)
-        gOutputColor[pixel] = gLightSampleMap[pixel] * btfVal / (float)gTotalSampleCount;
-    else
-        gOutputColor[pixel] += gLightSampleMap[pixel] * btfVal / (float)gTotalSampleCount;
-    // gOutputColor[pixel] = gLightSampleMap[pixel];
+    //if(gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] == 0)
+    //{
+    //    gOutputColor[pixel] = 1;
+    //}
 }
