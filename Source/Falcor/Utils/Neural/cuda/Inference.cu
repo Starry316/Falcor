@@ -1223,18 +1223,17 @@ __global__ void inferInt8TexHashed(
     val = tex2DLayered<float4>(DP, d1, d2, 1);
     val2[5] = quantizeInt8x4f_safe(val, scaleIn1[trueMatId]);
 
-    // layer 1
-    for (int k = 0; k < hiddenNum; k++)
+   // layer 1
+    for (int k = 0; k < HIDDEN_NUM; k++)
     {
         val1[k] = 0;
-        for (int j = 0; j < inPackedNum; j++)
+        for (int j = 0; j < IN_PACKED_NUM; j++)
         {
-            val1[k] = __dp4a(val2[j], W[offset + k * inPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[k * IN_PACKED_NUM + j], val1[k]);
         }
     }
-    offset += hiddenNum * inPackedNum;
 
-    for (int k = 0; k < hiddenPackedNum; k++)
+    for (int k = 0; k < HIDDEN_PACKED_NUM; k++)
     {
 #if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
@@ -1257,16 +1256,15 @@ __global__ void inferInt8TexHashed(
     }
 
     // layer 2
-    for (int k = 0; k < hiddenNum; k++)
+    for (int k = 0; k < HIDDEN_NUM; k++)
     {
         val1[k] = 0;
-        for (int j = 0; j < hiddenPackedNum; j++)
+        for (int j = 0; j < HIDDEN_PACKED_NUM; j++)
         {
-            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[192 + k * HIDDEN_PACKED_NUM + j], val1[k]);
         }
     }
-    offset += hiddenNum * hiddenPackedNum;
-    for (int k = 0; k < hiddenPackedNum; k++)
+    for (int k = 0; k < HIDDEN_PACKED_NUM; k++)
     {
 #if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
@@ -1282,22 +1280,21 @@ __global__ void inferInt8TexHashed(
             dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale2[trueMatId]),
             dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale2[trueMatId]),
             dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale2[trueMatId]),
-            scaleIn3
+            scaleIn3[trueMatId]
         );
 #endif
     }
 
     // layer 3
-    for (int k = 0; k < hiddenNum; k++)
+    for (int k = 0; k < HIDDEN_NUM; k++)
     {
         val1[k] = 0;
-        for (int j = 0; j < hiddenPackedNum; j++)
+        for (int j = 0; j < HIDDEN_PACKED_NUM; j++)
         {
-            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[448 + k * HIDDEN_PACKED_NUM + j], val1[k]);
         }
     }
-    offset += hiddenNum * hiddenPackedNum;
-    for (int k = 0; k < hiddenPackedNum; k++)
+    for (int k = 0; k < HIDDEN_PACKED_NUM; k++)
     {
 #if HALF_ACC
         val2[k] = quantizeInt8x4h_safe(
@@ -1319,12 +1316,12 @@ __global__ void inferInt8TexHashed(
     }
 
     // layer final
-    for (int k = 0; k < outNum; k++)
+    for (int k = 0; k < 3; k++)
     {
         val1[k] = 0;
-        for (int j = 0; j < hiddenPackedNum; j++)
+        for (int j = 0; j < HIDDEN_PACKED_NUM; j++)
         {
-            val1[k] = __dp4a(val2[j], W[offset + k * hiddenPackedNum + j], val1[k]);
+            val1[k] = __dp4a(val2[j], W[704 + k * HIDDEN_PACKED_NUM + j], val1[k]);
         }
     }
     __syncthreads();
