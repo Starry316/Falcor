@@ -182,8 +182,11 @@ private:
 #endif
 
 #ifdef TEST_MULTI
-    std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "weave_small_m32u8h8d8_int8"};
-    std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","WickerWeavesBrownRattan001_DISP_6K_small.jpg"};
+    // std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "weave_small_m32u8h8d8_int8"};
+    // std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","WickerWeavesBrownRattan001_DISP_6K_small.jpg"};
+
+    std::string mNetInt8Name[2] = {  "fabric3_m32u8h8d8_int8"      ,"weave_small_m32u8h8d8_int8" };
+    std::string mShellHFFileName[2] = {"FabricVelvetEmbossed004_DISP_4K_SPECULAR.png","WickerWeavesBrownRattan001_DISP_6K_small.jpg" };
 
     // std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "leather11_tile_m32u8h8d8_int8"};
     // std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","ubo/leather11_tile.png"};

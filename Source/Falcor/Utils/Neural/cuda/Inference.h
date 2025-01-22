@@ -87,7 +87,6 @@ void launchInferInt8TexAutocov(
 void launchInferInt8TexHashed(
     int* weight,
     int* packedInput,
-    float* hashedUV,
     cudaTextureObject_t HP,
     cudaTextureObject_t DP,
     cudaTextureObject_t UP,

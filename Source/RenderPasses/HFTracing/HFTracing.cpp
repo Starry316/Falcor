@@ -186,7 +186,6 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
                 {
                     mpNBTFInt8[matId]->mpMLPCuda->inferInt8Hashed(
                         (int*)mpPackedInputBuffer->getGpuAddress(),
-                        (float*)mpHashedUVBuffer->getGpuAddress(),
                         (float*)mpOutputBuffer->getGpuAddress(),
                         targetDim.x,
                         targetDim.y,
@@ -282,7 +281,7 @@ void HFTracing::renderHF(RenderContext* pRenderContext, const RenderData& render
     }
 
     createBuffer(mpVaildBuffer, mpDevice, targetDim, 1);
-    createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 4);
+    createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 5);
     createBuffer(mpHashedUVBuffer, mpDevice, targetDim, 4);
     createBuffer(mpSelectBuffer, mpDevice, targetDim, 4);
     // createBuffer(mpSelectUVBuffer, mpDevice, Falcor::uint2(1), 3);

@@ -24,7 +24,6 @@ public:
     void inferInt8Autocov(int* packedInput, float* output, int width, int height, int* valid, float scale);
     void inferInt8Hashed(
         int* packedInput,
-        float* hashedUV,
         float* output,
         int width,
         int height,
