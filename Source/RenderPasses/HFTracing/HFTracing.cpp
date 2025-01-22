@@ -182,7 +182,7 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
     {
         if (mInferType == InferType::CUDAINT8)
             if (mApplySyn)
-                for (int matId = 0; matId < 2; matId++)
+                for (int matId = 0; matId < 1; matId++)
                 {
                     mpNBTFInt8[matId]->mpMLPCuda->inferInt8Hashed(
                         (int*)mpPackedInputBuffer->getGpuAddress(),
@@ -543,9 +543,9 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     // if (mOutputingVideo)
     //     handleOutput();
 
-    dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));
-    dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));
-    dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
+    dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));if(widget.button("X -", true)){mEnvRotAngle.x -= float(2 * M_PI) / 45; dirty = true;}  if(widget.button("X +", true)){mEnvRotAngle.x += float(2 * M_PI) / 45; dirty = true;}
+    dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));if(widget.button("Y -", true)){mEnvRotAngle.x -= float(2 * M_PI) / 45; dirty = true;}  if(widget.button("Y +", true)){mEnvRotAngle.y += float(2 * M_PI) / 45; dirty = true;}
+    dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));if(widget.button("Z -", true)){mEnvRotAngle.x -= float(2 * M_PI) / 45; dirty = true;}  if(widget.button("Z +", true)){mEnvRotAngle.z += float(2 * M_PI) / 45; dirty = true;}
 
     if (mpScene->getEnvMap())
     {

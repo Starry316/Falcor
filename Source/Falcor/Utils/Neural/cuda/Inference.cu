@@ -1182,14 +1182,10 @@ __global__ void inferInt8TexHashed(
     Gy = (g0.y - 0.5f) * b0 + (g1.y - 0.5f) *b1;
     Gz = (g0.z - 0.5f) * b0 + (g1.z - 0.5f) *b1;
     Gw = (g0.w - 0.5f) * b0 + (g1.w - 0.5f) *b1;
-     Gx = clampG(Gx / norm + 0.5f);
+    Gx = clampG(Gx / norm + 0.5f);
     Gy = clampG(Gy / norm + 0.5f);
     Gz = clampG(Gz / norm + 0.5f);
     Gw = clampG(Gw / norm + 0.5f);
-
-
-
-
 
     val.x = tex2DLayered<float4>(InvP, Gx, 0.0f, 0).x;
     val.y = tex2DLayered<float4>(InvP, Gy, 0.0f, 0).y;
