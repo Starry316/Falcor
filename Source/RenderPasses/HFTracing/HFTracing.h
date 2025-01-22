@@ -115,6 +115,7 @@ public:
     void renderHF(RenderContext* pRenderContext, const RenderData& renderData);
     void nnInferPass(RenderContext* pRenderContext, const RenderData& renderData);
     void cudaInferPass(RenderContext* pRenderContext, const RenderData& renderData);
+    void generateSamplePass(RenderContext* pRenderContext, const RenderData& renderData);
 
     void displayPass(RenderContext* pRenderContext, const RenderData& renderData);
     void handleOutput();
@@ -149,6 +150,8 @@ private:
 
     /// Frame count since scene was loaded.
     uint mFrameCount = 0;
+    uint mCurrentSampleCount = 0;
+    uint mTotalSampleCount = 1;
     bool mOptionsChanged = false;
 
     // Ray tracing program.
@@ -182,8 +185,8 @@ private:
 #endif
 
 #ifdef TEST_MULTI
-    std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "weave_small_m32u8h8d8_int8"};
-    std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","WickerWeavesBrownRattan001_DISP_6K_small.jpg"};
+    // std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "weave_small_m32u8h8d8_int8"};
+    // std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","WickerWeavesBrownRattan001_DISP_6K_small.jpg"};
 
     // std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "leather11_tile_m32u8h8d8_int8"};
     // std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","ubo/leather11_tile.png"};
@@ -191,8 +194,11 @@ private:
 
     //std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "metal2_m32u8h8d8_int8"};
     //std::string mShellHFFileName[2] = {"ubo/leather11.png", "MetalGoldHammered001_DISP_6K.png"};
-    //std::string mNetInt8Name[2] = {"metal2_m32u8h8d8_int8", "leather11_m32u8h8d8_int8"};
-    //std::string mShellHFFileName[2] = {"MetalGoldHammered001_DISP_6K.png", "ubo/leather11.png"};
+    // std::string mNetInt8Name[2] = {  "metal2_m32u8h8d8_int8"      ,"weave_small_m32u8h8d8_int8" };
+    // std::string mShellHFFileName[2] = {"MetalGoldHammered001_DISP_6K.png","WickerWeavesBrownRattan001_DISP_6K_small.jpg" };
+
+    std::string mNetInt8Name[2] = {  "pebble_m32u8h8d8_int8"      ,"weave_small_m32u8h8d8_int8" };
+    std::string mShellHFFileName[2] = {"ganges_river_pebbles_disp_4k.png","WickerWeavesBrownRattan001_DISP_6K_small.jpg" };
     std::string mHFFileName = "ubo/leather11.png";
     bool mHDRBTF = false;
 #endif
@@ -305,9 +311,10 @@ private:
     ref<Texture> mpShellHF[2];
     ref<Texture> mpHFMaxMip;
     ref<Texture> mpColor;
-    ref<Texture> mpNormalMap;
-    ref<Texture> mpTangentMap;
-    ref<Texture> mpPosMap;
+    ref<Texture> mpAngleMap;
+    ref<Texture> mpLightSampleMap;
+    ref<Texture> mpTMap;
+    ref<Texture> mpNMap;
     ref<Texture> mpEditMap;
 
     ref<Sampler> mpMaxSampler;
@@ -361,7 +368,7 @@ private:
 
     uint mDebugPrism = 0;
     bool mShowTracedHF = false;
-    bool mTracedShadowRay = true;
+    bool mTracedShadowRay = false;
     bool mUseMIS = false;
 
     // output

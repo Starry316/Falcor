@@ -6,6 +6,24 @@ float MISWeight(float p0, float p1) {
     return q0 / (q0 + q1);
 }
 
+// pack inputs into one uint4 using float16
+inline uint2 packAngularInput(float3 wi, float3 wo)
+{
+    uint2 ret;
+    float2 h, d;
+    dirToRusinkiewicz(wi, wo, h, d);
+    float3 vh = spherical_to_cartesian_rad(h);
+    float3 vd = spherical_to_cartesian_rad(d);
+
+    h = hemisphereDirToDiskSquare(vh);
+    d = hemisphereDirToDiskSquare(vd);
+
+    ret.x = packUnorm2x16(h);
+    ret.y = packUnorm2x16(d);
+
+    return ret;
+}
+
 
 // pack inputs into one uint4 using float16
 inline uint4 packInput(float3 wi, float3 wo, float2 uv, float2 ddx, float2 ddy)

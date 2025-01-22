@@ -5,7 +5,7 @@
 #define IN_PACKED_NUM IN_NUM / 4
 #define HIDDEN_NUM 32
 #define HIDDEN_PACKED_NUM HIDDEN_NUM / 4
-#define HALF_ACC 1
+#define HALF_ACC 0
 
 #ifndef TEST_MULTI
 __global__ void inferInt8TexTest(
@@ -1345,7 +1345,7 @@ __global__ void inferInt8TexHashed(
             dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale2[trueMatId]),
             dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale2[trueMatId]),
             dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale2[trueMatId]),
-            scaleIn3
+            scaleIn3[trueMatId]
         );
 #endif
     }
@@ -1565,7 +1565,7 @@ void launchInferFP16Tex(
     dim3 dimBlock(16, 16);
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
 }
-#endif 
+#endif
 
 #ifndef TEST_MULTI
 
