@@ -185,17 +185,17 @@ private:
     // std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "weave_small_m32u8h8d8_int8"};
     // std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","WickerWeavesBrownRattan001_DISP_6K_small.jpg"};
 
-    std::string mNetInt8Name[2] = {  "fabric3_m32u8h8d8_int8"      ,"weave_small_m32u8h8d8_int8" };
-    std::string mShellHFFileName[2] = {"FabricVelvetEmbossed004_DISP_4K_SPECULAR.png","WickerWeavesBrownRattan001_DISP_6K_small.jpg" };
+    // std::string mNetInt8Name[2] = {  "fabric3_m32u8h8d8_int8"      ,"weave_small_m32u8h8d8_int8" };
+    // std::string mShellHFFileName[2] = {"FabricVelvetEmbossed004_DISP_4K_SPECULAR.png","WickerWeavesBrownRattan001_DISP_6K_small.jpg" };
 
-    // std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "leather11_tile_m32u8h8d8_int8"};
-    // std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","ubo/leather11_tile.png"};
+    std::string mNetInt8Name[2] = {"tile4_small_m32u8h8d8_int8" , "leather11_tile_m32u8h8d8_int8"};
+    std::string mShellHFFileName[2] = { "Tiles11_DISP_3K_sml.jpg","ubo/leather11_tile.png"};
 
 
-    //std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "metal2_m32u8h8d8_int8"};
-    //std::string mShellHFFileName[2] = {"ubo/leather11.png", "MetalGoldHammered001_DISP_6K.png"};
-    //std::string mNetInt8Name[2] = {"metal2_m32u8h8d8_int8", "leather11_m32u8h8d8_int8"};
-    //std::string mShellHFFileName[2] = {"MetalGoldHammered001_DISP_6K.png", "ubo/leather11.png"};
+    // std::string mNetInt8Name[2] = {"leather11_m32u8h8d8_int8", "metal2_m32u8h8d8_int8"};
+    // std::string mShellHFFileName[2] = {"ubo/leather11.png", "MetalGoldHammered001_DISP_6K.png"};
+    // std::string mNetInt8Name[2] = {"leather11_tile_m32u8h8d8_int8", "metal2_m32u8h8d8_int8"};
+    // std::string mShellHFFileName[2] = { "ubo/leather11_tile.png","MetalGoldHammered001_DISP_6K.png"};
     std::string mHFFileName = "ubo/leather11.png";
     bool mHDRBTF = false;
 #endif
@@ -364,7 +364,7 @@ private:
 
     uint mDebugPrism = 0;
     bool mShowTracedHF = false;
-    bool mTracedShadowRay = true;
+    bool mTracedShadowRay = false;
     bool mUseMIS = false;
 
     // output

@@ -477,7 +477,7 @@ float acfTransform(float val, ACFCurve curve){
     //     return val * val * val * val * val;
     // }
     else if(curve ==   ACFCurve::X6){
-        return val * val * val * val * val * val;
+        return val * val * val * val * val * val* val;
     }
     // else if(curve ==   ACFCurve::INV_X6){
     //     val = 1 - val;
@@ -597,6 +597,7 @@ void updateSample(
     for (int i = 0; i < acf_weight.size(); ++i)
     {
         float val = acf_weight[i];
+        val = std::max(val, 0.0f);
         min = std::min(min, val);
         max = std::max(max, val);
     }

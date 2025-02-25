@@ -182,9 +182,9 @@ void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice)
     );
     for (int i = 0; i < acfPDF.size(); i++)
     {
-        acfPDFImg[i * 3] = acfPDF[i];
-        acfPDFImg[i * 3 + 1] = acfPDF[i];
-        acfPDFImg[i * 3 + 2] = acfPDF[i];
+        acfPDFImg[i * 3] = acfPDF[i] * 4;
+        acfPDFImg[i * 3 + 1] = acfPDF[i]* 4;
+        acfPDFImg[i * 3 + 2] = acfPDF[i]* 4;
     }
 
 
@@ -204,9 +204,9 @@ void TextureSynthesis::updateMap(uint dim, ref<Device> pDevice, float2* ctrl_poi
     );
     for (int i = 0; i < acfPDF.size(); i++)
     {
-        acfPDFImg[i * 3] = acfPDF[i];
-        acfPDFImg[i * 3 + 1] = acfPDF[i];
-        acfPDFImg[i * 3 + 2] = acfPDF[i];
+        acfPDFImg[i * 3] = acfPDF[i]* 4;
+        acfPDFImg[i * 3 + 1] = acfPDF[i]* 4;
+        acfPDFImg[i * 3 + 2] = acfPDF[i]* 4;
     }
     mpACF = pDevice->createTexture2D(dim, dim, ResourceFormat::RGB32Float, 1, 1, acfPDFImg.data(), ResourceBindFlags::ShaderResource);
 }

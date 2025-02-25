@@ -182,7 +182,7 @@ void HFTracing::cudaInferPass(RenderContext* pRenderContext, const RenderData& r
     {
         if (mInferType == InferType::CUDAINT8)
             if (mApplySyn)
-                for (int matId = 0; matId < 1; matId++)
+                for (int matId = 0; matId < 2; matId++)
                 {
                     mpNBTFInt8[matId]->mpMLPCuda->inferInt8Hashed(
                         (int*)mpPackedInputBuffer->getGpuAddress(),
@@ -409,8 +409,8 @@ void HFTracing::execute(RenderContext* pRenderContext, const RenderData& renderD
     mFrameCount++;
     mFrameDim = renderData.getDefaultTextureDims();
 
-    if(mEnableEdit){
-
+    if (mEnableEdit)
+    {
         mpScene->getCamera()->setPosition(mCameraPos);
         mpScene->getCamera()->setTarget(mCameraTarget);
     }
@@ -437,13 +437,23 @@ float getPoint(void* data, int32_t index)
 {
     return ((float*)data)[index];
 }
-
+float getPointX6(void* data, int32_t index)
+{
+    float val = (index / 40.0f);
+    return val * val * val * val * val * val;
+}
+float getPointX(void* data, int32_t index)
+{
+    float val = (index / 40.0f);
+    return val;
+}
 void HFTracing::renderUI(Gui::Widgets& widget)
 {
     bool dirty = false;
     bool editCurve = false;
     mUseEditMap = false;
-    if(mRefresh){
+    if (mRefresh)
+    {
         dirty = true;
         mRefresh = false;
     }
@@ -451,32 +461,74 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     // dirty |= widget.dropdown("Infer Type", mInferType);
     widget.text("Inference Time: " + std::to_string(mCudaTime) + " ms");
     widget.text("Avg Inference Time: " + std::to_string(mCudaAvgTime / mCudaAccumulatedFrames) + " ms");
+    dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));
+    if (widget.button("X -", true))
+    {
+        mEnvRotAngle.x -= float(2 * M_PI) / 45;
+        dirty = true;
+    }
+    if (widget.button("X +", true))
+    {
+        mEnvRotAngle.x += float(2 * M_PI) / 45;
+        dirty = true;
+    }
+    dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));
+    if (widget.button("Y -", true))
+    {
+        mEnvRotAngle.y -= float(2 * M_PI) / 45;
+        dirty = true;
+    }
+    if (widget.button("Y +", true))
+    {
+        mEnvRotAngle.y += float(2 * M_PI) / 45;
+        dirty = true;
+    }
+    dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
+    if (widget.button("Z -", true))
+    {
+        mEnvRotAngle.z -= float(2 * M_PI) / 45;
+        dirty = true;
+    }
+    if (widget.button("Z +", true))
+    {
+        mEnvRotAngle.z += float(2 * M_PI) / 45;
+        dirty = true;
+    }
 
     // widget.tooltip("Use importance sampling for materials", true);
     if (widget.checkbox("Enable Editing Material", mEnableEdit))
     {
         // mpScene->setCameraControlsEnabled(!mEnableEdit);
         mCameraPos = mpScene->getCamera()->getPosition();
-        mCameraTarget =mpScene->getCamera()->getTarget();
+        mCameraTarget = mpScene->getCamera()->getTarget();
         dirty = true;
     }
     dirty |= widget.slider("Selected Material ID", mMatId, 0u, 1u);
     dirty |= widget.slider("UV Scale", mCurvatureParas.z, 0.0f, 50.0f);
     editCurve |= widget.dropdown("Curve Type", mCurveType);
-    dirty |= widget.slider("Sample Patch Scale", mPatchScale, 0.1f, 10.0f);
-    widget.tooltip("Scale the sample patch", true);
+
     dirty |= widget.slider("Brush Size", mBrushSize, 1.0f, 150.0f);
     editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
     editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
-    editCurve |= widget.bezierCurve("ACFCurve", getPoint, (void*)point_data, 4, 200, 200);
+    // editCurve |= widget.bezierCurve("ACFCurve", getPoint, (void*)point_data, 4, 200, 200);
+    if (mCurveType == ACFCurve::BEZIER)
+    {
+        editCurve |= widget.bezierCurve("Controll Curve", getPoint, (void*)point_data, 4, 200, 200);
+    }
+    else if (mCurveType == ACFCurve::X6)
+        widget.graph("Controll Curve", getPointX6, (void*)point_data, 40, 0, FLT_MIN, FLT_MAX, 200, 200);
+    else
+        widget.graph("Controll Curve", getPointX, (void*)point_data, 40, 0, FLT_MIN, FLT_MAX, 200, 200);
+
     dirty |= editCurve;
     if (editCurve)
         // for (int i = 0; i < 2; i++)
-            mpNBTFInt8[mMatId]->mpTextureSynthesis->updateMap(mpNBTFInt8[mMatId]->mUP.texDim.x, mpDevice, point_data, mCurveType);
+        mpNBTFInt8[mMatId]->mpTextureSynthesis->updateMap(mpNBTFInt8[mMatId]->mUP.texDim.x, mpDevice, point_data, mCurveType);
     widget.text("ACF visualization");
     widget.image("ACF", mpNBTFInt8[mMatId]->mpTextureSynthesis->mpACF.get(), Falcor::float2(200.f), true);
 
-    if(widget.button("Apply Guide Map")){
+    if (widget.button("Apply Guide Map"))
+    {
         mUseEditMap = true;
         dirty = true;
     }
@@ -504,7 +556,6 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     // dirty |= widget.slider("D", mCurvatureParas.x, 0.0f, 1.0f);
     // widget.tooltip("Max height to mesh surface, i.e., the HF tracing starting height", true);
 
-
     // dirty |= widget.var("UV Scale_", mCurvatureParas.z);
     widget.tooltip("Scale the uv coords", true);
 
@@ -516,7 +567,8 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     // dirty |= widget.checkbox("Contact Refinement", mContactRefinement);
     // widget.tooltip("use contact refinement tracing", true);
     dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
-
+    dirty |= widget.slider("Sample Patch Scale", mPatchScale, 0.1f, 10.0f);
+    widget.tooltip("Scale the sample patch", true);
     // dirty |= widget.checkbox("Show Traced HF", mShowTracedHF);
     // dirty |= widget.checkbox("Use float4", mMLPDebug);
     // widget.tooltip("Use float4 in shader inference (debug only)", true);
@@ -542,10 +594,6 @@ void HFTracing::renderUI(Gui::Widgets& widget)
 
     // if (mOutputingVideo)
     //     handleOutput();
-
-    dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));if(widget.button("X -", true)){mEnvRotAngle.x -= float(2 * M_PI) / 45; dirty = true;}  if(widget.button("X +", true)){mEnvRotAngle.x += float(2 * M_PI) / 45; dirty = true;}
-    dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));if(widget.button("Y -", true)){mEnvRotAngle.x -= float(2 * M_PI) / 45; dirty = true;}  if(widget.button("Y +", true)){mEnvRotAngle.y += float(2 * M_PI) / 45; dirty = true;}
-    dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));if(widget.button("Z -", true)){mEnvRotAngle.x -= float(2 * M_PI) / 45; dirty = true;}  if(widget.button("Z +", true)){mEnvRotAngle.z += float(2 * M_PI) / 45; dirty = true;}
 
     if (mpScene->getEnvMap())
     {
@@ -877,12 +925,12 @@ void HFTracing::prepareVars()
     mpSampleGenerator->bindShaderData(var);
 }
 
-
 bool HFTracing::onKeyEvent(const KeyboardEvent& keyboardEvent)
 {
     if (mEnableEdit)
     {
-        if ( (keyboardEvent.type ==KeyboardEvent::Type::KeyRepeated || keyboardEvent.type ==KeyboardEvent::Type::KeyPressed && keyboardEvent.key == Input::Key::Space) )
+        if ((keyboardEvent.type == KeyboardEvent::Type::KeyRepeated ||
+             keyboardEvent.type == KeyboardEvent::Type::KeyPressed && keyboardEvent.key == Input::Key::Space))
         {
             mPaint = true;
             return true;
@@ -891,14 +939,12 @@ bool HFTracing::onKeyEvent(const KeyboardEvent& keyboardEvent)
     return false;
 }
 
-
-
 bool HFTracing::onMouseEvent(const MouseEvent& mouseEvent)
 {
     if (mEnableEdit && mPaint)
     {
         // if ( (mouseEvent.type ==MouseEvent::Type::ButtonDown && mouseEvent.button == Input::MouseButton::Left) )
-        if ( (mouseEvent.type ==MouseEvent::Type::Move) )
+        if ((mouseEvent.type == MouseEvent::Type::Move))
         {
             mSelectedPixel = Falcor::uint2(mouseEvent.pos * Falcor::float2(mFrameDim));
             mRefresh = true;

@@ -1417,29 +1417,26 @@ __global__ void inferInt8TexHashedOptimized(
 
     norm = sqrt(b0 * b0 + b1 * b1 + bs * bs);
 
-
-
+    float Gx, Gy, Gz, Gw;
     float4 g0 = tex2DLayered<float4>(TP, v1, u1, 0);
     float4 g1 = tex2DLayered<float4>(TP, v2, u2, 0);
 
-    float Gx, Gy, Gz, Gw;
-
     Gx = (g0.x - 0.5f) * b0 + (g1.x - 0.5f) *b1;
     Gy = (g0.y - 0.5f) * b0 + (g1.y - 0.5f) *b1;
     Gz = (g0.z - 0.5f) * b0 + (g1.z - 0.5f) *b1;
     Gw = (g0.w - 0.5f) * b0 + (g1.w - 0.5f) *b1;
-       Gx = clampG(Gx / norm + 0.5f);
+    Gx = clampG(Gx / norm + 0.5f);
     Gy = clampG(Gy / norm + 0.5f);
     Gz = clampG(Gz / norm + 0.5f);
     Gw = clampG(Gw / norm + 0.5f);
-
-
 
     val.x = tex2DLayered<float4>(InvP, Gx, 0.0f, 0).x;
     val.y = tex2DLayered<float4>(InvP, Gy, 0.0f, 0).y;
     val.z = tex2DLayered<float4>(InvP, Gz, 0.0f, 0).z;
     val.w = tex2DLayered<float4>(InvP, Gw, 0.0f, 0).w;
     val2[2] = quantizeInt8x4f_safe(val, scaleIn1[trueMatId]);
+
+
 
     g0 = tex2DLayered<float4>(TP, v1, u1, 1);
     g1 = tex2DLayered<float4>(TP, v2, u2, 1);
@@ -1448,29 +1445,7 @@ __global__ void inferInt8TexHashedOptimized(
     Gy = (g0.y - 0.5f) * b0 + (g1.y - 0.5f) *b1;
     Gz = (g0.z - 0.5f) * b0 + (g1.z - 0.5f) *b1;
     Gw = (g0.w - 0.5f) * b0 + (g1.w - 0.5f) *b1;
-     Gx = clampG(Gx / norm + 0.5f);
-    Gy = clampG(Gy / norm + 0.5f);
-    Gz = clampG(Gz / norm + 0.5f);
-    Gw = clampG(Gw / norm + 0.5f);
-
-
-
-
-
-    val.x = tex2DLayered<float4>(InvP, Gx, 0.0f, 0).x;
-    val.y = tex2DLayered<float4>(InvP, Gy, 0.0f, 0).y;
-    val.z = tex2DLayered<float4>(InvP, Gz, 0.0f, 0).z;
-    val.w = tex2DLayered<float4>(InvP, Gw, 0.0f, 0).w;
-    val2[2] = quantizeInt8x4f_safe(val, scaleIn1[trueMatId]);
-
-    g0 = tex2DLayered<float4>(TP, v1, u1, 1);
-    g1 = tex2DLayered<float4>(TP, v2, u2, 1);
-
-    Gx = (g0.x - 0.5f) * b0 + (g1.x - 0.5f) *b1;
-    Gy = (g0.y - 0.5f) * b0 + (g1.y - 0.5f) *b1;
-    Gz = (g0.z - 0.5f) * b0 + (g1.z - 0.5f) *b1;
-    Gw = (g0.w - 0.5f) * b0 + (g1.w - 0.5f) *b1;
-     Gx = clampG(Gx / norm + 0.5f);
+    Gx = clampG(Gx / norm + 0.5f);
     Gy = clampG(Gy / norm + 0.5f);
     Gz = clampG(Gz / norm + 0.5f);
     Gw = clampG(Gw / norm + 0.5f);
@@ -1548,7 +1523,7 @@ __global__ void inferInt8TexHashedOptimized(
             dequantizeInt8f_relu(val1[4 * k + 1], dequantizeScale2[trueMatId]),
             dequantizeInt8f_relu(val1[4 * k + 2], dequantizeScale2[trueMatId]),
             dequantizeInt8f_relu(val1[4 * k + 3], dequantizeScale2[trueMatId]),
-            scaleIn3
+            scaleIn3[trueMatId]
         );
 #endif
     }

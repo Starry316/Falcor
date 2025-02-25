@@ -32,15 +32,8 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
     if (any(isnan(btfVal)) || any(isinf(btfVal)))
         btfVal = float4(0);
 
-    // print("Li", uvWoyz[pixel]);
-    // print("Li", gOutputColor[pixel]);
-    // print("btf", btfVal);
-
-    //float2 t0 = float2(0.3f, 0.5f);
-    //float2 t1 = float2(2.1f, 4.7f);
-    //float4 test_hash = float4(rnd21(t0), rnd21(t1), 0, 1);
-    //float4 test_hash = float4(floor(rnd21(t0) * 2048), floor(rnd21(t1) * 2048), 0, 1);
-
+    if (gSelectBuffer[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] == 1)
+        btfVal = exp(btfVal) - 1;
 
     gOutputColor[pixel] *= btfVal;
 
