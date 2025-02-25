@@ -244,18 +244,18 @@ __constant__ float scaleOut4 = 0.006224677432328463;
 __constant__ float dequantizeScale4 = 1.991146018553991e-05;
 #endif
 #ifdef TILE4_SML
-__constant__ float scaleIn1 = 0.0025666167493909597;
-__constant__ float scaleOut1 = 0.0028296124655753374;
-__constant__ float dequantizeScale1 = 7.262530743901152e-06;
-__constant__ float scaleIn2 = 0.0012831123312935233;
-__constant__ float scaleOut2 = 0.0036283773370087147;
-__constant__ float dequantizeScale2 = 4.6556156121368986e-06;
-__constant__ float scaleIn3 = 0.0010884717339649796;
-__constant__ float scaleOut3 = 0.005309732630848885;
-__constant__ float dequantizeScale3 = 5.779493676527636e-06;
-__constant__ float scaleIn4 = 0.000891408184543252;
-__constant__ float scaleOut4 = 0.004598027560859919;
-__constant__ float dequantizeScale4 = 4.09871927331551e-06;
+__constant__ float scaleIn1 =           0.0025666167493909597   ;
+__constant__ float scaleOut1 =          0.0028296124655753374   ;
+__constant__ float dequantizeScale1 =   7.262530743901152e-06   ;
+__constant__ float scaleIn2 =           0.0012831123312935233   ;
+__constant__ float scaleOut2 =          0.0036283773370087147   ;
+__constant__ float dequantizeScale2 =   4.6556156121368986e-06  ;
+__constant__ float scaleIn3 =           0.0010884717339649796   ;
+__constant__ float scaleOut3 =          0.005309732630848885    ;
+__constant__ float dequantizeScale3 =   5.779493676527636e-06   ;
+__constant__ float scaleIn4 =           0.000891408184543252    ;
+__constant__ float scaleOut4 =          0.004598027560859919    ;
+__constant__ float dequantizeScale4 =   4.09871927331551e-06    ;
 #endif
 #ifdef FABRIC
 __constant__ float scaleIn1 = 0.0024292529560625553;

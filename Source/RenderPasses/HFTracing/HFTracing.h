@@ -374,6 +374,10 @@ private:
     Falcor::float2 point_data[5] =
         {Falcor::float2(0.0f, 1.0f), Falcor::float2(0.0f, 1.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(1.0f, 0.0f), Falcor::float2(0.0f, 0.0f)};
 
+
+    float point_data_curve[1] ={0};
+
+
     bool mContactRefinement = false;
     bool mMipGenerated = false;
     bool mApplySyn = false;

@@ -1,6 +1,6 @@
 // #define PEBBLE
 // #define LEATHER
-#define LEATHER_TILE
+// #define LEATHER_TILE
 // #define LEATHER10
 // #define LEATHER10_TILE
 // #define LEATHER_04R
@@ -19,7 +19,7 @@
 // #define FABRIC2
 // #define FABRIC09
 // #define FABRIC10
-// #define FABRIC12
+#define FABRIC12
 // #define WALLPAPER02
 // #define WEAVE
 // #define WEAVE_SML

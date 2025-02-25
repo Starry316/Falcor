@@ -406,6 +406,19 @@ float getPoint(void* data, int32_t index)
     return ((float*)data)[index];
 }
 
+float getPointX6(void* data, int32_t index)
+{
+    float val =  (index/40.0f);
+    return val * val * val * val * val * val;
+}
+float getPointX(void* data, int32_t index)
+{
+    float val =  (index/40.0f);
+    return val;
+}
+
+
+
 void HFTracing::renderUI(Gui::Widgets& widget)
 {
     bool dirty = false;
@@ -419,7 +432,14 @@ void HFTracing::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
     editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
     editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
-    editCurve |= widget.bezierCurve("Controll Curve", getPoint, (void*)point_data, 4, 400, 400);
+    if(mCurveType == ACFCurve::BEZIER)
+    {
+        editCurve |= widget.bezierCurve("Controll Curve", getPoint, (void*)point_data, 4, 400, 400);
+    }
+    else if(mCurveType == ACFCurve::X6)
+    widget.graph("Controll Curve", getPointX6, (void*)point_data_curve,40,0,FLT_MIN,FLT_MAX,400,400);
+    else
+        widget.graph("Controll Curve", getPointX, (void*)point_data_curve,40,0,FLT_MIN,FLT_MAX,400,400);
     dirty |= editCurve;
     if (editCurve)
         mpNBTFInt8->mpTextureSynthesis->updateMap(mpNBTFInt8->mUP.texDim.x, mpDevice, point_data, mCurveType);
