@@ -25,48 +25,33 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
-#pragma once
-#include "Falcor.h"
-#include "Core/SampleApp.h"
-#include "Core/Pass/FullScreenPass.h"
-#include "Core/Pass/ComputePass.h"
-#include "Utils/Sampling/SampleGenerator.h"
-#include "Utils/Debug/PixelDebug.h"
-using namespace Falcor;
-
-class SynthesisSample : public SampleApp
+import Utils.Debug.PixelDebug;
+import Utils.Math.MathHelpers;
+cbuffer CB
 {
-public:
-    SynthesisSample(const SampleAppConfig& config);
-    ~SynthesisSample();
-
-    void onLoad(RenderContext* pRenderContext) override;
-    void onShutdown() override;
-    void onResize(uint32_t width, uint32_t height) override;
-    void onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo) override;
-    void onGuiRender(Gui* pGui) override;
-    bool onKeyEvent(const KeyboardEvent& keyEvent) override;
-    bool onMouseEvent(const MouseEvent& mouseEvent) override;
-    void onHotReload(HotReloadFlags reloaded) override;
-
-private:
-    ref<ComputePass> mpGenNDFPass;
-    ref<ComputePass> mpWriteTexPass;
-    ref<FullScreenPass> mpDisplayPass;
-    // Texture inputs
-    std::string mMediaPath = getProjectDirectory().string();
-    ref<Texture> mpHF;
-    ref<Texture> mpOutput;
-    ref<Buffer> mpSamplesBuffer;
-    ref<Buffer> mpImgBuffer;
-    std::vector<float> mImgBuffer;
-    std::vector<int> mOutputBuffer;
-    /// GPU sample generator.
-    ref<SampleGenerator> mpSampleGenerator;
-    std::unique_ptr<PixelDebug> mpPixelDebug;
-
-    float mFactor = 1000.0f;
-    float2 mMu_p = float2(0.0f, 0.0f);
-    float mSigma_p = 2.0f;
-    bool mGenNDF = false;
+    float2 iResolution;
 };
+
+RWTexture2D<float4> ouputColor;
+Buffer<float> imgBuffer;
+
+
+
+[numthreads(16, 16, 1)]
+void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
+{
+    if (any(dispatchThreadId.xy >= iResolution))
+        return;
+    const uint2 pixel = dispatchThreadId.xy;
+    if (any(dispatchThreadId.xy==uint2(0,0)))
+        return;
+    // float2 uv = (float2(pixel)) / iResolution.y;
+
+    ouputColor[pixel] = float4(imgBuffer[pixel.y * (int)iResolution.x + pixel.x]);
+
+
+
+    // printSetPixel(pixel);
+    //
+
+}
