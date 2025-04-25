@@ -438,6 +438,15 @@ public:
             uint32_t height = 100
         );
 
+        bool bezierCurve(
+            const char label[],
+            GraphCallback func,
+            void* pUserData,
+            uint32_t sampleCount,
+            uint32_t width = 0,
+            uint32_t height = 100
+        );
+
         /**
          * Adds a Spectrum user interface. Since there is no SpectrumUI class as input, this call will only disply the spectrum curve and
          * its points and final RGB color. Use the spectrum() function below with a SpectrumUI parameters as well if you want to have the

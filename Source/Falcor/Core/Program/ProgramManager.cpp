@@ -776,7 +776,7 @@ SlangCompileRequest* ProgramManager::createSlangCompileRequest(const Program& pr
 
     // Set debug level
     if (mGenerateDebugInfo || is_set(program.mDesc.compilerFlags, SlangCompilerFlags::GenerateDebugInfo))
-        spSetDebugInfoLevel(pSlangRequest, SLANG_DEBUG_INFO_LEVEL_STANDARD);
+        spSetDebugInfoLevel(pSlangRequest, SLANG_DEBUG_INFO_LEVEL_MINIMAL);
 
     // Configure any flags for the Slang compilation step
     SlangCompileFlags slangFlags = 0;
@@ -787,7 +787,15 @@ SlangCompileRequest* ProgramManager::createSlangCompileRequest(const Program& pr
     //
     slangFlags |= SLANG_COMPILE_FLAG_NO_CODEGEN;
 
+    // skip slang warnings
     spSetCompileFlags(pSlangRequest, slangFlags);
+    spOverrideDiagnosticSeverity(pSlangRequest, 15602, SlangSeverity::SLANG_SEVERITY_DISABLED);
+    spOverrideDiagnosticSeverity(pSlangRequest, 30056, SlangSeverity::SLANG_SEVERITY_DISABLED);
+    spOverrideDiagnosticSeverity(pSlangRequest, 30081, SlangSeverity::SLANG_SEVERITY_DISABLED);
+    spOverrideDiagnosticSeverity(pSlangRequest, 41203, SlangSeverity::SLANG_SEVERITY_DISABLED);
+    spOverrideDiagnosticSeverity(pSlangRequest, 41021, SlangSeverity::SLANG_SEVERITY_DISABLED);
+    spOverrideDiagnosticSeverity(pSlangRequest, 41016, SlangSeverity::SLANG_SEVERITY_DISABLED);
+
 
     // Set additional command line arguments.
     {

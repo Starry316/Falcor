@@ -228,8 +228,8 @@ void PixelDebug::renderUI(Gui::Widgets* widget)
             widget->text(oss.str());
 
         bool isEmpty = mPrintData.empty() && mAssertData.empty();
-        if (isNewData && !isEmpty)
-            logInfo("\n" + oss.str());
+        // if (isNewData && !isEmpty)
+        //     logInfo("\n" + oss.str());
     }
 }
 

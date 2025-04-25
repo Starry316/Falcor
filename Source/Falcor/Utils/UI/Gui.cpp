@@ -217,6 +217,15 @@ private:
         uint32_t width = 0,
         uint32_t height = 100
     );
+
+    bool addBezierCurve(
+        const char label[],
+        Gui::GraphCallback func,
+        void* pUserData,
+        uint32_t sampleCount,
+        uint32_t width = 0,
+        uint32_t height = 100
+    );
 };
 
 GuiImpl::GuiImpl(ref<Device> pDevice, float scaleFactor) : mpDevice(pDevice), mScaleFactor(scaleFactor)
@@ -1187,6 +1196,19 @@ void GuiImpl::addGraph(
     ImGui::PlotLines(label, func, pUserData, (int32_t)sampleCount, sampleOffset, nullptr, yMin, yMax, imSize);
 }
 
+bool GuiImpl::addBezierCurve(
+    const char label[],
+    Gui::GraphCallback func,
+    void* pUserData,
+    uint32_t sampleCount,
+    uint32_t width,
+    uint32_t height
+)
+{
+    ImVec2 imSize{(float)width, (float)height};
+    return ImGui::PlotBezierCurve(label, func, pUserData, (int32_t)sampleCount, nullptr, imSize);
+}
+
 Gui::Gui(ref<Device> pDevice, uint32_t width, uint32_t height, float scaleFactor)
 {
     mpWrapper = std::make_unique<GuiImpl>(pDevice, scaleFactor);
@@ -1710,6 +1732,20 @@ void Gui::Widgets::graph(
 {
     if (mpGui)
         mpGui->mpWrapper->addGraph(label, func, pUserData, sampleCount, sampleOffset, yMin, yMax, width, height);
+}
+
+bool Gui::Widgets::bezierCurve(
+    const char label[],
+    GraphCallback func,
+    void* pUserData,
+    uint32_t sampleCount,
+    uint32_t width,
+    uint32_t height
+)
+{
+    if (mpGui)
+        return mpGui->mpWrapper->addBezierCurve(label, func, pUserData, sampleCount, width, height);
+    return false;
 }
 
 Gui::Menu::Menu(Gui* pGui, const char* name)
