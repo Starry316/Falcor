@@ -22,6 +22,18 @@ extern void launchInferInt8TexTest(
     unsigned int height,
      float uvScale
 );
+extern void launchInferInt8TexTest(
+    int* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+     float uvScale,
+     cudaStream_t mStream
+);
 
 
 extern void launchInferInt8TexACFTest(

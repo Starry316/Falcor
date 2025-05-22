@@ -228,10 +228,14 @@ private:
     ref<Buffer> mpOutputBuffer;
 
 
-
+    cudaStream_t mStream;
+    cudaGraph_t mGraph;
+    cudaGraphExec_t graphExec;
 
     int mCudaInferTimes = 1;
     Falcor::float2 mWo = { 0.0f, 0.0f };
     Falcor::float2 mWi = { 0.0f, 0.0f };
+
+
 
 };

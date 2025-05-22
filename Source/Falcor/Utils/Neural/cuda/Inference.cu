@@ -230,6 +230,24 @@ void launchInferInt8TexTest(
     dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
     inferInt8TexTest<<<dimGrid, dimBlock>>>(weight, packedInput, HP, DP, UP, output, width, height, uvScale);
 }
+
+void launchInferInt8TexTest(
+    int* weight,
+    int* packedInput,
+    cudaTextureObject_t HP,
+    cudaTextureObject_t DP,
+    cudaTextureObject_t UP,
+    float* output,
+    unsigned int width,
+    unsigned int height,
+    float uvScale,
+    cudaStream_t mStream
+)
+{
+    dim3 dimBlock(16, 16);
+    dim3 dimGrid((width + dimBlock.x - 1) / dimBlock.x, (height + dimBlock.y - 1) / dimBlock.y);
+    inferInt8TexTest<<<dimGrid, dimBlock, 0, mStream>>>(weight, packedInput, HP, DP, UP, output, width, height, uvScale);
+}
 __global__ void inferInt8Tex(
     int* weight,
     int* packedInput,

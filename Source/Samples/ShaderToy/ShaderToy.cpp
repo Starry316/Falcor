@@ -138,9 +138,30 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
     mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, false);
-
+    createBuffer(mpOutputBuffer, getDevice(), Falcor::uint2(1920, 1080));
+    createBuffer(mpTestInput, getDevice(), Falcor::uint2(1920, 1080));
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
+
+    cudaStreamCreate(&mStream);
+    // // Start capturing
+    cudaStreamBeginCapture(mStream, cudaStreamCaptureModeGlobal);
+
+    mpNBTFInt8->mpMLPCuda->inferInt8Test((int*)mpTestInput->getGpuAddress(), (float*)mpOutputBuffer->getGpuAddress(), 1920, 1080, mUVScale, mStream);
+    // // End capture and get graph
+
+    cudaStreamEndCapture(mStream, &mGraph);
+
+    // // Instantiate graph
+
+    cudaGraphInstantiate(&graphExec, mGraph, nullptr, nullptr, 0);
+
+    // // Launch graph multiple times
+    // for (int i = 0; i < 10; ++i)
+    // {
+    //     cudaGraphLaunch(graphExec, mStream);
+    //     cudaStreamSynchronize(mStream);
+    // }
 }
 
 void ShaderToy::onResize(uint32_t width, uint32_t height)
@@ -186,13 +207,17 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     Falcor::uint2 targetDim = Falcor::uint2(width, height);
 
     auto output = (float*)mpOutputBuffer->getGpuAddress();
+
     // timer start
     cudaEventRecord(mCudaStart, NULL);
     for (size_t i = 0; i < mCudaInferTimes; i++)
     {
         if (mRenderType == RenderType::CUDAINT8)
-            if (mSynthesis)
-                mpNBTFInt8->mpMLPCuda->inferInt8ACFTest((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
+            if (mSynthesis){
+                cudaGraphLaunch(graphExec, mStream);
+                 cudaStreamSynchronize(mStream);
+            }
+                // mpNBTFInt8->mpMLPCuda->inferInt8ACFTest((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
             else
                 mpNBTFInt8->mpMLPCuda->inferInt8Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
         else if (mRenderType == RenderType::CUDAFP16)
@@ -216,7 +241,7 @@ void ShaderToy::bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     float height = (float)pTargetFbo->getHeight();
     Falcor::uint2 targetDim = Falcor::uint2(width, height);
 
-    createBuffer(mpTestInput, getDevice(), targetDim);
+    // createBuffer(mpTestInput, getDevice(), targetDim);
 
     auto var = mpBindInputPass->getRootVar()["CB"];
     var["iResolution"] = Falcor::float2(width, height);
@@ -260,7 +285,7 @@ void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
     float width = (float)pTargetFbo->getWidth();
     float height = (float)pTargetFbo->getHeight();
     Falcor::uint2 targetDim = Falcor::uint2(width, height);
-    createBuffer(mpOutputBuffer, getDevice(), targetDim);
+    // createBuffer(mpOutputBuffer, getDevice(), targetDim);
 
     if (mRenderType == RenderType::SHADER_NN)
     {

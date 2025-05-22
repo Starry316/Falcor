@@ -135,6 +135,12 @@ void MLPCuda::inferInt8Test(int* testInput, float* output, int width, int height
     launchInferInt8TexTest((int*)mpInt8Buffer->getGpuAddress(), testInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, scale);
 }
 
+void MLPCuda::inferInt8Test(int* testInput, float* output, int width, int height, float scale, cudaStream_t mStream)
+{
+    launchInferInt8TexTest((int*)mpInt8Buffer->getGpuAddress(), testInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, scale,mStream);
+}
+
+
 void MLPCuda::inferFp32Test(int* testInput, float* output, int width, int height, float scale)
 {
     launchInferFp32TexTest((float*)mpFp32Buffer->getGpuAddress(), testInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, scale);

@@ -28,6 +28,7 @@ public:
 
     // for infer speed test
     void inferInt8Test(int* testInput, float* output, int width, int height, float scale);
+    void inferInt8Test(int* testInput, float* output, int width, int height, float scale, cudaStream_t mStream);
     void inferFp32Test(int* testInput, float* output, int width, int height, float scale);
     void inferFp16Test(int* testInput, float* output, int width, int height, float scale);
     void inferInt8ACFTest(int* testInput, float* output, int width, int height, float scale);

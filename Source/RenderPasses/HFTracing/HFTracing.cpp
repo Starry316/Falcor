@@ -500,47 +500,47 @@ void HFTracing::renderUI(Gui::Widgets& widget)
         mCudaAccumulatedFrames = 1;
     }
 
-    // if (mOutputingVideo)
-    //     handleOutput();
+    if (mOutputingVideo)
+        handleOutput();
 
-    // dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));
-    // dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));
-    // dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
-    // widget.textbox("Output Path", mOutputPath);
-    // widget.var("OutputSPP", mOutputSPP);
-    // dirty |= widget.checkbox("Scale UV", mScaleUV);
-    // if (widget.button("Output video"))
-    // {
-    //     auto pCamera = mpScene->getCamera();
-    //     pCamera->setOutputFrameCount(mOutputSPP);
-    //     pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
-    //     pCamera->setAccumulating(true);
-    //     mOutputStep = 0;
-    //     mOutputingVideo = true;
-    //     dirty = true;
-    // }
-    // if (widget.button("Stop", true) || mOutputSPP > 200000)
-    // {
-    //     auto pCamera = mpScene->getCamera();
-    //     pCamera->setOutputFrameCount(mOutputSPP);
-    //     pCamera->setAccumulating(false);
-    //     mOutputingVideo = false;
-    //     dirty = true;
-    // }
-    // if (widget.button("Reset index"))
-    // {
-    //     mOutputIndx = 0;
-    //     mOutputSPP = 1;
-    //     mOutputStep = 0;
-    //     mpScene->getCamera()->setResetFlag(true);
-    //     mEnvRotAngle = Falcor::float3(0);
+    dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, float(2 * M_PI));
+    dirty |= widget.slider("Env rot Y", mEnvRotAngle.y, 0.0f, float(2 * M_PI));
+    dirty |= widget.slider("Env rot Z", mEnvRotAngle.z, 0.0f, float(2 * M_PI));
+    widget.textbox("Output Path", mOutputPath);
+    widget.var("OutputSPP", mOutputSPP);
+    dirty |= widget.checkbox("Scale UV", mScaleUV);
+    if (widget.button("Output video"))
+    {
+        auto pCamera = mpScene->getCamera();
+        pCamera->setOutputFrameCount(mOutputSPP);
+        pCamera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
+        pCamera->setAccumulating(true);
+        mOutputStep = 0;
+        mOutputingVideo = true;
+        dirty = true;
+    }
+    if (widget.button("Stop", true) || mOutputSPP > 200000)
+    {
+        auto pCamera = mpScene->getCamera();
+        pCamera->setOutputFrameCount(mOutputSPP);
+        pCamera->setAccumulating(false);
+        mOutputingVideo = false;
+        dirty = true;
+    }
+    if (widget.button("Reset index"))
+    {
+        mOutputIndx = 0;
+        mOutputSPP = 1;
+        mOutputStep = 0;
+        mpScene->getCamera()->setResetFlag(true);
+        mEnvRotAngle = Falcor::float3(0);
 
-    //     mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
-    // }
-    // if (mOutputingVideo && mpScene->getEnvMap())
-    // {
-    //     mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
-    // }
+        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
+    }
+    if (mOutputingVideo && mpScene->getEnvMap())
+    {
+        mpScene->getEnvMap()->setRotation(math::degrees(mEnvRotAngle) + mOriginEnvRotAngle);
+    }
     // mpPixelDebug->renderUI(widget);
 
 
@@ -611,7 +611,7 @@ void HFTracing::handleOutput()
             mpScene->getCamera()->setAccumulating(mOutputingVideo);
         }
 #else
-        if (mOutputStep == 0)
+        if (mOutputStep == 1)
         {
             mEnvRotAngle.y += float(2 * M_PI) / 180;
             if (mScaleUV)
@@ -621,9 +621,13 @@ void HFTracing::handleOutput()
             {
                 mEnvRotAngle.y = 0;
                 mOutputStep = 1;
+
+
+
+
             }
         }
-        else if (mOutputStep == 1)
+        else if (mOutputStep == 0)
         {
                mEnvRotAngle.y += float(2 * M_PI) / 180;
             // if (mScaleUV)
@@ -634,6 +638,15 @@ void HFTracing::handleOutput()
             {
                 mEnvRotAngle.y = 0;
                 mOutputStep = 2;
+
+                mOutputStep = 0;
+                mOutputIndx = 0;
+                mOutputSPP = 1;
+                mpScene->getCamera()->setResetFlag(true);
+                mpScene->getCamera()->setNextStep(false);
+                mOutputingVideo = false;
+                mpScene->getCamera()->setAccumulating(mOutputingVideo);
+
             }
         }
         else if (mOutputStep == 2)
