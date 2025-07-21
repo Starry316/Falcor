@@ -85,10 +85,13 @@ int runMain(int argc, char** argv)
     config.windowDesc.title = "Falcor Shader Toy";
 
     ShaderToy shaderToy(config);
+
+
     return shaderToy.run();
 }
 
 int main(int argc, char** argv)
 {
-    return catchAndReportAllExceptions([&]() { return runMain(argc, argv); });
+
+     return catchAndReportAllExceptions([&]() { return runMain(argc, argv); });
 }

@@ -14,11 +14,14 @@ std::vector<float> readBinaryFile(const char* filename);
 void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
 {
     std::filesystem::path projectDir = getProjectDirectory();
+    
     std::vector<float> PlaneMetaBuffer =
         readBinaryFile(fmt::format("{}/media/neural_materials/networks/PlaneMeta_{}.bin", projectDir.string(), featurePath).c_str());
+
     mUP.texDim = int2(PlaneMetaBuffer[0], PlaneMetaBuffer[1]);
     mHP.texDim = int2(PlaneMetaBuffer[2], PlaneMetaBuffer[3]);
     mDP.texDim = int2(PlaneMetaBuffer[4], PlaneMetaBuffer[5]);
+
     logInfo("[NBTF] Plane Dims");
     logInfo("[NBTF] U: {}, H: {}, D: {}", mUP.texDim, mHP.texDim, mDP.texDim);
 

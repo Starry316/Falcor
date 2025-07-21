@@ -109,7 +109,10 @@ void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const Render
     // Specialize program.
     // These defines should not modify the program vars. Do not trigger program vars re-creation.
     mTracer.pProgram->addDefine("USE_ENV_LIGHT", mpScene->useEnvLight() ? "1" : "0");
-
+    if(mShowSig)
+        mTracer.pProgram->addDefine("SIG25");
+    else
+        mTracer.pProgram->removeDefine("SIG25");
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.
     // mTracer.pProgram->addDefines(getValidResourceDefines(kInputChannels, renderData));
@@ -156,6 +159,7 @@ void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const Render
     var["packedInput"] = mpPackedInputBuffer;
     var["gMaxSampler"] = mpMaxSampler;
 
+    mpNNMat->bindShaderData(var["CB"]["nnmat"]);
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
     pRenderContext->submit(false);
     pRenderContext->signal(mpFence.get());
@@ -260,6 +264,8 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
         loadNetwork(mpDevice->getRenderContext());
         dirty = true;
     }
+
+    dirty |= widget.checkbox("Show previous", mShowSig);
 
     dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, 360.0f);
     if (widget.button("X -", true))
@@ -395,6 +401,10 @@ void NeuralMatRendering::loadNetwork(RenderContext* pRenderContext)
         MemoryType::DeviceLocal,
         model.scales
     );
+
+
+    mpNNMat = std::make_shared<NNMat>(mpDevice, "Dist");
+
 }
 
 

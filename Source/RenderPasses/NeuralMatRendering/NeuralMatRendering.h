@@ -35,6 +35,7 @@
 #include "Utils/Neural/MLP.h"
 #include "Utils/Neural/NBTF.h"
 #include "Utils/Neural/MLPCuda.h"
+#include "Utils/Neural/NNMat.h"
 #include "Utils/Neural/cuda/CUDADefines.h"
 
 #include <cuda_runtime.h>
@@ -128,6 +129,18 @@ private:
 
     ModelInfo mModelInfo[4] = {
 
+        {"leather11_m32u8h8d8_int8",
+         "leather11.png",
+         false,
+         {0.003400295041501522,
+          1.1354546586517245e-05,
+          0.0024283595848828554,
+          1.047514069796307e-05,
+          0.0021721271332353354,
+          1.9848570445901714e-05,
+          0.0016346105840057135,
+          1.605643228685949e-05}},
+
         {"leather11_int8",
          "leather11.png",
          false,
@@ -140,17 +153,17 @@ private:
           0.0016346105840057135,
           1.605643228685949e-05}},
 
-        {"weave_int8",
-         "weave.jpg",
-         false,
-         {0.002025123918429017,
-          7.385711796814576e-06,
-          0.0017646728083491325,
-          1.3128001228324138e-05,
-          0.0012104109628126025,
-          1.130689270212315e-05,
-          0.001690503559075296,
-          2.1813480998389423e-05}},
+        // {"weave_int8",
+        //  "weave.jpg",
+        //  false,
+        //  {0.002025123918429017,
+        //   7.385711796814576e-06,
+        //   0.0017646728083491325,
+        //   1.3128001228324138e-05,
+        //   0.0012104109628126025,
+        //   1.130689270212315e-05,
+        //   0.001690503559075296,
+        //   2.1813480998389423e-05}},
 
         {"tile2_int8",
          "tile2.png",
@@ -202,7 +215,8 @@ private:
 
     float point_data_curve[1] = {0};
 
-    bool mApplySyn = true;
+    bool mApplySyn = false;
+    bool mShowSig = false;
 
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
@@ -211,6 +225,8 @@ private:
     std::shared_ptr<NBTF> mpNBTFInt8;
     std::shared_ptr<NBTF> mpNBTF[4];
 
+    std::shared_ptr<NNMat> mpNNMat;
+    
     std::unique_ptr<EnvMapSampler> mpEnvMapSampler;
 
     bool mShowTracedHF = false;

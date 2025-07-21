@@ -2,7 +2,7 @@ import Utils.Math.MathHelpers;
 import Utils.Neural.ActivationFunc;
 import Utils.Math.FormatConversion;
 #ifndef MAX_NN_DIM
-#define MAX_NN_DIM 8
+#define MAX_NN_DIM 4
 #endif
 struct MLP
 {
@@ -146,7 +146,7 @@ struct MLP
         return float4(val1[0], val1[1], val1[2], 1.0);
     }
 
-    float4 evalDummy(inout float4 x[MAX_NN_DIM])
+    float4 evalBTF(inout float4 x[MAX_NN_DIM], float4 uFine[2])
     {
         float4 y[MAX_NN_DIM];
         int offset = 0;
@@ -155,7 +155,7 @@ struct MLP
         {
             if (i % 2 == 0)
             {
-                float h = meta[2 * i + 1] - 8;
+                float h = meta[2 * i + 1];
                 float w = meta[2 * i + 2];
 
                 int outNum = floor(w / 4);
@@ -172,16 +172,20 @@ struct MLP
                 }
                 for (int j = 0; j < outNum; ++j)
                 {
-                    y[j] += bias[j + biasOffset];
-                    y[j] = relu(y[j]);
+                    // y[j] += bias[j + biasOffset];
+                    y[j] = leakyrelu(y[j]);
                 }
-                biasOffset += outNum;
+                // biasOffset += outNum;
                 offset += (int)(h * w) / 16;
             }
             else
             {
-                float h = meta[2 * i + 1] - 8;
-                float w = meta[2 * i + 2] - 8;
+                if (i == 3) {
+                    y[2] = uFine[0];
+                    y[3] = uFine[1];
+                }
+                float h = meta[2 * i + 1];
+                float w = meta[2 * i + 2];
 
                 int outNum = floor(w / 4);
                 for (int j = 0; j < outNum; ++j)
@@ -197,10 +201,10 @@ struct MLP
                 }
                 for (int j = 0; j < outNum; ++j)
                 {
-                    x[j] += bias[j + biasOffset];
-                    x[j] = relu(x[j]);
+                    // x[j] += bias[j + biasOffset];
+                    x[j] = leakyrelu(x[j]);
                 }
-                biasOffset += outNum;
+                // biasOffset += outNum;
                 offset += (int)(h * w) / 16;
             }
         }

@@ -12,12 +12,28 @@ MLP::MLP(ref<Device> pDevice, std::string networkName)
 {
     mNetworkName = networkName;
     std::filesystem::path projectDir = getProjectDirectory();
+    // weight_
+    // std::vector<float> weightsBuffer =
+    //     readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_{}.bin", projectDir.string(), networkName).c_str());
+    // std::vector<float> biasBuffer =
+    //     readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_{}.bin", projectDir.string(), networkName).c_str());
+    // std::vector<float> metaBuffer =
+    //     readBinaryFile(fmt::format("{}/media/BTF/networks/NNMeta_{}.bin", projectDir.string(), networkName).c_str());
+
+
     std::vector<float> weightsBuffer =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Weights_{}.bin", projectDir.string(), networkName).c_str());
-    std::vector<float> biasBuffer =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_{}.bin", projectDir.string(), networkName).c_str());
+        readBinaryFile(fmt::format("{}/media/nn_mat/networks/weight_{}.bin", projectDir.string(), networkName).c_str());
+    // std::vector<float> biasBuffer =
+    //     readBinaryFile(fmt::format("{}/media/nn_mat/networks/Bias_{}.bin", projectDir.string(), networkName).c_str());
     std::vector<float> metaBuffer =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/NNMeta_{}.bin", projectDir.string(), networkName).c_str());
+        readBinaryFile(fmt::format("{}/media/nn_mat/networks/meta_{}.bin", projectDir.string(), networkName).c_str());
+        
+
+    // for (int i = 0; i < metaBuffer.size() ; i ++){
+    //     logInfo("[MLP] META {} ", metaBuffer[i]);
+    // }
+
+
     mLayerNum = metaBuffer[0];
     int totalWeightNum = 0;
     int totalBiasNum = 0;
@@ -38,17 +54,17 @@ MLP::MLP(ref<Device> pDevice, std::string networkName)
     {
         dummyWeights[i] = math::matrixFromCoefficients<float, 4, 4>(weightsBuffer.data() + i * 16);
     }
-    for (int i = 0; i < totalBiasNum; i++)
-    {
-        dummyBias[i] = float4(biasBuffer[i * 4], biasBuffer[i * 4 + 1], biasBuffer[i * 4 + 2], biasBuffer[i * 4 + 3]);
-    }
+    // for (int i = 0; i < totalBiasNum; i++)
+    // {
+    //     dummyBias[i] = float4(biasBuffer[i * 4], biasBuffer[i * 4 + 1], biasBuffer[i * 4 + 2], biasBuffer[i * 4 + 3]);
+    // }
 
-    mpBias = pDevice->createBuffer(
-        totalBiasNum * sizeof(float4),
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-        MemoryType::DeviceLocal,
-        dummyBias.data()
-    );
+    // mpBias = pDevice->createBuffer(
+    //     totalBiasNum * sizeof(float4),
+    //     ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+    //     MemoryType::DeviceLocal,
+    //     dummyBias.data()
+    // );
     mpWeights = pDevice->createBuffer(
         totalWeightNum * sizeof(float4x4),
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
@@ -63,7 +79,7 @@ MLP::MLP(ref<Device> pDevice, std::string networkName)
         metaBuffer.data()
     );
     std::vector<float>().swap(weightsBuffer);
-    std::vector<float>().swap(biasBuffer);
+    // std::vector<float>().swap(biasBuffer);
     std::vector<float>().swap(metaBuffer);
 
 }
@@ -71,7 +87,7 @@ void MLP::bindShaderData(const ShaderVar& var) const
 {
     var["layerNum"] = mLayerNum;
     var["weights"] = mpWeights;
-    var["bias"] = mpBias;
+    // var["bias"] = mpBias;
     var["meta"] = mpMeta;
 }
 void MLP::bindDebugData(const ShaderVar& var, ref<Buffer> w, ref<Buffer> b) const

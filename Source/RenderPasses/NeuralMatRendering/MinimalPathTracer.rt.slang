@@ -36,14 +36,15 @@ import Utils.Geometry.GeometryHelpers;
 import Utils.Sampling.SampleGenerator;
 import Utils.Math.FormatConversion;
 import Utils.Debug.PixelDebug;
+import Utils.Neural.NNMat;
+import Utils.Neural.MLP;
 import Rendering.Lights.LightHelpers;
 import Rendering.Lights.EnvMapSampler;
 import Scene.Displacement.DisplacementMapping;
 
 import Tools.BTFUtils;
 import Utils.Texture.HistogramBlending;
-import Utils.Texture.HexTiling;
-import Utils.Neural.NBTF;
+
 cbuffer CB
 {
     uint gFrameCount;    // Frame count since scene was loaded.
@@ -57,6 +58,7 @@ cbuffer CB
 
     HistogramBlendingHFData hfData;
     EnvMapSampler envMapSampler;
+    NNMat nnmat;
 }
 
 // Outputs
@@ -889,6 +891,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // We only use the envmap as light source
     if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, wiWS, envPdf))
     {
+#ifdef SIG25
         if (sd.materialID == 1)
         {
             float2 ddx, ddy;
@@ -927,7 +930,21 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
             rayData.terminated = true;
             rayData.radiance += envLi * mi.eval(sd, wiWS, rayData.sg);
         }
-
+#else
+        if (sd.materialID == 1)
+        {
+            float3 wi = sd.frame.toLocal(wiWS);
+            float NdotL = wi.z > 0 ? wi.z : 0;
+            float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
+            float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
+            rayData.terminated = true;
+            rayData.radiance = envLi * fr * NdotL;
+        }
+        else {
+            rayData.terminated = true;
+            rayData.radiance += envLi * mi.eval(sd, wiWS, rayData.sg);
+        }
+#endif
     }
 }
 

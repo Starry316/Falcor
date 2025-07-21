@@ -759,6 +759,11 @@ target_sources(Falcor PRIVATE
     Utils/Neural/MLPCuda.cpp
     Utils/Neural/IOHelper.h
     Utils/Neural/IOHelper.cpp
+    Utils/Neural/NNMat.h
+    Utils/Neural/NNMat.cpp
+    Utils/Neural/NNMat.slang
+
+
 
     Utils/Neural/cuda/CUDAConstant.h
     Utils/Neural/cuda/Utils.h

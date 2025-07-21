@@ -23,7 +23,6 @@ private:
     ref<Buffer> mpWeights;
     ref<Buffer> mpBias;
     ref<Buffer> mpMeta;
-    ref<Texture> mpFeatureTex;
     std::string mNetworkName;
     int mLayerNum;
     int mMaxDim;
