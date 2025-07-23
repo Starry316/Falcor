@@ -255,7 +255,7 @@ int histogramBasedOnH()
     return 0;
 }
 
-int histogramBasedOnWi()
+int histogramBasedOnWi(int startBin)
 {
     std::string BTFName = "leather11";
     std::string inputPath = fmt::format("C:/Projects/NNMat/data/{}_W400xH400_L151xV151.btf", BTFName);
@@ -265,7 +265,7 @@ int histogramBasedOnWi()
     int width = 400;
     int imageSize = 3 * height * width;
 
-    for (int binID = 0; binID < 200; binID++)
+    for (int binID = startBin; binID < startBin+1; binID++)
     {
         // first round, count how many data inside the bin
         int count = 0;
@@ -278,7 +278,7 @@ int histogramBasedOnWi()
                 // Normalized theta [0, 1]
                 float theta = acosf(l.z) / M_PI * 2;
                 // float theta = l.z;
-                if (theta >= binID * 0.005f && theta < binID * 0.005f + 0.005f)
+                if (theta >= binID * 0.1f && theta < binID * 0.1f + 0.1f)
                 {
                     count++;
                 }
@@ -286,52 +286,59 @@ int histogramBasedOnWi()
         }
         if (count == 0)
             continue;
-        logInfo("Bin: {} Range: [{}, {}) Count: {}", binID,binID * 0.005f,binID * 0.005f + 0.005f, count);
+        logInfo("Bin: {} Range: [{}, {}) Count: {}", binID,binID * 0.1f,binID * 0.1f + 0.1f, count);
         // if (binID < 195)
         //     continue;
-        // TextureDataFloat input(count, width * height, 3);
-        // TextureDataFloat Tinput;
-        // TextureDataFloat lut;
-        // uint* indexList = new uint[count];
-        // uint globalCount = 0;
-        // count = 0;
-        // for (int viewID = 0; viewID < 151; viewID++)
-        // {
-        //     for (int lightID = 0; lightID < 151; lightID++)
-        //     {
-        //         float3 l = float3(pBTF->Lights[lightID].x, pBTF->Lights[lightID].y, pBTF->Lights[lightID].z);
-        //         float3 v = float3(pBTF->Views[viewID].x, pBTF->Views[viewID].y, pBTF->Views[viewID].z);
-        //         float theta = l.z;
-        //         if (theta >= binID * 0.005f && theta < binID * 0.005f + 0.005f)
-        //         {
-        //             uint offset = count * imageSize;
-        //             extractBTF(pBTF, viewID, lightID, input.data, offset);
-        //             indexList[count] = globalCount;
-        //             count++;
-        //         }
-        //         globalCount++;
-        //     }
-        // }
-        // logInfo("[Synthesis] Precomputing Gaussian T and Inv.");
-        // Precomputations(input, Tinput, lut);
-        // logInfo("[Synthesis] Precomputation done!");
-        // imwrite(fmt::format("C:/Projects/NNMat/data/leather11_histo_wi/LUT_{}.exr", binID), height, width, lut.data.data());
+        TextureDataFloat input(count, width * height, 3);
+        // logInfo("{}  {}",input.data.size(), count * width * height * 3);
+        TextureDataFloat Tinput;
+        TextureDataFloat lut;
+        uint* indexList = new uint[count];
+        uint globalCount = 0;
+        count = 0;
+        for (int viewID = 0; viewID < 151; viewID++)
+        {
+            for (int lightID = 0; lightID < 151; lightID++)
+            {
+                float3 l = float3(pBTF->Lights[lightID].x, pBTF->Lights[lightID].y, pBTF->Lights[lightID].z);
+                float3 v = float3(pBTF->Views[viewID].x, pBTF->Views[viewID].y, pBTF->Views[viewID].z);
+                // float theta = l.z;
+                float theta = acosf(l.z) / M_PI * 2;
+                if (theta >= binID * 0.1f && theta < binID * 0.1f + 0.1f)
+                {
+                    uint offset = count * imageSize;
+                    extractBTF(pBTF, viewID, lightID, input.data, offset);
+                    indexList[count] = globalCount;
+                    count++;
+                }
+                globalCount++;
+            }
+        }
+        logInfo("[Synthesis] Precomputing Gaussian T and Inv.");
+        Precomputations(input, Tinput, lut);
+        logInfo("[Synthesis] Precomputation done!");
+        imwrite(fmt::format("C:/Projects/NNMat/data/leather11_histo_wi/LUT_{}.exr", binID), height, width, lut.data.data());
 
-        // for (size_t i = 0; i < count; i++)
-        // {
-        //     uint offset = i * imageSize;
-        //     imwrite(
-        //         // fmt::format("C:/Projects/NNMat/data/leather11_histo_wi/{}.exr", indexList[i]), height, width, Tinput.data.data() + offset
-        //         fmt::format("C:/Projects/NNMat/data/leather11_histo_wi/{}.exr", indexList[i]), height, width, input.data.data() + offset
-        //     );
-        // }
+        for (size_t i = 0; i < count; i++)
+        {
+            if(i%10 == 1) logInfo("{} / {}", i, count);
+            uint offset = i * imageSize;
+            imwrite(
+                fmt::format("C:/Projects/NNMat/data/leather11_histo_wi/{}.exr", indexList[i]), height, width, Tinput.data.data() + offset
+                // fmt::format("C:/Projects/NNMat/data/leather11_histo_wi/{}.exr", indexList[i]), height, width, input.data.data() + offset
+            );
+        }
+        // break;
     }
     return 0;
 }
 
 int main(int argc, char** argv)
 {
-    return histogramBasedOnWi();
+    int threadNum = std::stoi(argv[1]);
+    logInfo("[Histogram] Running Indx {}", threadNum);
+     
+    return histogramBasedOnWi(threadNum);
     // return histogramBasedOnH();
     // return catchAndReportAllExceptions([&]() { return runMain(argc, argv); });
 }

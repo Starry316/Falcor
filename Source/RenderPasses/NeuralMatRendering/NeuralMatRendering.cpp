@@ -87,7 +87,6 @@ RenderPassReflection NeuralMatRendering::reflect(const CompileData& compileData)
     return reflector;
 }
 
-
 // This pass is used to get the primary ray's hit, and pack the input data for the neural network inference.
 void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const RenderData& renderData)
 {
@@ -95,7 +94,6 @@ void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const Render
     // Get dimensions of ray dispatch.
     const Falcor::uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-
 
     createBuffer(mpValidBuffer, mpDevice, targetDim, 1);
     createBuffer(mpPackedInputBuffer, mpDevice, targetDim, 5);
@@ -109,10 +107,14 @@ void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const Render
     // Specialize program.
     // These defines should not modify the program vars. Do not trigger program vars re-creation.
     mTracer.pProgram->addDefine("USE_ENV_LIGHT", mpScene->useEnvLight() ? "1" : "0");
-    if(mShowSig)
+    if (mShowSig)
         mTracer.pProgram->addDefine("SIG25");
     else
         mTracer.pProgram->removeDefine("SIG25");
+    if (mUsePointLight)
+        mTracer.pProgram->addDefine("POINTLIGHT");
+    else
+        mTracer.pProgram->removeDefine("POINTLIGHT");
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.
     // mTracer.pProgram->addDefines(getValidResourceDefines(kInputChannels, renderData));
@@ -219,7 +221,6 @@ void NeuralMatRendering::displayPass(RenderContext* pRenderContext, const Render
     mpPixelDebug->endFrame(pRenderContext);
 }
 
-
 void NeuralMatRendering::execute(RenderContext* pRenderContext, const RenderData& renderData)
 {
     // If we have no scene, just clear the outputs and return.
@@ -259,14 +260,17 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
         mCudaAvgTime = mCudaTime;
         mCudaAccumulatedFrames = 1;
     }
-    widget.dropdown("Model", mModelName);
-    if(widget.button("Load", true)){
-        loadNetwork(mpDevice->getRenderContext());
+    // widget.dropdown("Model", mModelName);
+    widget.dropdown("Model", mNeuMat);
+    if (widget.button("Load", true))
+    {
+        // loadNetwork(mpDevice->getRenderContext());
+        mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat]);
         dirty = true;
     }
 
     dirty |= widget.checkbox("Show previous", mShowSig);
-
+    dirty |= widget.checkbox("Use Point Light", mUsePointLight);
     dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, 360.0f);
     if (widget.button("X -", true))
     {
@@ -303,6 +307,39 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
     editCurve |= widget.dropdown("Curve Type", mCurveType);
     dirty |= widget.slider("UV Scale", UV_SCALE, 0.0f, 50.0f);
     dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
+
+
+    dirty |= widget.var("Point light pos", lightPos);
+    dirty |= widget.var("Point light intensity", lightIntensity);
+    dirty |= widget.slider("Point light phi", lightPhi, 0.0f, (float)M_2PI);
+    dirty |= widget.slider("Point light R", lightR, 0.0f, 50.0f);
+    if (mpScene->getLightCount() > 0)
+    {
+        auto light = mpScene->getLight(0);
+        if (light->getType() == LightType::Point){
+            lightPos.x = sinf(lightPhi) * lightR;
+            lightPos.z = cosf(lightPhi) * lightR;
+
+            ref<PointLight> pl = static_ref_cast<PointLight>(light);
+            pl->setWorldPosition(lightPos);
+            pl->setIntensity(Falcor::float3(lightIntensity));
+        }
+
+        if (light->getType() == LightType::Directional){
+            lightPos.x = sinf(lightPhi) * lightR;
+            lightPos.y = cosf(lightPhi) * lightR;
+      
+
+            ref<DirectionalLight> pl = static_ref_cast<DirectionalLight>(light);
+            pl->setWorldDirection(lightPos);
+            pl->setIntensity(Falcor::float3(lightIntensity));
+        }
+
+    }
+
+
+
+
     editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
     editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
     if (mCurveType == ACFCurve::BEZIER)
@@ -348,10 +385,6 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
     }
     mpPixelDebug->renderUI(widget);
 
-
-
-
-
     // If rendering options that modify the output have changed, set flag to indicate that.
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
     if (dirty)
@@ -362,10 +395,8 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
     }
 }
 
-
 void NeuralMatRendering::loadNetwork(RenderContext* pRenderContext)
 {
-
     ModelInfo model = mModelInfo[static_cast<int>(mModelName)];
     mHDRBTF = model.HDRBTF;
 
@@ -379,13 +410,10 @@ void NeuralMatRendering::loadNetwork(RenderContext* pRenderContext)
     );
     generateMaxMip(pRenderContext, mpHF);
 
-
     // HF texture synthesis helper
     mpTextureSynthesis = std::make_unique<TextureSynthesis>();
     mpTextureSynthesis->readHFData(fmt::format("{}/media/neural_materials/heightmaps/{}", mProjectPath, model.hfName).c_str(), mpDevice);
     generateMaxMip(pRenderContext, mpTextureSynthesis->mpHFT);
-
-
 
     // cuda inference helper
     if (mpNBTF[0] == nullptr)
@@ -393,22 +421,11 @@ void NeuralMatRendering::loadNetwork(RenderContext* pRenderContext)
             mpNBTF[i] = std::make_shared<NBTF>(mpDevice, mModelInfo[i].name, true);
     mpNBTFInt8 = mpNBTF[static_cast<int>(mModelName)];
 
-
     // // quantization scale buffer
-    mpScaleBuffer = mpDevice->createBuffer(
-        8 * sizeof(float),
-        ResourceBindFlags::Shared,
-        MemoryType::DeviceLocal,
-        model.scales
-    );
+    mpScaleBuffer = mpDevice->createBuffer(8 * sizeof(float), ResourceBindFlags::Shared, MemoryType::DeviceLocal, model.scales);
 
-
-    mpNNMat = std::make_shared<NNMat>(mpDevice, "Dist");
-
+    mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat]);
 }
-
-
-
 
 void NeuralMatRendering::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
 {
@@ -491,6 +508,7 @@ void NeuralMatRendering::setScene(RenderContext* pRenderContext, const ref<Scene
         }
 
         mTracer.pProgram = Program::create(mpDevice, desc, mpScene->getSceneDefines());
+    
     }
 
     mpFence = mpDevice->createFence();
@@ -499,23 +517,17 @@ void NeuralMatRendering::setScene(RenderContext* pRenderContext, const ref<Scene
     DefineList defines = mpScene->getSceneDefines();
     mpDisplayPass = ComputePass::create(mpDevice, "RenderPasses/NeuralMatRendering/Display.cs.slang", "csMain", defines);
 
-
     // Create max sampler for HF texel fetch.
     Sampler::Desc samplerDesc = Sampler::Desc();
     samplerDesc.setReductionMode(TextureReductionMode::Max);
     samplerDesc.setFilterMode(TextureFilteringMode::Point, TextureFilteringMode::Point, TextureFilteringMode::Point);
     mpMaxSampler = mpDevice->createSampler(samplerDesc);
 
-
     // cuda timer
     cudaEventCreate(&mCudaStart);
     cudaEventCreate(&mCudaStop);
 
     loadNetwork(pRenderContext);
-
-
-
-
 }
 
 void NeuralMatRendering::prepareVars()

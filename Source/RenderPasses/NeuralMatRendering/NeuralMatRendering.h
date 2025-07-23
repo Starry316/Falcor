@@ -61,6 +61,27 @@ FALCOR_ENUM_INFO(
 );
 FALCOR_ENUM_REGISTER(ModelName);
 
+
+
+enum class NeuMat : uint32_t
+{
+    LEATHER11,
+    FABRIC07
+};
+
+FALCOR_ENUM_INFO(
+    NeuMat,
+    {{NeuMat::LEATHER11, "Leather11"},
+     {NeuMat::FABRIC07, "Fabric07"}
+    }
+);
+FALCOR_ENUM_REGISTER(NeuMat);
+
+
+
+
+
+
 struct ModelInfo
 {
     std::string name;
@@ -126,6 +147,7 @@ private:
     std::string mProjectPath = getProjectDirectory().string();
 
     ModelName mModelName = ModelName::LEATHER11;
+   
 
     ModelInfo mModelInfo[4] = {
 
@@ -190,7 +212,10 @@ private:
           4.09871927331551e-06}}
         };
 
-
+    NeuMat mNeuMat = NeuMat::FABRIC07;
+    std::string mNeuMatPath[2] = {
+       "Dist", "fabric07_Dist" 
+    };
     // displacement map
     ref<Texture> mpHF;
     // max filter sampler for HF texel fetch.
@@ -214,9 +239,15 @@ private:
         Falcor::float2(0.0f, 0.0f)};
 
     float point_data_curve[1] = {0};
+    Falcor::float3 lightPos = Falcor::float3(2, 15, 2);
+    float lightIntensity = 200.0f;
+    float lightR = 8.0f;
+    
+    float lightPhi = 0.0;
 
     bool mApplySyn = false;
     bool mShowSig = false;
+    bool mUsePointLight = false;
 
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
