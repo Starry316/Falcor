@@ -66,19 +66,24 @@ FALCOR_ENUM_REGISTER(ModelName);
 enum class NeuMat : uint32_t
 {
     LEATHER11,
-    FABRIC07
+    LEATHER11Wi,
+    LEATHER11HistWi,
+    LEATHER11HistWiAndWi,
+    FABRIC07,
+    FABRIC07Remote
 };
 
 FALCOR_ENUM_INFO(
     NeuMat,
     {{NeuMat::LEATHER11, "Leather11"},
-     {NeuMat::FABRIC07, "Fabric07"}
+    {NeuMat::LEATHER11Wi, "Leather11Wi"},
+    {NeuMat::LEATHER11HistWi, "Leather11Histo"},
+    {NeuMat::LEATHER11HistWiAndWi, "Leather11HistoAndWi"},
+     {NeuMat::FABRIC07, "Fabric07"},
+     {NeuMat::FABRIC07Remote, "Fabric07Remote"}
     }
 );
 FALCOR_ENUM_REGISTER(NeuMat);
-
-
-
 
 
 
@@ -126,6 +131,13 @@ public:
     void loadNetwork(RenderContext* pRenderContext);
 
 private:
+    NeuMat mNeuMat = NeuMat::LEATHER11HistWi;
+    const std::string mNeuMatPath[6] = {
+       "leather11_Validation","leather11_Validation_BTFNetWi2x2", "leather11_Histo_wi","leather11_Histo_wi_BTFNetWi2x2","fabric07_Dist", "fabric07_remote"
+    };
+    const bool mIsHisto[6] = {0,0,1,0,0,1};
+    const bool mIsWi[6] = {0,1,0,0,0,1};
+
     void prepareVars();
 
     /// Current scene.
@@ -212,16 +224,13 @@ private:
           4.09871927331551e-06}}
         };
 
-    NeuMat mNeuMat = NeuMat::FABRIC07;
-    std::string mNeuMatPath[2] = {
-       "Dist", "fabric07_Dist" 
-    };
+
+
     // displacement map
     ref<Texture> mpHF;
     // max filter sampler for HF texel fetch.
     ref<Sampler> mpMaxSampler;
     std::unique_ptr<PixelDebug> mpPixelDebug;
-
     // cuda inference output buffer
     ref<Buffer> mpOutputBuffer;
     ref<Buffer> mpValidBuffer;

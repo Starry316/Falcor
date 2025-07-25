@@ -17,9 +17,10 @@ struct NNFeatureTex
 class FALCOR_API NNMat
 {
 public:
-    NNMat(ref<Device> pDevice, std::string networkPath);
+    NNMat(ref<Device> pDevice, std::string networkPath, bool isHisto = false, bool isWi = false);
 
     void loadFeature(ref<Device> pDevice, std::string featurePath);
+    void loadLUTs(ref<Device> pDevice, std::string lutPath);
 
     void bindShaderData(const ShaderVar& var) const;
 
@@ -27,6 +28,9 @@ public:
     NNFeatureTex mDP;
     NNFeatureTex mUP;
     NNFeatureTex mUFP;
+    NNFeatureTex mLUTs;
+
+
 
     std::unique_ptr<MLP> mpMLP;
     ref<Sampler> mpPointSampler;
@@ -35,6 +39,9 @@ public:
 
     int mLayerNum;
     int mMaxDim;
+
+    bool mIsHisto = false;
+    bool mIsWi = false;
 };
 
 } // namespace Falcor

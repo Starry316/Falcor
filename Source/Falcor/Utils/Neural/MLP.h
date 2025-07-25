@@ -23,6 +23,7 @@ private:
     ref<Buffer> mpWeights;
     ref<Buffer> mpBias;
     ref<Buffer> mpMeta;
+    ref<Buffer> mpDebugWeights;
     std::string mNetworkName;
     int mLayerNum;
     int mMaxDim;

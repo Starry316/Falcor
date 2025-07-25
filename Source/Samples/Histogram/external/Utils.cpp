@@ -121,7 +121,8 @@ void ComputeTinput(TextureDataFloat& input, TextureDataFloat& T_input, int chann
         // Input quantile (given by its order in the sorting)
         float U = (i + 0.5f) / (sortedInputValues.size());
         // Gaussian quantile
-        float G = invCDF(U, GAUSSIAN_AVERAGE, GAUSSIAN_STD);
+        // float G = invCDF(U, GAUSSIAN_AVERAGE, GAUSSIAN_STD);
+        float G = U;
         // if(G<0)
         //     logInfo("[Synthesis] Test: {} {}", U, sortedInputValues[i].value );
 
@@ -155,7 +156,8 @@ void ComputeinvT(TextureDataFloat& input, TextureDataFloat& Tinv, int channel)
         // Gaussian value in [0, 1]
         float G = (i + 0.5f) / (Tinv.width);
         // Quantile value
-        float U = CDF(G, GAUSSIAN_AVERAGE, GAUSSIAN_STD);
+        // float U = CDF(G, GAUSSIAN_AVERAGE, GAUSSIAN_STD);
+        float U = G;
         // Find quantile in sorted pixel values
         int index = (int)floor(U * sortedInputValues.size());
         // Get input value

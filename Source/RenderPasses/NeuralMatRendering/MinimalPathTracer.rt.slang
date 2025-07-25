@@ -399,6 +399,21 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     traceScatterRay(rayData);
     cudaValidBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] = rayData.terminated ? 0 : 1;
     return float4(rayData.radiance, 1.0f);
+
+    // float2 uv = pixel / (float2)frameDim;
+    // uv.y = 1 - uv.y;
+    // float3 wi = float3(0.6830126, - 0.6830128, 0.2588191);
+    // float3 wo = float3(-0.30438074, 0.5272029, 0.7933532);
+    // uint4 packedData = packInput(wi, wo, uv, 0, 0);
+    // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+    // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+    // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+    // packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
+
+    // rayData.radiance = 1;
+    // rayData.terminated = false;
+    // cudaValidBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] = rayData.terminated ? 0 : 1;
+    // return float4(rayData.radiance, 1.0f);
 }
 
 //
@@ -882,10 +897,10 @@ struct DisplacedTriangleMeshIntersector_NM
     }
 }
 
-    //
-    // Shader entry point for ray generation shader.
-    //
-    [shader("raygeneration")] void rayGen()
+//
+// Shader entry point for ray generation shader.
+//
+[shader("raygeneration")] void rayGen()
 {
     uint2 pixel = DispatchRaysIndex().xy;
     uint2 frameDim = DispatchRaysDimensions().xy;

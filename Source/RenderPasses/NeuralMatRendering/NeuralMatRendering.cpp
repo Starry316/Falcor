@@ -265,7 +265,7 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
     if (widget.button("Load", true))
     {
         // loadNetwork(mpDevice->getRenderContext());
-        mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat]);
+        mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat], mIsHisto[(int)mNeuMat], mIsWi[(int)mNeuMat]);
         dirty = true;
     }
 
@@ -424,7 +424,10 @@ void NeuralMatRendering::loadNetwork(RenderContext* pRenderContext)
     // // quantization scale buffer
     mpScaleBuffer = mpDevice->createBuffer(8 * sizeof(float), ResourceBindFlags::Shared, MemoryType::DeviceLocal, model.scales);
 
-    mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat]);
+    mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat], mIsHisto[(int)mNeuMat]);
+
+
+  
 }
 
 void NeuralMatRendering::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)

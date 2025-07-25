@@ -36,22 +36,7 @@ void NNMat::loadFeature(ref<Device> pDevice, std::string featurePath)
 
     ResourceBindFlags bindFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
 
-    // std::vector<float> temp;
-    // temp.resize(UPlaneBuffer.size());
-    // for (int j = 0; j < mUP.texDim.y; j++)
-    // {
-    //     uint offset = j * mUP.texDim.x * mUP.texDim.x * 4;
-    //     for (uint i = 0; i < UPlaneBuffer.size() / (4 * mUP.texDim.y); i++)
-    //     {
-    //         uint id = i / mUP.texDim.x + (i % mUP.texDim.x) * mUP.texDim.x;
-    //         temp[offset + i * 4] = UPlaneBuffer[offset + id * 4];
-    //         temp[offset + i * 4 + 1] = UPlaneBuffer[offset + id * 4 + 1];
-    //         temp[offset + i * 4 + 2] = UPlaneBuffer[offset + id * 4 + 2];
-    //         temp[offset + i * 4 + 3] = UPlaneBuffer[offset + id * 4 + 3];
-    //     }
-    // }
-    // UPlaneBuffer = temp;
-
+    
     mUP.featureTex =
         pDevice->createTexture2D(mUP.texDim.x, mUP.texDim.x, ResourceFormat::RGBA32Float, mUP.texDim.y, 1, UPlaneBuffer.data(), bindFlags);
     mUFP.featureTex = pDevice->createTexture2D(
@@ -69,18 +54,37 @@ void NNMat::loadFeature(ref<Device> pDevice, std::string featurePath)
     // std::vector<float>().swap(UPlaneBuffer);
 }
 
-NNMat::NNMat(ref<Device> pDevice, std::string networkName)
+void NNMat::loadLUTs(ref<Device> pDevice, std::string lutPath)
+{
+    std::filesystem::path projectDir = getProjectDirectory();
+    ResourceBindFlags bindFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
+    mLUTs.featureTex = Texture::createFromFile(pDevice, fmt::format("{}/media/nn_mat/networks/LUT_{}.exr", projectDir.string(), lutPath), false, false,bindFlags,Bitmap::ImportFlags::None);
+    mLUTs.featureTex->getWidth();
+    // logInfo("LUT =============== {}", mLUTs.featureTex->getWidth());
+    // logInfo("{}", mLUTs.featureTex->getFormat());
+
+
+}
+
+NNMat::NNMat(ref<Device> pDevice, std::string networkName, bool isHisto, bool isWi)
 {
     mNetworkName = networkName;
 
     // mpTextureSynthesis = std::make_unique<TextureSynthesis>();
     loadFeature(pDevice, networkName);
+    mIsWi = isWi;
+    mIsHisto = isHisto;
+    if (mIsHisto)
+        loadLUTs(pDevice, networkName);
+    
 
     mpMLP = std::make_unique<MLP>(pDevice, networkName);
 
     Sampler::Desc samplerDesc = Sampler::Desc();
     samplerDesc.setFilterMode(TextureFilteringMode::Point, TextureFilteringMode::Point, TextureFilteringMode::Point);
     mpPointSampler = pDevice->createSampler(samplerDesc);
+
+
 }
 
 void NNMat::bindShaderData(const ShaderVar& var) const
@@ -95,7 +99,16 @@ void NNMat::bindShaderData(const ShaderVar& var) const
     var["uFP"].setSrv(mUFP.featureTex->getSRV());
     var["hP"].setSrv(mHP.featureTex->getSRV());
     var["dP"].setSrv(mDP.featureTex->getSRV());
+
+    if (mIsHisto)
+        var["LUTs"].setSrv(mLUTs.featureTex->getSRV());
+    var["isHisto"] = mIsHisto;
+    var["isWi"] = mIsWi;
+
+  
+
     var["inputSize"] = (mDP.texDim.y + mHP.texDim.y + mUP.texDim.y) * 4;
+
 
     var["gPointSampler"] = mpPointSampler;
 }

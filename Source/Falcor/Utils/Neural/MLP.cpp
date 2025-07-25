@@ -7,7 +7,6 @@
 namespace Falcor
 {
 
-
 MLP::MLP(ref<Device> pDevice, std::string networkName)
 {
     mNetworkName = networkName;
@@ -20,19 +19,19 @@ MLP::MLP(ref<Device> pDevice, std::string networkName)
     // std::vector<float> metaBuffer =
     //     readBinaryFile(fmt::format("{}/media/BTF/networks/NNMeta_{}.bin", projectDir.string(), networkName).c_str());
 
-
     std::vector<float> weightsBuffer =
         readBinaryFile(fmt::format("{}/media/nn_mat/networks/weight_{}.bin", projectDir.string(), networkName).c_str());
     // std::vector<float> biasBuffer =
     //     readBinaryFile(fmt::format("{}/media/nn_mat/networks/Bias_{}.bin", projectDir.string(), networkName).c_str());
     std::vector<float> metaBuffer =
         readBinaryFile(fmt::format("{}/media/nn_mat/networks/meta_{}.bin", projectDir.string(), networkName).c_str());
-        
+
+    std::vector<float> debugWeightBuffer =
+        readBinaryFile(fmt::format("{}/media/nn_mat/networks/weight_linear_{}.bin", projectDir.string(), networkName).c_str());
 
     // for (int i = 0; i < metaBuffer.size() ; i ++){
     //     logInfo("[MLP] META {} ", metaBuffer[i]);
     // }
-
 
     mLayerNum = metaBuffer[0];
     int totalWeightNum = 0;
@@ -78,10 +77,19 @@ MLP::MLP(ref<Device> pDevice, std::string networkName)
         MemoryType::DeviceLocal,
         metaBuffer.data()
     );
+
+    logInfo("[MLP] debugWeights size {}",debugWeightBuffer.size() );
+    mpDebugWeights = pDevice->createBuffer(
+        debugWeightBuffer.size() * sizeof(float),
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+        MemoryType::DeviceLocal,
+        debugWeightBuffer.data()
+    );
+
     std::vector<float>().swap(weightsBuffer);
     // std::vector<float>().swap(biasBuffer);
     std::vector<float>().swap(metaBuffer);
-
+    std::vector<float>().swap(debugWeightBuffer);
 }
 void MLP::bindShaderData(const ShaderVar& var) const
 {
@@ -89,15 +97,16 @@ void MLP::bindShaderData(const ShaderVar& var) const
     var["weights"] = mpWeights;
     // var["bias"] = mpBias;
     var["meta"] = mpMeta;
+    var["debugWeights"] = mpDebugWeights;
 }
 void MLP::bindDebugData(const ShaderVar& var, ref<Buffer> w, ref<Buffer> b) const
 {
-    var["debugWeights"] =  w;
+    var["debugWeights"] = w;
     var["debugBias"] = b;
 }
 void MLP::bindDebugData(const ShaderVar& var, ref<Buffer> w) const
 {
-    var["debugWeights"] =  w;
+    var["debugWeights"] = w;
 }
 
 } // namespace Falcor

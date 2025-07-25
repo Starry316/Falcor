@@ -14,6 +14,11 @@ struct NNMat
     Texture2DArray<float4> hP;
     Texture2DArray<float4> dP;
 
+    Texture2D<float4> LUTs;
+
+    bool isHisto;
+    bool isWi;
+
     int2 uDims;
     int2 hDims;
     int2 dDims;
@@ -38,77 +43,69 @@ struct NNMat
         int count = 0;
         uv.y = 1 - uv.y;
         uv = uv.yx;
+
+        float inputVal[24];
+        int offset = 0;
+        int inNumFirst = 0;
         for (uint i = 0; i < uDims.y; i++)
         {
-            // x[count] = uP.SampleGrad(gSampler, float3(uv, i), ddx, ddy);
             x[count] = uP.SampleLevel(gPointSampler, float3(uv, i), 0.f);
+
+            inputVal[offset] = x[count].x;
+            inputVal[offset + 1] = x[count].y;
+            inputVal[offset + 2] = x[count].z;
+            inputVal[offset + 3] = x[count].w;
+            offset += 4;
             count += 1;
         }
 
         for (uint i = 0; i < hDims.y; i++)
         {
             x[count] = hP.SampleLevel(gSampler, float3(h, i), 0.f);
+
+            inputVal[offset] = x[count].x;
+            inputVal[offset + 1] = x[count].y;
+            inputVal[offset + 2] = x[count].z;
+            inputVal[offset + 3] = x[count].w;
+            offset += 4;
             count += 1;
         }
 
         for (uint i = 0; i < dDims.y; i++)
         {
             x[count] = dP.SampleLevel(gSampler, float3(d, i), 0.f);
+
+            inputVal[offset] = x[count].x;
+            inputVal[offset + 1] = x[count].y;
+            inputVal[offset + 2] = x[count].z;
+            inputVal[offset + 3] = x[count].w;
+            offset += 4;
             count += 1;
         }
+
+        inNumFirst = offset;
 
         for (uint i = 0; i < uDims.y; i++)
         {
             uFine[i] = uFP.SampleLevel(gSampler, float3(uv, i), 0.f);
-        
         }
 
-        // return uP.SampleLevel(gSampler, float3(uv, 0), 0.f).xyz;
-        // return uFP.SampleLevel(gSampler, float3(uv, 0), 0.f).xyz;
-        return mlp.evalBTF(x, uFine).xyz;
+
+        if (isWi) {
+            inputVal[16] = wi.z;
+            inNumFirst += 1;
+        }
+        // float3 ret = mlp.evalBTF(x, uFine).xyz;
+        float3 ret = mlp.evalBTF(inputVal, uFine, inNumFirst).xyz;
+        if (isHisto)
+        {
+            // float lutIdx = 1 - ((floor(100 * (acos(wi.z) / M_PI * 2) / 10)) / 10.0f);
+            float lutIdx = ((floor(100 * (acos(wi.z) / M_PI * 2) / 10)) / 10.0f);
+            ret.x = LUTs.SampleLevel(gPointSampler, float2(ret.x, lutIdx), 0.f).x;
+            ret.y = LUTs.SampleLevel(gPointSampler, float2(ret.y, lutIdx), 0.f).y;
+            ret.z = LUTs.SampleLevel(gPointSampler, float2(ret.z, lutIdx), 0.f).z;
+        }
+
+        return ret;
     }
-
-    // float3 eval(float3 wi, float3 wo, float2 uv)
-    // {
-    //     float2 h, d;
-    //     dirToRusinkiewicz(wi, wo, h, d);
-    //     float3 vh = spherical_to_cartesian_rad(h);
-    //     float3 vd = spherical_to_cartesian_rad(d);
-
-    //     if (vh.z > 0.7f)
-    //     {
-    //         vh.z = 0.7;
-    //         vh = normalize(vh);
-    //     }
-    //     // if (vd.z > 0.9f) vd = normalize(float3(2, 2, 4));
-
-    //     h = hemisphereDirToDiskSquare(vh);
-    //     d = hemisphereDirToDiskSquare(vd);
-    //     d = float2(0.6, 0.6);
-
-    //     // h.x /= M_PI * 0.5f;
-    //     // h.y *= M_1_2PI;
-    //     // d.x /= M_PI * 0.5f;
-    //     // d.y *= M_1_2PI;
-
-    //     float4 x[MAX_NN_DIM];
-    //     int count = 0;
-    //     for (int i = 0; i < hDims.y; i++)
-    //     {
-    //         x[count] = hP.SampleLevel(gSampler, float3(h, i), 0.f);
-    //         count += 1;
-    //     }
-    //     for (int i = 0; i < uDims.y; i++)
-    //     {
-    //         x[count] = uP.SampleLevel(gSampler, float3(uv, i), 0.f);
-    //         count += 1;
-    //     }
-
-    //     for (int i = 0; i < dDims.y; i++)
-    //     {
-    //         x[count] = dP.SampleLevel(gSampler, float3(d, i), 0.f);
-    //         count += 1;
-    //     }
-    //     return mlp.eval(x).xyz;
-    // }
 }
