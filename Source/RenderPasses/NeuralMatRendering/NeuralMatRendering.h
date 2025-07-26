@@ -69,6 +69,7 @@ enum class NeuMat : uint32_t
     LEATHER11Wi,
     LEATHER11HistWi,
     LEATHER11HistWiAndWi,
+    LEATHER11PE,
     FABRIC07,
     FABRIC07Remote
 };
@@ -79,6 +80,7 @@ FALCOR_ENUM_INFO(
     {NeuMat::LEATHER11Wi, "Leather11Wi"},
     {NeuMat::LEATHER11HistWi, "Leather11Histo"},
     {NeuMat::LEATHER11HistWiAndWi, "Leather11HistoAndWi"},
+    {NeuMat::LEATHER11PE, "leather11PE"},
      {NeuMat::FABRIC07, "Fabric07"},
      {NeuMat::FABRIC07Remote, "Fabric07Remote"}
     }
@@ -132,11 +134,13 @@ public:
 
 private:
     NeuMat mNeuMat = NeuMat::LEATHER11HistWi;
-    const std::string mNeuMatPath[6] = {
-       "leather11_Validation","leather11_Validation_BTFNetWi2x2", "leather11_Histo_wi","leather11_Histo_wi_BTFNetWi2x2","fabric07_Dist", "fabric07_remote"
+    const std::string mNeuMatPath[7] = {
+       "leather11_Validation","leather11_Validation_BTFNetWi2x2",
+        "leather11_Histo_wi","carpet11_HWI_BTFNetWiPETest2x2","leather11_Validation_BTFNetWiPE2x2",
+        "fabric07_Dist", "fabric07_remote"
     };
-    const bool mIsHisto[6] = {0,0,1,0,0,1};
-    const bool mIsWi[6] = {0,1,0,0,0,1};
+    const bool mIsHisto[7] = {0, 0, 1, 0, 0, 0, 0};
+    const bool mIsWi[7] =    {0, 1, 0, 1, 1, 0, 0};
 
     void prepareVars();
 

@@ -70,7 +70,6 @@ struct NNMat
             offset += 4;
             count += 1;
         }
-
         for (uint i = 0; i < dDims.y; i++)
         {
             x[count] = dP.SampleLevel(gSampler, float3(d, i), 0.f);
@@ -90,10 +89,56 @@ struct NNMat
             uFine[i] = uFP.SampleLevel(gSampler, float3(uv, i), 0.f);
         }
 
-
+        // float2 wiRad = cartesian_to_spherical_rad(wi);
+        // float2 woRad = cartesian_to_spherical_rad(wo);
         if (isWi) {
-            inputVal[16] = wi.z;
-            inNumFirst += 1;
+            // inputVal[16] = wi.z;
+            // inNumFirst += 1;
+
+            // inputVal[16] = wi.z;
+            // inNumFirst += 1;
+            float2 wiRad = cartesian_to_spherical_rad(wi);
+            float2 woRad = cartesian_to_spherical_rad(wo);
+            inputVal[8] = wi.x;
+            inputVal[9] = wi.y;
+            inputVal[10] = wi.z;
+            inputVal[11] = wo.x;
+            inputVal[12] = wo.y;
+            inputVal[13] = wo.z;
+            inNumFirst = 14;
+
+            // inputVal[16] = cos(wiRad.x);
+            // inputVal[17] = sin(wiRad.x);
+            // inputVal[18] = cos(wiRad.y);
+            // inputVal[19] = sin(wiRad.y);
+            // inputVal[20] = cos(woRad.x);
+            // inputVal[21] = sin(woRad.x);
+            // inputVal[22] = cos(woRad.y);
+            // inputVal[23] = sin(woRad.y);
+            // inNumFirst += 8;
+
+            // inputVal[8] = cos(wiRad.x);
+            // inputVal[9] = sin(wiRad.x);
+            // inputVal[10] = cos(wiRad.y);
+            // inputVal[11] = sin(wiRad.y);
+            // inputVal[12] = cos(woRad.x);
+            // inputVal[13] = sin(woRad.x);
+            // inputVal[14] = cos(woRad.y);
+            // inputVal[15] = sin(woRad.y);
+
+            // inputVal[16] = cos(2*wiRad.x);
+            // inputVal[17] = sin(2*wiRad.x);
+            // inputVal[18] = cos(2*wiRad.y);
+            // inputVal[19] = sin(2*wiRad.y);
+            // inputVal[20] = cos(2*woRad.x);
+            // inputVal[21] = sin(2*woRad.x);
+            // inputVal[22] = cos(2*woRad.y);
+            // inputVal[23] = sin(2*woRad.y);
+
+
+            // inNumFirst += 8;
+
+
         }
         // float3 ret = mlp.evalBTF(x, uFine).xyz;
         float3 ret = mlp.evalBTF(inputVal, uFine, inNumFirst).xyz;
@@ -105,7 +150,7 @@ struct NNMat
             ret.y = LUTs.SampleLevel(gPointSampler, float2(ret.y, lutIdx), 0.f).y;
             ret.z = LUTs.SampleLevel(gPointSampler, float2(ret.z, lutIdx), 0.f).z;
         }
-
+  
         return ret;
     }
 }

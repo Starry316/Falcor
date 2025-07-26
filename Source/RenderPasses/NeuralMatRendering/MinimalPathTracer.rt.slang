@@ -973,6 +973,21 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
         rayData.terminated = true;
         rayData.radiance = Li * fr * NdotL;
+        if (gApplySyn) {
+            float2 h, d;
+            dirToRusinkiewicz(wi, wo, h, d);
+            float3 vh = spherical_to_cartesian_rad(h);
+            float3 vd = spherical_to_cartesian_rad(d);
+
+            h = hemisphereDirToDiskSquare(vh);
+            d = hemisphereDirToDiskSquare(vd);
+
+
+            rayData.radiance = float3(d, 0);
+            // rayData.radiance = float3(h, 0);
+        }
+      
+
     }
     else
     {
