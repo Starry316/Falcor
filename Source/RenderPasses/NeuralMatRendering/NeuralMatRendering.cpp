@@ -308,15 +308,16 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
     dirty |= widget.slider("UV Scale", UV_SCALE, 0.0f, 50.0f);
     dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
 
-
     dirty |= widget.var("Point light pos", lightPos);
     dirty |= widget.var("Point light intensity", lightIntensity);
+    dirty |= widget.slider("Point light H", lightPos.y, 0.0f, 20.0f);
     dirty |= widget.slider("Point light phi", lightPhi, 0.0f, (float)M_2PI);
     dirty |= widget.slider("Point light R", lightR, 0.0f, 50.0f);
     if (mpScene->getLightCount() > 0)
     {
         auto light = mpScene->getLight(0);
-        if (light->getType() == LightType::Point){
+        if (light->getType() == LightType::Point)
+        {
             lightPos.x = sinf(lightPhi) * lightR;
             lightPos.z = cosf(lightPhi) * lightR;
 
@@ -325,20 +326,16 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
             pl->setIntensity(Falcor::float3(lightIntensity));
         }
 
-        if (light->getType() == LightType::Directional){
+        if (light->getType() == LightType::Directional)
+        {
             lightPos.x = sinf(lightPhi) * lightR;
             lightPos.y = cosf(lightPhi) * lightR;
-      
 
             ref<DirectionalLight> pl = static_ref_cast<DirectionalLight>(light);
             pl->setWorldDirection(lightPos);
             pl->setIntensity(Falcor::float3(lightIntensity));
         }
-
     }
-
-
-
 
     editCurve |= widget.var("pos1", point_data[1], 0.0f, 1.0f);
     editCurve |= widget.var("pos2", point_data[2], 0.0f, 1.0f);
@@ -425,9 +422,6 @@ void NeuralMatRendering::loadNetwork(RenderContext* pRenderContext)
     mpScaleBuffer = mpDevice->createBuffer(8 * sizeof(float), ResourceBindFlags::Shared, MemoryType::DeviceLocal, model.scales);
 
     mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat], mIsHisto[(int)mNeuMat]);
-
-
-  
 }
 
 void NeuralMatRendering::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
@@ -511,7 +505,6 @@ void NeuralMatRendering::setScene(RenderContext* pRenderContext, const ref<Scene
         }
 
         mTracer.pProgram = Program::create(mpDevice, desc, mpScene->getSceneDefines());
-    
     }
 
     mpFence = mpDevice->createFence();

@@ -99,23 +99,36 @@ struct NNMat
             // inNumFirst += 1;
             float2 wiRad = cartesian_to_spherical_rad(wi);
             float2 woRad = cartesian_to_spherical_rad(wo);
-            inputVal[8] = wi.x;
-            inputVal[9] = wi.y;
-            inputVal[10] = wi.z;
-            inputVal[11] = wo.x;
-            inputVal[12] = wo.y;
-            inputVal[13] = wo.z;
-            inNumFirst = 14;
+            // inputVal[8] = wi.x;
+            // inputVal[9] = wi.y;
+            // inputVal[10] = wi.z;
+            // inputVal[11] = wo.x;
+            // inputVal[12] = wo.y;
+            // inputVal[13] = wo.z;
+            // inNumFirst = 14;
 
-            // inputVal[16] = cos(wiRad.x);
-            // inputVal[17] = sin(wiRad.x);
-            // inputVal[18] = cos(wiRad.y);
-            // inputVal[19] = sin(wiRad.y);
-            // inputVal[20] = cos(woRad.x);
-            // inputVal[21] = sin(woRad.x);
-            // inputVal[22] = cos(woRad.y);
-            // inputVal[23] = sin(woRad.y);
-            // inNumFirst += 8;
+            // inputVal[12] = wi.x;
+            // inputVal[13] = wi.y;
+            // inputVal[14] = wi.z;
+            // inputVal[15] = wo.x;
+            // inputVal[16] = wo.y;
+            // inputVal[17] = wo.z;
+            // inNumFirst = 18;
+
+            inputVal[7] = wi.x;
+            inputVal[8] = wi.y;
+            inputVal[9] = wi.z;
+            inputVal[10] = wo.x;
+            inputVal[11] = wo.y;
+            inputVal[12] = wo.z;
+            inputVal[13] = vh.x;
+            inputVal[14] = vh.y;
+            inputVal[15] = vh.z;
+            // inputVal[16] = vh.z;
+
+
+            inNumFirst = 16;
+
 
             // inputVal[8] = cos(wiRad.x);
             // inputVal[9] = sin(wiRad.x);
@@ -150,7 +163,7 @@ struct NNMat
             ret.y = LUTs.SampleLevel(gPointSampler, float2(ret.y, lutIdx), 0.f).y;
             ret.z = LUTs.SampleLevel(gPointSampler, float2(ret.z, lutIdx), 0.f).z;
         }
-  
+
         return ret;
     }
 }

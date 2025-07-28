@@ -79,8 +79,8 @@ FALCOR_ENUM_INFO(
     {{NeuMat::LEATHER11, "Leather11"},
     {NeuMat::LEATHER11Wi, "Leather11Wi"},
     {NeuMat::LEATHER11HistWi, "Leather11Histo"},
-    {NeuMat::LEATHER11HistWiAndWi, "Leather11HistoAndWi"},
-    {NeuMat::LEATHER11PE, "leather11PE"},
+    {NeuMat::LEATHER11HistWiAndWi, "carpet05"},
+    {NeuMat::LEATHER11PE, "fabric12"},
      {NeuMat::FABRIC07, "Fabric07"},
      {NeuMat::FABRIC07Remote, "Fabric07Remote"}
     }
@@ -136,11 +136,11 @@ private:
     NeuMat mNeuMat = NeuMat::LEATHER11HistWi;
     const std::string mNeuMatPath[7] = {
        "leather11_Validation","leather11_Validation_BTFNetWi2x2",
-        "leather11_Histo_wi","carpet11_HWI_BTFNetWiPETest2x2","leather11_Validation_BTFNetWiPE2x2",
-        "fabric07_Dist", "fabric07_remote"
+        "leather11_Histo_wi","fabric12_XYZ_BTFNetXYZHU72x2_t","fabric12_XYZ_BTFNetXYZHU72x2",
+        "carpet11_XYZ_BTFNetXYZHU72x2", "fabric07_remote"
     };
     const bool mIsHisto[7] = {0, 0, 1, 0, 0, 0, 0};
-    const bool mIsWi[7] =    {0, 1, 0, 1, 1, 0, 0};
+    const bool mIsWi[7] =    {0, 1, 0, 1, 1, 1, 0};
 
     void prepareVars();
 
@@ -163,7 +163,7 @@ private:
     std::string mProjectPath = getProjectDirectory().string();
 
     ModelName mModelName = ModelName::LEATHER11;
-   
+
 
     ModelInfo mModelInfo[4] = {
 
@@ -255,7 +255,7 @@ private:
     Falcor::float3 lightPos = Falcor::float3(2, 15, 2);
     float lightIntensity = 200.0f;
     float lightR = 8.0f;
-    
+
     float lightPhi = 0.0;
 
     bool mApplySyn = false;
@@ -270,7 +270,7 @@ private:
     std::shared_ptr<NBTF> mpNBTF[4];
 
     std::shared_ptr<NNMat> mpNNMat;
-    
+
     std::unique_ptr<EnvMapSampler> mpEnvMapSampler;
 
     bool mShowTracedHF = false;
