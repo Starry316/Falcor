@@ -244,7 +244,10 @@ void NeuralMatRendering::execute(RenderContext* pRenderContext, const RenderData
     }
 
     tracingPass(pRenderContext, renderData);
-    cudaInferPass(pRenderContext, renderData);
+    if (mShowSig)
+    {
+        cudaInferPass(pRenderContext, renderData);
+    }
     displayPass(pRenderContext, renderData);
     mFrameCount++;
 }
@@ -306,7 +309,6 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
     }
     editCurve |= widget.dropdown("Curve Type", mCurveType);
     dirty |= widget.slider("UV Scale", UV_SCALE, 0.0f, 50.0f);
-    dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
 
     dirty |= widget.var("Point light pos", lightPos);
     dirty |= widget.var("Point light intensity", lightIntensity);
@@ -380,6 +382,8 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
     {
         mpScene->getEnvMap()->setRotation(mEnvRotAngle);
     }
+    dirty |= widget.checkbox("Apply Synthesis", mApplySyn);
+
     mpPixelDebug->renderUI(widget);
 
     // If rendering options that modify the output have changed, set flag to indicate that.

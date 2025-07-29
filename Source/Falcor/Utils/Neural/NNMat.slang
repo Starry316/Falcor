@@ -28,6 +28,101 @@ struct NNMat
 
     SamplerState gSampler;
     SamplerState gPointSampler;
+
+    // Euler angles to rotation matrix (XYZ order)
+    float3x3 EulerToRotationMatrix(float3 euler)
+    {
+        // Extract individual angles
+        float x = euler.x; // Pitch
+        float y = euler.y; // Yaw
+        float z = euler.z; // Roll
+
+        // Precompute sines and cosines
+        float cx = cos(x);
+        float sx = sin(x);
+        float cy = cos(y);
+        float sy = sin(y);
+        float cz = cos(z);
+        float sz = sin(z);
+
+        // Construct rotation matrix (XYZ order)
+        float3x3 rotMatrix;
+
+        // First row
+        rotMatrix[0][0] = cy * cz;
+        rotMatrix[0][1] = cy * sz;
+        rotMatrix[0][2] = -sy;
+
+        // Second row
+        rotMatrix[1][0] = sx * sy * cz - cx * sz;
+        rotMatrix[1][1] = sx * sy * sz + cx * cz;
+        rotMatrix[1][2] = sx * cy;
+
+        // Third row
+        rotMatrix[2][0] = cx * sy * cz + sx * sz;
+        rotMatrix[2][1] = cx * sy * sz - sx * cz;
+        rotMatrix[2][2] = cx * cy;
+
+        return rotMatrix;
+    }
+
+    // Rotation matrix to Euler angles (XYZ order)
+    float3 RotationMatrixToEuler(float3x3 R)
+    {
+        float3 euler;
+
+        // Check for gimbal lock (when cos(y) is close to 0)
+        if (abs(R[0][2]) > 0.99999f)
+        {
+            // Gimbal lock case
+            euler.x = 0.0f;           // Can be set to any value
+            euler.y = -asin(R[0][2]); // -PI/2 or PI/2
+            euler.z = atan2(-R[1][0], R[1][1]);
+        }
+        else
+        {
+            // Regular case
+            euler.y = -asin(R[0][2]);
+            euler.x = atan2(R[1][2], R[2][2]);
+            euler.z = atan2(R[0][1], R[0][0]);
+        }
+
+        return euler;
+    }
+
+    // Find rotation matrix that transforms basis1 to basis2
+    float3x3 FindRotationBetweenBases(float3x3 basis1, float3x3 basis2)
+    {
+        // Assuming both bases are orthonormal
+        // basis1 and basis2 are 3x3 matrices where columns are the basis vectors
+
+        // The rotation matrix is: R = basis2 * transpose(basis1)
+        float3x3 basis1Transpose;
+        basis1Transpose[0] = float3(basis1[0][0], basis1[1][0], basis1[2][0]);
+        basis1Transpose[1] = float3(basis1[0][1], basis1[1][1], basis1[2][1]);
+        basis1Transpose[2] = float3(basis1[0][2], basis1[1][2], basis1[2][2]);
+
+        // Multiply matrices
+        float3x3 rotationMatrix;
+        rotationMatrix = mul(basis2, basis1Transpose);
+        // Perform matrix multiplication manually
+   
+        return rotationMatrix;
+    }
+
+    float3 rotationDebug(float3 T, float3 B, float3 N, float3 v)
+    {
+        float3x3 rot = float3x3(T, B, N);
+
+        float3 eulerangles = RotationMatrixToEuler(rot);
+        float3x3 rotRef = EulerToRotationMatrix(eulerangles);
+        // return mul(rotRef, v);
+        return float3(rotRef[1][0], rotRef[1][1], rotRef[1][2]);
+
+ 
+
+    }
+
     float3 evalDebug(float3 wi, float3 wo, float2 uv, float2 ddx, float2 ddy, bool synthesize = false)
     {
         float2 h, d;
@@ -89,32 +184,21 @@ struct NNMat
             uFine[i] = uFP.SampleLevel(gSampler, float3(uv, i), 0.f);
         }
 
-        // float2 wiRad = cartesian_to_spherical_rad(wi);
-        // float2 woRad = cartesian_to_spherical_rad(wo);
-        if (isWi) {
-            // inputVal[16] = wi.z;
-            // inNumFirst += 1;
-
-            // inputVal[16] = wi.z;
-            // inNumFirst += 1;
+        if (isWi)
+        {
             float2 wiRad = cartesian_to_spherical_rad(wi);
             float2 woRad = cartesian_to_spherical_rad(wo);
+
             // inputVal[8] = wi.x;
             // inputVal[9] = wi.y;
             // inputVal[10] = wi.z;
             // inputVal[11] = wo.x;
             // inputVal[12] = wo.y;
             // inputVal[13] = wo.z;
-            // inNumFirst = 14;
-
-            // inputVal[12] = wi.x;
-            // inputVal[13] = wi.y;
-            // inputVal[14] = wi.z;
-            // inputVal[15] = wo.x;
-            // inputVal[16] = wo.y;
-            // inputVal[17] = wo.z;
-            // inNumFirst = 18;
-
+            // inputVal[14] = vh.x;
+            // inputVal[15] = vh.y;
+            // inputVal[16] = vh.z;
+            // inNumFirst = 17;
             inputVal[7] = wi.x;
             inputVal[8] = wi.y;
             inputVal[9] = wi.z;
@@ -124,36 +208,8 @@ struct NNMat
             inputVal[13] = vh.x;
             inputVal[14] = vh.y;
             inputVal[15] = vh.z;
-            // inputVal[16] = vh.z;
-
-
             inNumFirst = 16;
-
-
-            // inputVal[8] = cos(wiRad.x);
-            // inputVal[9] = sin(wiRad.x);
-            // inputVal[10] = cos(wiRad.y);
-            // inputVal[11] = sin(wiRad.y);
-            // inputVal[12] = cos(woRad.x);
-            // inputVal[13] = sin(woRad.x);
-            // inputVal[14] = cos(woRad.y);
-            // inputVal[15] = sin(woRad.y);
-
-            // inputVal[16] = cos(2*wiRad.x);
-            // inputVal[17] = sin(2*wiRad.x);
-            // inputVal[18] = cos(2*wiRad.y);
-            // inputVal[19] = sin(2*wiRad.y);
-            // inputVal[20] = cos(2*woRad.x);
-            // inputVal[21] = sin(2*woRad.x);
-            // inputVal[22] = cos(2*woRad.y);
-            // inputVal[23] = sin(2*woRad.y);
-
-
-            // inNumFirst += 8;
-
-
         }
-        // float3 ret = mlp.evalBTF(x, uFine).xyz;
         float3 ret = mlp.evalBTF(inputVal, uFine, inNumFirst).xyz;
         if (isHisto)
         {

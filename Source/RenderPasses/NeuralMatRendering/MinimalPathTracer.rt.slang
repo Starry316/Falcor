@@ -387,7 +387,8 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     for (uint i = 0; i < gPRNGDimension; i++)
         sampleNext1D(sg);
     const float3 primaryRayOrigin = gScene.camera.getPosition();
-    const float3 primaryRayDir = getPrimaryRayDir(pixel, frameDim, gScene.camera, sampleNext2D(sg));
+    // const float3 primaryRayDir = getPrimaryRayDir(pixel, frameDim, gScene.camera, sampleNext2D(sg));
+    const float3 primaryRayDir = getPrimaryRayDir(pixel, frameDim, gScene.camera, float2(0.1));
     // Prepare ray payload.
     ScatterRayData rayData = ScatterRayData(sg);
     rayData.origin = primaryRayOrigin;
@@ -419,7 +420,8 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
 //
 // Shader entry points for miss shaders.
 //
-[shader("miss")] void scatterMiss(inout ScatterRayData rayData)
+[shader("miss")]
+void scatterMiss(inout ScatterRayData rayData)
 {
     // Ray missed the scene. Mark the ray as terminated.
     rayData.terminated = true;
@@ -434,7 +436,8 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     }
 }
 
-    [shader("miss")] void shadowMiss(inout ShadowRayData rayData)
+[shader("miss")]
+void shadowMiss(inout ShadowRayData rayData)
 {
     // The miss shader is executed if the ray misses all geometry. Mark as visible.
     rayData.visible = true;
@@ -443,7 +446,8 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
 //
 // Shader entry points for TriangleMesh hit groups.
 //
-[shader("anyhit")] void scatterTriangleMeshAnyHit(inout ScatterRayData rayData, BuiltInTriangleIntersectionAttributes attribs)
+[shader("anyhit")]
+void scatterTriangleMeshAnyHit(inout ScatterRayData rayData, BuiltInTriangleIntersectionAttributes attribs)
 {
     // Alpha test for non-opaque geometry.
     GeometryInstanceID instanceID = getGeometryInstanceID();
@@ -453,7 +457,8 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
         IgnoreHit();
 }
 
-    [shader("closesthit")] void scatterTriangleMeshClosestHit(inout ScatterRayData rayData, BuiltInTriangleIntersectionAttributes attribs)
+[shader("closesthit")]
+void scatterTriangleMeshClosestHit(inout ScatterRayData rayData, BuiltInTriangleIntersectionAttributes attribs)
 {
     TriangleHit triangleHit;
     triangleHit.instanceID = getGeometryInstanceID();
@@ -462,7 +467,8 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     handleHit(HitInfo(triangleHit), rayData);
 }
 
-[shader("anyhit")] void shadowTriangleMeshAnyHit(inout ShadowRayData rayData, BuiltInTriangleIntersectionAttributes attribs)
+[shader("anyhit")]
+void shadowTriangleMeshAnyHit(inout ShadowRayData rayData, BuiltInTriangleIntersectionAttributes attribs)
 {
     // Alpha test for non-opaque geometry.
     GeometryInstanceID instanceID = getGeometryInstanceID();
@@ -843,7 +849,7 @@ struct DisplacedTriangleMeshIntersector_NM
 
         const uint materialID = gScene.getMaterialID(instanceID);
         const uint3 indices = gScene.getIndices(instanceID, primitiveIndex);
-        const StaticVertexData vertices[3] = {gScene.getVertex(indices[0]), gScene.getVertex(indices[1]), gScene.getVertex(indices[2])};
+        const StaticVertexData vertices[3] = { gScene.getVertex(indices[0]), gScene.getVertex(indices[1]), gScene.getVertex(indices[2]) };
         const float4x4 worldMat = gScene.getWorldMatrix(instanceID);
         DisplacementIntersection result;
         if (intersectDisplacedTriangle_NM(ray, vertices, worldMat, result))
@@ -858,7 +864,8 @@ struct DisplacedTriangleMeshIntersector_NM
     }
 };
 
-[shader("intersection")] void displacedTriangleMeshIntersection()
+[shader("intersection")]
+void displacedTriangleMeshIntersection()
 {
     const Ray ray = Ray(WorldRayOrigin(), WorldRayDirection(), RayTMin(), RayTCurrent());
     float t;
@@ -867,8 +874,9 @@ struct DisplacedTriangleMeshIntersector_NM
     {
         ReportHit(t, 0, attribs);
     }
-}[shader("closesthit"
-)] void scatterDisplacedTriangleMeshClosestHit(inout ScatterRayData rayData, DisplacedTriangleMeshIntersector_NM::Attribs attribs)
+}
+[shader("closesthit")]
+void scatterDisplacedTriangleMeshClosestHit(inout ScatterRayData rayData, DisplacedTriangleMeshIntersector_NM::Attribs attribs)
 {
     DisplacedTriangleHit displacedTriangleHit;
     displacedTriangleHit.instanceID = getGeometryInstanceID();
@@ -877,12 +885,13 @@ struct DisplacedTriangleMeshIntersector_NM
     displacedTriangleHit.displacement = attribs.displacement;
     handleDisplacementHit(HitInfo(displacedTriangleHit), rayData);
 }
-[shader("intersection")] void displacedTriangleMeshIntersectionShadow()
+[shader("intersection")]
+void displacedTriangleMeshIntersectionShadow()
 {
     float t;
     GeometryInstanceID instanceID = getGeometryInstanceID();
     const uint3 indices = gScene.getIndices(instanceID, PrimitiveIndex());
-    const StaticVertexData vertices[3] = {gScene.getVertex(indices[0]), gScene.getVertex(indices[1]), gScene.getVertex(indices[2])};
+    const StaticVertexData vertices[3] = { gScene.getVertex(indices[0]), gScene.getVertex(indices[1]), gScene.getVertex(indices[2]) };
     const float4x4 worldMat = gScene.getWorldMatrix(instanceID);
 
     float3 vertPosTr[3];
@@ -900,7 +909,8 @@ struct DisplacedTriangleMeshIntersector_NM
 //
 // Shader entry point for ray generation shader.
 //
-[shader("raygeneration")] void rayGen()
+[shader("raygeneration")]
+void rayGen()
 {
     uint2 pixel = DispatchRaysIndex().xy;
     uint2 frameDim = DispatchRaysDimensions().xy;
@@ -921,7 +931,6 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     float3 wiWS; // world space incident direction
 
     float3 Li = evalDirectAnalytic(sd.computeRayOrigin(), rayData.sg, wiWS);
-
 
 #ifdef POINTLIGHT
 #ifdef SIG25
@@ -968,25 +977,23 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     if (sd.materialID == 1)
     {
         float3 wi = sd.frame.toLocal(wiWS);
+
+        float3 ret = nnmat.rotationDebug(sd.frame.T, sd.frame.B, sd.frame.N, wiWS);
+        rayData.terminated = true;
+
+        // float3 eulerangles = float3(1, 2, 3);
+        // ret = nnmat.rotationDebug(sd.frame.T, sd.frame.B, sd.frame.N, eulerangles);
+        // rayData.radiance = wi;
+        // float3x3 rotRef = float3x3(sd.frame.T, sd.frame.B, sd.frame.N);
+        // rayData.radiance = float3(rotRef[1][0], rotRef[1][1], rotRef[1][2]);
+        // if (gApplySyn) rayData.radiance = ret;
+
+
         float NdotL = wi.z > 0 ? wi.z : 0;
         float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
         float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
         rayData.terminated = true;
         rayData.radiance = Li * fr * NdotL;
-        if (gApplySyn) {
-            float2 h, d;
-            dirToRusinkiewicz(wi, wo, h, d);
-            float3 vh = spherical_to_cartesian_rad(h);
-            float3 vd = spherical_to_cartesian_rad(d);
-
-            h = hemisphereDirToDiskSquare(vh);
-            d = hemisphereDirToDiskSquare(vd);
-
-
-            rayData.radiance = float3(d, 0);
-            // rayData.radiance = float3(h, 0);
-        }
-      
 
     }
     else
@@ -996,66 +1003,70 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 #endif
 #else
-        float3 envLi;
-        float envPdf;
-        // We only use the envmap as light source
-        if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, wiWS, envPdf))
+    float3 envLi;
+    float envPdf;
+    // We only use the envmap as light source
+    if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, wiWS, envPdf))
+    {
+#ifdef SIG25
+        if (sd.materialID == 1)
         {
-    #ifdef SIG25
-            if (sd.materialID == 1)
+            float2 ddx, ddy;
+            float hitT = length(sd.posW - gScene.camera.getPosition());
+            computeRayDifferentials(hit.getTriangleHit(), -sd.V, hitT, gScene.camera, 1.0f / float2(gRenderTargetDim), ddx, ddy);
+            float3 wi = sd.frame.toLocal(wiWS);
+            float NdotL = wi.z > 0 ? wi.z : 0; // BTF already encodes the cosine term.
+            uint4 packedData;
+            uint2 pixel = DispatchRaysIndex().xy;
+            if (gApplySyn)
             {
-                float2 ddx, ddy;
-                float hitT = length(sd.posW - gScene.camera.getPosition());
-                computeRayDifferentials(hit.getTriangleHit(), -sd.V, hitT, gScene.camera, 1.0f / float2(gRenderTargetDim), ddx, ddy);
-                float3 wi = sd.frame.toLocal(wiWS);
-                float NdotL = wi.z > 0 ? wi.z : 0; // BTF already encodes the cosine term.
-                uint4 packedData;
-                uint2 pixel = DispatchRaysIndex().xy;
-                if (gApplySyn)
-                {
-                    packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
-                    float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-                    float4 uv_hashed = getHashUV(hfData, uv_raw);
-                    packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
-                    packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
-                    packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
-                    // we need to pack the hashed uv due to unknown precision issue in cuda
-                    packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packUnorm2x16(frac(abs(uv_hashed.xy)));
-                    packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 4] = packUnorm2x16(frac(abs(uv_hashed.zw)));
-                }
-                else
-                {
-                    packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
-                    packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
-                    packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
-                    packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
-                    packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
-                }
-
-                rayData.radiance = envLi * NdotL;
-                rayData.terminated = false;
-                return;
-            }
-            else {
-                rayData.terminated = true;
-                rayData.radiance += envLi * mi.eval(sd, wiWS, rayData.sg);
-            }
-    #else
-            if (sd.materialID == 1)
-            {
-                float3 wi = sd.frame.toLocal(wiWS);
-                float NdotL = wi.z > 0 ? wi.z : 0;
+                packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
                 float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
-                float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
-                rayData.terminated = true;
-                rayData.radiance = envLi * fr * NdotL;
+                float4 uv_hashed = getHashUV(hfData, uv_raw);
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+                // we need to pack the hashed uv due to unknown precision issue in cuda
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packUnorm2x16(frac(abs(uv_hashed.xy)));
+                packedInput[5 * (pixel.y * gRenderTargetDim.x + pixel.x) + 4] = packUnorm2x16(frac(abs(uv_hashed.zw)));
             }
-            else {
-                rayData.terminated = true;
-                rayData.radiance += envLi * mi.eval(sd, wiWS, rayData.sg);
+            else
+            {
+                packedData = packInput(wi, wo, frac(abs(sd.uv)), ddx, ddy);
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x)] = packedData.x;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 1] = packedData.y;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 2] = packedData.z;
+                packedInput[4 * (pixel.y * gRenderTargetDim.x + pixel.x) + 3] = packedData.w;
             }
-    #endif
+
+            rayData.radiance = envLi * NdotL;
+            rayData.terminated = false;
+            return;
         }
+        else
+        {
+            rayData.terminated = true;
+            rayData.radiance += envLi * mi.eval(sd, wiWS, rayData.sg);
+        }
+#else
+        if (sd.materialID == 1)
+        {
+            float3 wi = sd.frame.toLocal(wiWS);
+
+
+            float NdotL = wi.z > 0 ? wi.z : 0;
+            float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
+            float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
+            rayData.terminated = true;
+            rayData.radiance = envLi * fr * NdotL;
+        }
+        else
+        {
+            rayData.terminated = true;
+            rayData.radiance += envLi * mi.eval(sd, wiWS, rayData.sg);
+        }
+#endif
+    }
 #endif
 }
 

@@ -136,11 +136,12 @@ private:
     NeuMat mNeuMat = NeuMat::LEATHER11HistWi;
     const std::string mNeuMatPath[7] = {
        "leather11_Validation","leather11_Validation_BTFNetWi2x2",
-        "leather11_Histo_wi","fabric12_XYZ_BTFNetXYZHU72x2_t","fabric12_XYZ_BTFNetXYZHU72x2",
+        "leather11_Histo_wi","leather11_XYZ_BTFNetXYZH2x2","fabric12_XYZ_BTFNetXYZHU72x2",
         "carpet11_XYZ_BTFNetXYZHU72x2", "fabric07_remote"
     };
     const bool mIsHisto[7] = {0, 0, 1, 0, 0, 0, 0};
     const bool mIsWi[7] =    {0, 1, 0, 1, 1, 1, 0};
+
 
     void prepareVars();
 
@@ -258,9 +259,9 @@ private:
 
     float lightPhi = 0.0;
 
-    bool mApplySyn = false;
+    bool mApplySyn = true;
     bool mShowSig = false;
-    bool mUsePointLight = false;
+    bool mUsePointLight = true;
 
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
