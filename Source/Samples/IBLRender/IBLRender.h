@@ -30,10 +30,11 @@
 #include "Core/SampleApp.h"
 #include "Core/Pass/FullScreenPass.h"
 #include "Core/Pass/ComputePass.h"
+#include "Rendering/Lights/EnvMapSampler.h"
 #include "Utils/Texture/Synthesis.h"
 
 #include "Utils/Debug/PixelDebug.h"
-
+#include "Utils/Neural/NNMat.h"
 using namespace Falcor;
 
 class IBLRender : public SampleApp
@@ -50,14 +51,28 @@ public:
     bool onKeyEvent(const KeyboardEvent& keyEvent) override;
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return mpPixelDebug->onMouseEvent(mouseEvent); }
     void onHotReload(HotReloadFlags reloaded) override;
-    void display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo) ;
+    void display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
 
 private:
+    std::string mOutputDir = "leather11_45";
     std::unique_ptr<PixelDebug> mpPixelDebug;
     ref<FullScreenPass> mpDisplayPass;
     ref<ComputePass> mpDebugPass;
     uint mFrames = 1;
+    uint outputCount = 0;
+    int mSampleNum = 4;
+    bool mOutputing = false;
+    bool mShowIBL = false;
+    bool mDirty = true;
+    uint mOutputStep = 0;
+    std::string mProjectPath = getProjectDirectory().string();
     ref<Texture> mpOutColor;
     float2 mWo = {0.0f, 0.0f};
     float2 mWi = {0.0f, 0.0f};
+    float3 mEnvRotAngle = float3(0.0f, 0.0f, 0.0f);
+    std::shared_ptr<NNMat> mpNNMat;
+    std::shared_ptr<NNMat> mpNNMatIBL;
+    std::unique_ptr<EnvMapSampler> mpEnvMapSampler;
+    ref<SampleGenerator> mpSampleGenerator;
+    ref<EnvMap> mpEnvMap;
 };

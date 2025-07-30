@@ -19,6 +19,7 @@ struct NNMat
     bool isHisto;
     bool isWi;
 
+
     int2 uDims;
     int2 hDims;
     int2 dDims;
@@ -106,7 +107,7 @@ struct NNMat
         float3x3 rotationMatrix;
         rotationMatrix = mul(basis2, basis1Transpose);
         // Perform matrix multiplication manually
-   
+
         return rotationMatrix;
     }
 
@@ -118,9 +119,54 @@ struct NNMat
         float3x3 rotRef = EulerToRotationMatrix(eulerangles);
         // return mul(rotRef, v);
         return float3(rotRef[1][0], rotRef[1][1], rotRef[1][2]);
+    }
 
- 
+    float3 HDRRevert(float3 I) {
+        return (exp(abs(I) * log(17.0)) - 1) / 16;
+    }
 
+    float3 evalIBL(float3 wo, float2 uv, float3 rotAngles)
+    {
+        float4 x[MAX_NN_DIM];
+        float4 uFine[2];
+        int count = 0;
+        // uv.y = 1 - uv.y;
+        uv = uv.yx;
+
+        float inputVal[24];
+        int offset = 0;
+        int inNumFirst = 0;
+        for (uint i = 0; i < uDims.y; i++)
+        {
+            x[count] = uP.SampleLevel(gPointSampler, float3(uv, i), 0.f);
+
+            inputVal[offset] = x[count].x;
+            inputVal[offset + 1] = x[count].y;
+            inputVal[offset + 2] = x[count].z;
+            inputVal[offset + 3] = x[count].w;
+            offset += 4;
+            count += 1;
+        }
+
+        inNumFirst = offset;
+
+        for (uint i = 0; i < uDims.y; i++)
+        {
+            uFine[i] = uFP.SampleLevel(gSampler, float3(uv, i), 0.f);
+        }
+
+        inputVal[7] = wo.x;
+        inputVal[8] = wo.y;
+        inputVal[9] = wo.z;
+
+        inputVal[10] = cos(rotAngles.x);
+        inputVal[11] = sin(rotAngles.x);
+        inputVal[12] = cos(2 * rotAngles.x);
+        inputVal[13] = sin(2 * rotAngles.x);
+
+        inNumFirst = 14;
+
+        return HDRRevert(mlp.evalBTF(inputVal, uFine, inNumFirst).xyz);
     }
 
     float3 evalDebug(float3 wi, float3 wo, float2 uv, float2 ddx, float2 ddy, bool synthesize = false)

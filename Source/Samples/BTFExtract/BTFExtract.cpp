@@ -34,7 +34,8 @@ FALCOR_EXPORT_D3D12_AGILITY_SDK
 static void imwrite(const std::filesystem::path& path, uint32_t width, uint32_t height, float* pData)
 {
     Bitmap::saveImage(
-        path, width, height, Bitmap::FileFormat::ExrFile, Bitmap::ExportFlags::Uncompressed, ResourceFormat::RGB32Float, false, pData
+        path, width, height, Bitmap::FileFormat::ExrFile, Bitmap::ExportFlags::Lossy, ResourceFormat::RGB32Float, false, pData
+        // path, width, height, Bitmap::FileFormat::ExrFile, Bitmap::ExportFlags::Uncompressed, ResourceFormat::RGB32Float, false, pData
     );
 }
 

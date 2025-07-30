@@ -42,6 +42,7 @@ public:
 
     bool mIsHisto = false;
     bool mIsWi = false;
+    bool mIsIBL = false;
 };
 
 } // namespace Falcor

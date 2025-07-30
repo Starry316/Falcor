@@ -36,21 +36,15 @@ cbuffer CB
 // cuda infer output
 
 Texture2D<float4> ouputColor;
-
-
-float4 mainImage(float2 fragCoord, uint2 pixel)
+SamplerState gSampler;
+float4 mainImage(float2 texC, uint2 pixel)
 {
-
-    // print("ref", ouputColor[pixel]);
-    // print("out", cudaRet);
-    // print("dif", abs(cudaRet - ouputColor[pixel]));
-
-    return float4(pixel / iResolution, 0,0);
+    return ouputColor.SampleLevel(gSampler, texC, 0);
 }
 
 float4 main(float2 texC: TEXCOORD) : SV_TARGET
 {
     uint2 pixel = uint2(floor(texC * iResolution));
-    printSetPixel(pixel);
-    return mainImage(texC * iResolution, pixel);
+    // printSetPixel(pixel);
+    return mainImage(texC, pixel);
 }
