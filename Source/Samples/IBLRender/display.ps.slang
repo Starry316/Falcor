@@ -31,20 +31,61 @@ import Utils.Math.FormatConversion;
 cbuffer CB
 {
     float2 iResolution;
-
 };
 // cuda infer output
 
 Texture2D<float4> ouputColor;
+Texture2D<float4> ouputColorRef;
 SamplerState gSampler;
+
+float3 toneMapAces(float3 color)
+{
+    // Cancel out the pre-exposure mentioned in
+    // https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
+    color *= 0.6;
+
+    float A = 2.51;
+    float B = 0.03;
+    float C = 2.43;
+    float D = 0.59;
+    float E = 0.14;
+
+    color = saturate((color * (A * color + B)) / (color * (C * color + D) + E));
+    return color;
+}
+// float luminance(float3 color)
+// {
+//     return dot(color, float3(0.299, 0.587, 0.114));
+// }
+
+// float4 main(float2 texC: TEXCOORD) : SV_TARGET
+// {
+//     float4 color = ouputColor.Sample(gSampler, texC);
+//     float logLuminance = log2(max(0.0001, luminance(color.xyz)));
+//     return float4(logLuminance, 0, 0, 1);
+// }
+
 float4 mainImage(float2 texC, uint2 pixel)
 {
-    return ouputColor.SampleLevel(gSampler, texC, 0);
+    float4 color;
+    if (texC.x > 0.5) {
+        texC.x = 2 * (texC.x - 0.5);
+        color = ouputColorRef.SampleLevel(gSampler, texC, 0);
+    }
+    else {
+        texC.x = 2 * (texC.x);
+        color = ouputColor.SampleLevel(gSampler, texC, 0);
+    }
+
+
+
+
+    color.xyz = toneMapAces(color.xyz);
+    return color;
 }
 
 float4 main(float2 texC: TEXCOORD) : SV_TARGET
 {
     uint2 pixel = uint2(floor(texC * iResolution));
-    // printSetPixel(pixel);
     return mainImage(texC, pixel);
 }

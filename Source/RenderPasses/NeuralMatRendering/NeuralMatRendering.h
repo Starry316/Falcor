@@ -56,38 +56,26 @@ FALCOR_ENUM_INFO(
     {{ModelName::LEATHER11, "UBO Leather11"},
      {ModelName::WEAVE, "Weave"},
      {ModelName::TILE, "Tile"},
-     {ModelName::CERAMIC_TILE, "Ceramic Tile"}
-    }
+     {ModelName::CERAMIC_TILE, "Ceramic Tile"}}
 );
 FALCOR_ENUM_REGISTER(ModelName);
 
-
-
 enum class NeuMat : uint32_t
 {
+    LEATHER11BL,
     LEATHER11,
-    LEATHER11Wi,
-    LEATHER11HistWi,
-    LEATHER11HistWiAndWi,
-    LEATHER11PE,
-    FABRIC07,
-    FABRIC07Remote
+    FABRIC12,
+    CARPET11
 };
 
 FALCOR_ENUM_INFO(
     NeuMat,
-    {{NeuMat::LEATHER11, "Leather11"},
-    {NeuMat::LEATHER11Wi, "Leather11Wi"},
-    {NeuMat::LEATHER11HistWi, "Leather11Histo"},
-    {NeuMat::LEATHER11HistWiAndWi, "carpet05"},
-    {NeuMat::LEATHER11PE, "fabric12"},
-     {NeuMat::FABRIC07, "Fabric07"},
-     {NeuMat::FABRIC07Remote, "Fabric07Remote"}
-    }
+    {{NeuMat::LEATHER11BL, "Leather11 Baseline"},
+     {NeuMat::LEATHER11, "Leather11"},
+     {NeuMat::FABRIC12, "Fabric12"},
+     {NeuMat::CARPET11, "Carpet11"}}
 );
 FALCOR_ENUM_REGISTER(NeuMat);
-
-
 
 struct ModelInfo
 {
@@ -133,16 +121,41 @@ public:
     void loadNetwork(RenderContext* pRenderContext);
 
 private:
-    NeuMat mNeuMat = NeuMat::LEATHER11HistWi;
+    NeuMat mNeuMat = NeuMat::LEATHER11;
+
     const std::string mNeuMatPath[7] = {
-       "leather11_Validation","leather11_Validation_BTFNetWi2x2",
-        "leather11_Histo_wi","leather11_XYZ_BTFNetXYZH2x2","fabric12_XYZ_BTFNetXYZHU72x2",
-        "carpet11_XYZ_BTFNetXYZHU72x2", "fabric07_remote"
-    };
-    const bool mIsHisto[7] = {0, 0, 1, 0, 0, 0, 0};
-    const bool mIsWi[7] =    {0, 1, 0, 1, 1, 1, 0};
+        "leather11_Validation",
+        "leather11_XYZ_BTFNetXYZHU72x2",
+        "fabric12_XYZ_BTFNetXYZHU72x2",
+        "carpet11_XYZ_BTFNetXYZHU72x2",
+        "",
+        "",
+        ""};
 
+    const std::string mNeuIBLPath[7] = {
+        "leather11_45_IBL_BTFNetIBL2x2",
+        "leather11_45_IBL_BTFNetIBL2x2",
+        "fabric12_45_IBL_BTFNetIBL2x2",
+        "fabric12_45_IBL_BTFNetIBL2x2",
+        "",
+        "",
+        ""};
 
+    const bool mIsHisto[7] = {0, 0, 0, 0, 0, 0, 0};
+    const bool mIsWi[7] = {0, 1, 1, 1, 1, 1, 1};
+
+    // std::string mNNIBLName = "leather11_45_IBL_BTFNetIBL2x2";
+    std::string mNNIBLName = "fabric12_45_IBL_BTFNetIBL2x2";
+
+    // const std::string mNeuMatPath[7] = {
+    //    "leather11_Validation","leather11_Validation_BTFNetWi2x2",
+    //     "leather11_Histo_wi","leather11_XYZ_BTFNetXYZH2x2","fabric12_XYZ_BTFNetXYZHU72x2",
+    //     "carpet11_XYZ_BTFNetXYZHU72x2", "fabric07_remote"
+    // };
+    // const bool mIsHisto[7] = {0, 0, 1, 0, 0, 0, 0};
+    // const bool mIsWi[7] =    {0, 1, 0, 1, 1, 1, 0};
+
+    bool mUseIBL = false;
     void prepareVars();
 
     /// Current scene.
@@ -164,7 +177,6 @@ private:
     std::string mProjectPath = getProjectDirectory().string();
 
     ModelName mModelName = ModelName::LEATHER11;
-
 
     ModelInfo mModelInfo[4] = {
 
@@ -226,10 +238,7 @@ private:
           0.0010884717339649796,
           5.779493676527636e-06,
           0.000891408184543252,
-          4.09871927331551e-06}}
-        };
-
-
+          4.09871927331551e-06}}};
 
     // displacement map
     ref<Texture> mpHF;
@@ -271,6 +280,7 @@ private:
     std::shared_ptr<NBTF> mpNBTF[4];
 
     std::shared_ptr<NNMat> mpNNMat;
+    std::shared_ptr<NNMat> mpNNMatIBL;
 
     std::unique_ptr<EnvMapSampler> mpEnvMapSampler;
 

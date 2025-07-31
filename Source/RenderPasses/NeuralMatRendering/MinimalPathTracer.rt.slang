@@ -55,10 +55,13 @@ cbuffer CB
     bool gShowTracedHF;
     bool gTracedShadowRay;
     bool gApplySyn;
+    bool gUseIBL;
+    float3 gRotAngles;
 
     HistogramBlendingHFData hfData;
     EnvMapSampler envMapSampler;
     NNMat nnmat;
+    NNMat nnmatIBL;
 }
 
 // Outputs
@@ -988,13 +991,11 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         // rayData.radiance = float3(rotRef[1][0], rotRef[1][1], rotRef[1][2]);
         // if (gApplySyn) rayData.radiance = ret;
 
-
         float NdotL = wi.z > 0 ? wi.z : 0;
         float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
         float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
         rayData.terminated = true;
         rayData.radiance = Li * fr * NdotL;
-
     }
     else
     {
@@ -1006,6 +1007,15 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     float3 envLi;
     float envPdf;
     // We only use the envmap as light source
+    if (gUseIBL && sd.materialID == 1)
+    {
+        float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
+        rayData.radiance = nnmatIBL.evalIBL(wo, uv_raw, M_PI * gRotAngles / 180);
+        rayData.terminated = true;
+
+        return;
+    }
+
     if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, wiWS, envPdf))
     {
 #ifdef SIG25
@@ -1052,8 +1062,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         if (sd.materialID == 1)
         {
             float3 wi = sd.frame.toLocal(wiWS);
-
-
+            // float3 wi = wiWS.xzy;
             float NdotL = wi.z > 0 ? wi.z : 0;
             float2 uv_raw = frac(abs(sd.uv)) * UV_SCALE;
             float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);

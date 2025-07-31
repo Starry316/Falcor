@@ -130,7 +130,7 @@ struct NNMat
         float4 x[MAX_NN_DIM];
         float4 uFine[2];
         int count = 0;
-        // uv.y = 1 - uv.y;
+        uv.y = 1 - uv.y;
         uv = uv.yx;
 
         float inputVal[24];
@@ -159,10 +159,10 @@ struct NNMat
         inputVal[8] = wo.y;
         inputVal[9] = wo.z;
 
-        inputVal[10] = cos(rotAngles.x);
-        inputVal[11] = sin(rotAngles.x);
-        inputVal[12] = cos(2 * rotAngles.x);
-        inputVal[13] = sin(2 * rotAngles.x);
+        inputVal[10] = cos(rotAngles.y);
+        inputVal[11] = sin(rotAngles.y);
+        inputVal[12] = cos(2 * rotAngles.y);
+        inputVal[13] = sin(2 * rotAngles.y);
 
         inNumFirst = 14;
 

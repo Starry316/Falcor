@@ -133,9 +133,11 @@ void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const Render
     var["CB"]["gControlParas"] = mControlParas;
     // var["CB"]["gCurvatureParas"] = mCurvatureParas;
     var["CB"]["gApplySyn"] = mApplySyn;
+    var["CB"]["gUseIBL"] = mUseIBL;
     var["CB"]["gShowTracedHF"] = mShowTracedHF;
     var["CB"]["gTracedShadowRay"] = mTracedShadowRay;
     var["CB"]["gRenderTargetDim"] = targetDim;
+    var["CB"]["gRotAngles"] = mEnvRotAngle;
 
     mpTextureSynthesis->bindHFData(var["CB"]["hfData"]);
     mpNBTFInt8->mpTextureSynthesis->bindMap(var["CB"]["hfData"]);
@@ -162,6 +164,7 @@ void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const Render
     var["gMaxSampler"] = mpMaxSampler;
 
     mpNNMat->bindShaderData(var["CB"]["nnmat"]);
+    mpNNMatIBL->bindShaderData(var["CB"]["nnmatIBL"]);
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
     pRenderContext->submit(false);
     pRenderContext->signal(mpFence.get());
@@ -269,10 +272,12 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
     {
         // loadNetwork(mpDevice->getRenderContext());
         mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat], mIsHisto[(int)mNeuMat], mIsWi[(int)mNeuMat]);
+        mpNNMatIBL = std::make_shared<NNMat>(mpDevice, mNeuIBLPath[(int)mNeuMat], 0, 0);
         dirty = true;
     }
 
     dirty |= widget.checkbox("Show previous", mShowSig);
+    dirty |= widget.checkbox("Use IBL", mUseIBL);
     dirty |= widget.checkbox("Use Point Light", mUsePointLight);
     dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, 360.0f);
     if (widget.button("X -", true))
@@ -425,7 +430,9 @@ void NeuralMatRendering::loadNetwork(RenderContext* pRenderContext)
     // // quantization scale buffer
     mpScaleBuffer = mpDevice->createBuffer(8 * sizeof(float), ResourceBindFlags::Shared, MemoryType::DeviceLocal, model.scales);
 
-    mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat], mIsHisto[(int)mNeuMat]);
+    mpNNMat = std::make_shared<NNMat>(mpDevice, mNeuMatPath[(int)mNeuMat], mIsHisto[(int)mNeuMat], mIsWi[(int)mNeuMat]);
+    mpNNMatIBL = std::make_shared<NNMat>(mpDevice, mNeuIBLPath[(int)mNeuMat], 0, 0);
+
 }
 
 void NeuralMatRendering::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)

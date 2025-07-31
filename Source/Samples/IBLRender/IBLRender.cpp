@@ -30,7 +30,8 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "Utils/UI/TextRenderer.h"
 FALCOR_EXPORT_D3D12_AGILITY_SDK
-
+static const std::string kDefaultScene = "dummy_scene.pyscene";
+static const float4 kClearColor(0.38f, 0.52f, 0.10f, 1);
 uint32_t mSampleGuiWidth = 250;
 uint32_t mSampleGuiHeight = 200;
 uint32_t mSampleGuiPositionX = 20;
@@ -102,19 +103,46 @@ IBLRender::~IBLRender()
     //
 }
 
+void IBLRender::loadScene(const std::filesystem::path& path, const Fbo* pTargetFbo)
+{
+    mpScene = Scene::create(getDevice(), path);
+    mpCamera = mpScene->getCamera();
+
+    // Update the controllers
+    float radius = mpScene->getSceneBounds().radius();
+    mpScene->setCameraSpeed(radius * 0.25f);
+    float nearZ = std::max(0.1f, radius / 750.0f);
+    float farZ = radius * 10;
+    mpCamera->setDepthRange(nearZ, farZ);
+    mpCamera->setAspectRatio((float)pTargetFbo->getWidth() / (float)pTargetFbo->getHeight());
+
+    // Get shader modules and type conformances for types used by the scene.
+    // These need to be set on the program in order to use Falcor's material system.
+    auto shaderModules = mpScene->getShaderModules();
+    auto typeConformances = mpScene->getTypeConformances();
+
+    // Get scene defines. These need to be set on any program using the scene.
+    auto defines = mpScene->getSceneDefines();
+
+    defines.add(mpSampleGenerator->getDefines());
+
+    mpDebugPass = ComputePass::create(getDevice(), "Samples/IBLRender/render.cs.slang", "csMain", defines);
+}
+
 void IBLRender::onLoad(RenderContext* pRenderContext)
 {
     // Load shaders
-    mpDebugPass = ComputePass::create(getDevice(), "Samples/IBLRender/render.cs.slang", "csMain");
+
     mpPixelDebug = std::make_unique<PixelDebug>(getDevice());
     mpDisplayPass = FullScreenPass::create(getDevice(), "Samples/IBLRender/display.ps.slang");
-    mpNNMat = std::make_shared<NNMat>(getDevice(), "leather11_XYZ_BTFNetXYZHU72x2", 0, 1);
-    mpNNMatIBL = std::make_shared<NNMat>(getDevice(), "leather11_45_IBL_BTFNetIBL2x2", 0, 0);
-    mpEnvMap = EnvMap::createFromFile(
-        getDevice(), fmt::format("{}/media/neural_materials/scene/envmap/{}", mProjectPath, "45_1k_downsampled.exr")
-    );
+    // mpNNMat = std::make_shared<NNMat>(getDevice(), "leather11_XYZ_BTFNetXYZHU72x2", 0, 1);
+    mpNNMat = std::make_shared<NNMat>(getDevice(), mNNMatName, 0, 1);
+    mpNNMatIBL = std::make_shared<NNMat>(getDevice(), mNNIBLName, 0, 0);
+    mpEnvMap = EnvMap::createFromFile(getDevice(), fmt::format("{}/media/neural_materials/scene/envmap/{}", mProjectPath, mEnvmapName));
     mpEnvMapSampler = std::make_unique<EnvMapSampler>(getDevice(), mpEnvMap);
     mpSampleGenerator = SampleGenerator::create(getDevice(), SAMPLE_GENERATOR_UNIFORM);
+
+    loadScene(kDefaultScene, getTargetFbo().get());
 }
 
 void IBLRender::onShutdown()
@@ -134,11 +162,37 @@ void IBLRender::display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFb
     var["iResolution"] = Falcor::float2(width, height);
 
     mpDisplayPass->getRootVar()["ouputColor"] = mpOutColor;
-
+    mpDisplayPass->getRootVar()["ouputColorRef"] = mpOutColorRef;
     mpPixelDebug->beginFrame(pRenderContext, targetDim);
     mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
     mpDisplayPass->execute(pRenderContext, pTargetFbo);
     mpPixelDebug->endFrame(pRenderContext);
+}
+void IBLRender::render(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
+{
+    auto var = mpDebugPass->getRootVar();
+    var["CB"]["iResolution"] = float2(400);
+    var["CB"]["gWo"] = mWo;
+    var["CB"]["gWi"] = mWi;
+    var["CB"]["gSampleNum"] = mSampleNum;
+    var["CB"]["gRotAngles"] = mEnvRotAngle;
+    var["CB"]["gShowIBL"] = mShowIBL;
+
+    var["ouputColor"] = mpOutColor;
+    var["ouputColorRef"] = mpOutColorRef;
+
+    mpScene->bindShaderData(var["scene"]);
+
+    mpNNMat->bindShaderData(var["CB"]["nnmat"]);
+    mpNNMatIBL->bindShaderData(var["CB"]["nnmatIBL"]);
+    mpEnvMap->bindShaderData(var["CB"]["envMap"]);
+    mpEnvMapSampler->bindShaderData(var["CB"]["envMapSampler"]);
+    mpSampleGenerator->bindShaderData(var);
+
+    // mpPixelDebug->beginFrame(pRenderContext, targetDim);
+    // mpPixelDebug->prepareProgram(mpDebugPass->getProgram(), mpDebugPass->getRootVar());
+    if (mDirty || mOutputing)
+        mpDebugPass->execute(pRenderContext, 400, 400);
 }
 
 void IBLRender::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
@@ -152,30 +206,9 @@ void IBLRender::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
 
     uint2 outputDim = uint2(400, 400);
     createTex(mpOutColor, pRenderContext->getDevice(), outputDim);
+    createTex(mpOutColorRef, pRenderContext->getDevice(), outputDim);
 
-    // mpDebugPass->getProgram()->addDefines(mpSampleGenerator->getDefines());
-
-    auto var = mpDebugPass->getRootVar();
-    var["CB"]["iResolution"] = float2(outputDim);
-    var["CB"]["gWo"] = mWo;
-    var["CB"]["gWi"] = mWi;
-    var["CB"]["gSampleNum"] = mSampleNum;
-    var["CB"]["gRotAngles"] = mEnvRotAngle;
-    var["CB"]["gShowIBL"] = mShowIBL;
-
-    var["ouputColor"] = mpOutColor;
-    mpNNMat->bindShaderData(var["CB"]["nnmat"]);
-    mpNNMatIBL->bindShaderData(var["CB"]["nnmatIBL"]);
-    mpEnvMap->bindShaderData(var["CB"]["envMap"]);
-    // mpEnvMapSampler->bindShaderData(var["CB"]["envMapSampler"]);
-    mpSampleGenerator->bindShaderData(var);
-
-    // mpPixelDebug->beginFrame(pRenderContext, targetDim);
-    // mpPixelDebug->prepareProgram(mpDebugPass->getProgram(), mpDebugPass->getRootVar());
-    if(mDirty||mOutputing)
-        mpDebugPass->execute(pRenderContext, outputDim.x, outputDim.y);
-    // mpPixelDebug->endFrame(pRenderContext);
-
+    render(pRenderContext, pTargetFbo);
     display(pRenderContext, pTargetFbo);
     getTextRenderer().render(pRenderContext, getFrameRate().getMsg(), pTargetFbo, {20, 20});
 
@@ -195,7 +228,7 @@ void IBLRender::onGuiRender(Gui* pGui)
 
     mDirty |= w.slider("wi.t", mWi.x, 0.0f, (float)M_PI / 2.0f);
     mDirty |= w.slider("wi.p", mWi.y, 0.0f, 2.0f * (float)M_PI);
-    mDirty |= w.slider("sampleNum", mSampleNum, 1, 64);
+    mDirty |= w.slider("sampleNum", mSampleNum, 1, 4096);
 
     mDirty |= w.slider("Env rot X", mEnvRotAngle.x, 0.0f, 360.0f);
     if (w.button("X -", true))
@@ -206,7 +239,7 @@ void IBLRender::onGuiRender(Gui* pGui)
     {
         mEnvRotAngle.x += 5;
     }
-    w.slider("Env rot Y", mEnvRotAngle.y, 0.0f, 360.0f);
+    mDirty |= w.slider("Env rot Y", mEnvRotAngle.y, 0.0f, 360.0f);
     if (w.button("Y -", true))
     {
         mEnvRotAngle.y -= 5;
@@ -215,7 +248,7 @@ void IBLRender::onGuiRender(Gui* pGui)
     {
         mEnvRotAngle.y += 5;
     }
-    w.slider("Env rot Z", mEnvRotAngle.z, 0.0f, 360.0f);
+    mDirty |= w.slider("Env rot Z", mEnvRotAngle.z, 0.0f, 360.0f);
     if (w.button("Z -", true))
     {
         mEnvRotAngle.z -= 5;
@@ -231,8 +264,8 @@ void IBLRender::onGuiRender(Gui* pGui)
             0,
             0,
             fmt::format(
-                "C:/Projects/NNMat/data/IBL/{}/{:05}_{:.4f}_{:.4f}_{:.4f}_{:.4f}_{:.4f}_{:.4f}.exr",
-                mOutputDir,
+                "C:/Projects/NNMat/data/IBL/{:05}_{:.4f}_{:.4f}_{:.4f}_{:.4f}_{:.4f}_{:.4f}.exr",
+                // mOutputDir,
                 outputCount++,
                 vWo.x,
                 vWo.y,
@@ -267,37 +300,30 @@ void IBLRender::onGuiRender(Gui* pGui)
         );
 
         mOutputStep = mOutputStep % 5;
+
         if (mOutputStep == 0)
         {
-            mWo.x += 0.05f * (float)M_PI / 2.0f;
-            if (mWo.x > (float)M_PI / 2.0f)
+            mWo.y += 1 / mOutputInterval.y * 2.0f * (float)M_PI;
+            if (mWo.y >= 2.0f * (float)M_PI)
             {
                 mOutputStep += 1;
-                mWo.x = 0.025f * (float)M_PI / 2.0f;
+                // mWo.y = 1 / (mOutputInterval.y * 2) * 2.0f * (float)M_PI;
+                mWo.y = 0;
             }
         }
+
         else if (mOutputStep == 1)
         {
-            mWo.y += 0.02f * 2.0f * (float)M_PI;
-            if (mWo.y > 2.0f * (float)M_PI)
+            // mWo.x += 1 / mOutputInterval.x * (float)M_PI / 2.0f;
+            mCosTheta -= 1 / mOutputInterval.x;
+            mWo.x = acos(mCosTheta);
+            if (mCosTheta <= 0)
             {
                 mOutputStep += 1;
-                mWo.y = 0.01f * 2.0f * (float)M_PI;
-            }
-            else
-            {
-                mOutputStep -= 1;
-            }
-        }
-        else if (mOutputStep == 2)
-        {
-            mEnvRotAngle.x += 0.02f * 360;
-            if (mEnvRotAngle.x > 360)
-            {
-                mOutputing = false;
-                mEnvRotAngle = float3(0.01f * 360);
-                // mOutputStep += 1;
-                // mEnvRotAngle.x = 0.05f * 360;
+                // mCosTheta = 1 - 1 / (mOutputInterval.x * 2);
+                mCosTheta = 1;
+                mWo.x = acos(mCosTheta);
+                // mWo.x = 1 / (mOutputInterval.x * 2) * (float)M_PI / 2.0f;
             }
             else
             {
@@ -306,11 +332,28 @@ void IBLRender::onGuiRender(Gui* pGui)
         }
         else if (mOutputStep == 3)
         {
-            mEnvRotAngle.y += 0.1f * 360;
-            if (mEnvRotAngle.y > 360)
+            mEnvRotAngle.x += 1 / mOutputInterval.z * 360;
+            if (mEnvRotAngle.x >= 360)
             {
                 mOutputStep += 1;
-                mEnvRotAngle.y = 0.05f * 360;
+                // mEnvRotAngle.x = 1 / (mOutputInterval.z * 2) * 360;
+                mEnvRotAngle.x = 0;
+            }
+            else
+            {
+                mOutputStep -= 1;
+            }
+        }
+        else if (mOutputStep == 2)
+        {
+            mEnvRotAngle.y += 1 / mOutputInterval.z * 360;
+            if (mEnvRotAngle.y >= 360)
+            {
+                // mOutputing = false;
+                // mEnvRotAngle = float3(1 / (mOutputInterval.z * 2) * 360);
+                mEnvRotAngle.y = 0;
+                mOutputStep += 1;
+                // mEnvRotAngle.y = 1 / (mOutputInterval.z * 2) * 360;
             }
             else
             {
@@ -319,11 +362,12 @@ void IBLRender::onGuiRender(Gui* pGui)
         }
         else if (mOutputStep == 4)
         {
-            mEnvRotAngle.z += 0.1f * 360;
-            if (mEnvRotAngle.z > 360)
+            mEnvRotAngle.z += 1 / mOutputInterval.z * 360;
+            if (mEnvRotAngle.z >= 360)
             {
                 mOutputing = false;
-                mEnvRotAngle = float3(0.05f * 360);
+                // mEnvRotAngle = float3(1 / (mOutputInterval.z * 2) * 360);
+                mEnvRotAngle = float3(0);
             }
             else
             {
@@ -331,13 +375,19 @@ void IBLRender::onGuiRender(Gui* pGui)
             }
         }
     }
+    w.var("Output Interval", mOutputInterval);
 
     if (w.button("Start Output"))
     {
         mOutputing = true;
-        mWo.x = 0.025f * (float)M_PI / 2.0f;
-        mWo.y = 0.01f * 2.0f * (float)M_PI;
-        mEnvRotAngle = float3(0.01f * 360);
+        // mWo.x = 1 / (mOutputInterval.x * 2) * (float)M_PI / 2.0f;
+        // mCosTheta = 1 - 1 / (mOutputInterval.x * 2);
+        mCosTheta = 1;
+        mWo.x = acos(mCosTheta);
+        // mWo.y = 1 / (mOutputInterval.y * 2) * 2.0f * (float)M_PI;
+        mWo.y = 0;
+        // mEnvRotAngle = float3(1 / (mOutputInterval.z * 2) * 360);
+        mEnvRotAngle = float3(0);
     }
     if (w.button("Stop"))
     {
@@ -348,7 +398,7 @@ void IBLRender::onGuiRender(Gui* pGui)
 
     // }
 
-    w.text(fmt::format("Current output index {}", outputCount));
+    w.text(fmt::format("Current output index {} / {}", outputCount, mOutputInterval.x * mOutputInterval.y * mOutputInterval.z));
 }
 
 bool IBLRender::onKeyEvent(const KeyboardEvent& keyEvent)
@@ -367,7 +417,7 @@ int runMain(int argc, char** argv)
     config.windowDesc.title = "Falcor Project Template";
     config.windowDesc.resizableWindow = true;
 
-    config.windowDesc.width = 1500;
+    config.windowDesc.width = 3000;
     config.windowDesc.height = 1500;
     // config.windowDesc.resizableWindow = true;
     config.windowDesc.enableVSync = false;

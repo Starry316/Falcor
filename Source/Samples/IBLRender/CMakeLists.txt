@@ -5,6 +5,7 @@ target_sources(IBLRender PRIVATE
     IBLRender.h
     render.cs.slang
     display.ps.slang
+    IBL.rt.slang
 )
 
 target_copy_shaders(IBLRender Samples/IBLRender)

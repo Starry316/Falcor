@@ -52,9 +52,21 @@ public:
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return mpPixelDebug->onMouseEvent(mouseEvent); }
     void onHotReload(HotReloadFlags reloaded) override;
     void display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
+    void render(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
 
 private:
-    std::string mOutputDir = "leather11_45";
+    void loadScene(const std::filesystem::path& path, const Fbo* pTargetFbo);
+
+    std::string mOutputDir = "leather11_45_3D";
+
+    std::string mNNMatName = "fabric12_XYZ_BTFNetXYZHU72x2";
+    std::string mNNIBLName = "fabric12_45_IBL_BTFNetIBL2x2";
+
+    // std::string mNNMatName = "leather11_XYZ_BTFNetXYZHU72x2";
+    // std::string mNNIBLName = "leather11_45_IBL_BTFNetIBL2x2";
+
+    std::string mEnvmapName =  "45_1k_downsampled.exr";
+
     std::unique_ptr<PixelDebug> mpPixelDebug;
     ref<FullScreenPass> mpDisplayPass;
     ref<ComputePass> mpDebugPass;
@@ -64,9 +76,11 @@ private:
     bool mOutputing = false;
     bool mShowIBL = false;
     bool mDirty = true;
+
     uint mOutputStep = 0;
     std::string mProjectPath = getProjectDirectory().string();
     ref<Texture> mpOutColor;
+    ref<Texture> mpOutColorRef;
     float2 mWo = {0.0f, 0.0f};
     float2 mWi = {0.0f, 0.0f};
     float3 mEnvRotAngle = float3(0.0f, 0.0f, 0.0f);
@@ -75,4 +89,16 @@ private:
     std::unique_ptr<EnvMapSampler> mpEnvMapSampler;
     ref<SampleGenerator> mpSampleGenerator;
     ref<EnvMap> mpEnvMap;
+
+    ref<Scene> mpScene;
+    ref<Camera> mpCamera;
+    float3 mOutputInterval = float3(10, 15, 20);
+    float mCosTheta = 0;
+
+    // ref<Program> mpRaytraceProgram;
+    // ref<RtProgramVars> mpRtVars;
+    // ref<Texture> mpRtOut;
+    // bool mRayTrace = true;
+
+
 };
