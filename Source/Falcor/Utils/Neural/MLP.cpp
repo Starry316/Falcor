@@ -21,6 +21,8 @@ MLP::MLP(ref<Device> pDevice, std::string networkName)
 
     std::vector<float> weightsBuffer =
         readBinaryFile(fmt::format("{}/media/nn_mat/networks/weight_{}.bin", projectDir.string(), networkName).c_str());
+
+
     // std::vector<float> biasBuffer =
     //     readBinaryFile(fmt::format("{}/media/nn_mat/networks/Bias_{}.bin", projectDir.string(), networkName).c_str());
     std::vector<float> metaBuffer =
