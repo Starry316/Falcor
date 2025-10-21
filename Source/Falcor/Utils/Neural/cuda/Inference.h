@@ -31,3 +31,17 @@ void launchInferSyn(
     int* validMask, float uvScale
 );
 
+
+
+void launchInferInt8Test(
+    const int* weight,
+    const int* packedInput,
+    const float* quantizationScales,
+    const cudaTextureObject_t HP,
+    const cudaTextureObject_t DP,
+    const cudaTextureObject_t UP,
+    float* output,
+    const unsigned int width,
+    const unsigned int height,
+    const float uvScale
+);

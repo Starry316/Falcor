@@ -20,7 +20,7 @@ void csMain(uint3 dispatchThreadId: SV_DispatchThreadID)
     uint i = dispatchThreadId.y;
     uint j = dispatchThreadId.x;
 
-    for (int m = 0; m < gTargetDim.x; m++)
+    for (int m = 0; m < gTargetDim.y; m++)
     {
         for (int n = 0; n < gTargetDim.x; n++)
         {

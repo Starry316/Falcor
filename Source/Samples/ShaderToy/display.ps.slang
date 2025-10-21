@@ -29,46 +29,43 @@ import Utils.Texture.HistogramBlending;
 import Utils.Neural.NBTF;
 import Utils.Debug.PixelDebug;
 import Utils.Math.FormatConversion;
-import Utils.Math.MathHelpers;
-cbuffer ToyCB
+cbuffer CB
 {
     float2 iResolution;
-    float iGlobalTime;
-    HistogramBlendingHFData hfData;
-    float gUVScaling;
-    NBTF nbtf;
     bool gSynthesis;
-    bool gDisplay;
-    float2 gWo;
-    float2 gWi;
+    bool gShowShader;
 };
-
-Buffer<float> gInputColor;
-RWBuffer<uint> cudaInputUIntBuffer;
-RWBuffer<float> cudaInputBuffer;
-SamplerState gSampler;
+// cuda infer output
+Buffer<float> cudaColor;
+Texture2D<float4> ouputColor;
 
 
 float4 mainImage(float2 fragCoord, uint2 pixel)
 {
-    float2 uv = fragCoord / iResolution.y;
+    float4 cudaRet = float4(
+        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
+        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],
+        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 2],
+        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]
+    );
+    print("ref", ouputColor[pixel]);
+    print("out", cudaRet);
+    print("dif", abs(cudaRet - ouputColor[pixel]));
 
-    float2 ddx = 0.0000001;
-    float2 ddy = 0.0000001;
+    // print("output1", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0]);
+    // print("output2", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1]);
+    // print("output3", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2]);
+    // print("output4", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]);
 
-    float3 wi = sample_hemisphere(gWi);
-    float3 wo = sample_hemisphere(gWo);
-    float2 h = float2(0.951858, 0.01944);
-    float2 d = float2(0.875318, 0.58938);
-    return float4(nbtf.evalDebug(wi, wo, uv * gUVScaling, ddx, ddy, gSynthesis), 1.0);
+    if (gShowShader)
+        return ouputColor[pixel];
+
+    return cudaRet;
 }
-
-
 
 float4 main(float2 texC: TEXCOORD) : SV_TARGET
 {
     uint2 pixel = uint2(floor(texC * iResolution));
     printSetPixel(pixel);
     return mainImage(texC * iResolution, pixel);
-
 }

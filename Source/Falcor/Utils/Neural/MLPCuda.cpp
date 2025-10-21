@@ -80,4 +80,10 @@ void MLPCuda::inferInt8(int* packedInput, float* quantizationScales, float* outp
 }
 
 
+
+
+void MLPCuda::inferInt8Test(const int* packedInput,const  float* quantizationScales, float* output, const int width, const int height, const float scale)
+{
+    launchInferInt8Test((int*)mpInt8Buffer->getGpuAddress(), packedInput,  quantizationScales, mHTexObj, mDTexObj, mUTexObj, output, width, height, scale);
+}
 } // namespace Falcor

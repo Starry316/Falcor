@@ -20,6 +20,7 @@ public:
 
     void inferInt8(int* packedInput, float* output, int width, int height, int* valid, float scale);
     void inferInt8(int* packedInput, float* quantizationScales, float* output, int width, int height, int* valid, float scale);
+    void inferInt8Test(const int* packedInput, const float* quantizationScales, float* output, const int width, const int height, const float scale);
     void inferInt8Hashed(int* packedInput,  float* output, int width, int height, int* valid, float scale);
     void inferInt8Syn(int* packedInput, float* quantizationScales, float* output, int width, int height, int* valid, float scale);
 
