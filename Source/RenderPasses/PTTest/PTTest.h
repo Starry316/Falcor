@@ -92,4 +92,10 @@ private:
 
     float mLightTheta = 0;
     float mLightPhi = 0;
+
+    float mViewTheta = 0;
+    float mViewPhi = 0;
+    float mViewSize = 5;
+    float mViewHeight = 1;
+    bool mBTFViewMode = false;
 };

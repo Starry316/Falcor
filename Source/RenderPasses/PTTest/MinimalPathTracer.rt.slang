@@ -69,6 +69,12 @@ cbuffer CB
     uint gFrameCount;    // Frame count since scene was loaded.
     uint gPRNGDimension; // First available PRNG dimension.
     EnvMapSampler gEnvMapSampler;
+    float gViewTheta;
+    float gViewPhi;
+    float gViewHeight;
+    float gViewSize;
+    bool gBTFViewMode;
+    uint gMaxBounces;
 }
 
 // Inputs
@@ -80,7 +86,7 @@ RWTexture2D<float4> gOutputColor;
 
 // Static configuration based on defines set from the host.
 #define is_valid(name) (is_valid_##name != 0)
-static const uint kMaxBounces = MAX_BOUNCES;
+// static const uint kMaxBounces = MAX_BOUNCES;
 static const bool kComputeDirect = COMPUTE_DIRECT;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseAnalyticLights = USE_ANALYTIC_LIGHTS;
@@ -377,11 +383,11 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 
     // Check whether to terminate based on max depth.
-    if (rayData.pathLength >= kMaxBounces)
-    {
-        rayData.terminated = true;
-        return;
-    }
+    // if (rayData.pathLength >= kMaxBounces)
+    // {
+    //     rayData.terminated = true;
+    //     return;
+    // }
 
     // Compute ray origin for new rays spawned from the hit.
     float3 rayOrigin;
@@ -443,15 +449,40 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
         sampleNext1D(sg);
 
     // Prepare ray payload.
-    ScatterRayData rayData = tracePrimaryRay(pixel, frameDim, sg);
+    ScatterRayData rayData;
+    // ScatterRayData rayData = tracePrimaryRay(pixel, frameDim, sg);
+    if (gBTFViewMode)
+        rayData = traceBTFPrimaryRay(pixel, frameDim, sg);
+    else
+        rayData = tracePrimaryRay(pixel, frameDim, sg);
 
-    for (uint bounce = 1; bounce < kMaxBounces; bounce++) {
+    for (uint bounce = 0; bounce < gMaxBounces; bounce++) {
         if (rayData.terminated) break;
         traceScatterRay(rayData);
     }
 
     return rayData.radiance;
 }
+
+ScatterRayData traceBTFPrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
+    float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
+    originUV = frac(originUV);
+
+    originUV = 2 * originUV - 1;
+    const float3 primaryRayOrigin = float3(gViewSize * originUV.x, gViewHeight, gViewSize * originUV.y);
+    float3 primaryRayDir = spherical_to_cartesian_rad(float2(gViewTheta * M_PI_2, gViewPhi * M_2PI));
+    primaryRayDir = primaryRayDir.xzy;
+    primaryRayDir.y = - primaryRayDir.y; 
+
+    // Prepare ray payload.
+    ScatterRayData rayData = ScatterRayData(sg);
+    rayData.origin = primaryRayOrigin;
+    rayData.direction = primaryRayDir;
+    rayData.pathLength = 1;
+    traceScatterRay(rayData);
+    return rayData;
+}
+
 
 ScatterRayData tracePrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
     const float3 primaryRayOrigin = gScene.camera.getPosition();

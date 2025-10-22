@@ -169,7 +169,7 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
 
     // Specialize program.
     // These defines should not modify the program vars. Do not trigger program vars re-creation.
-    mTracer.pProgram->addDefine("MAX_BOUNCES", std::to_string(mMaxBounces));
+    // mTracer.pProgram->addDefine("MAX_BOUNCES", std::to_string(mMaxBounces));
     mTracer.pProgram->addDefine("COMPUTE_DIRECT", mComputeDirect ? "1" : "0");
     mTracer.pProgram->addDefine("USE_IMPORTANCE_SAMPLING", mUseImportanceSampling ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ANALYTIC_LIGHTS", mpScene->useAnalyticLights() ? "1" : "0");
@@ -192,6 +192,12 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     auto var = mTracer.pVars->getRootVar();
     var["CB"]["gFrameCount"] = mFrameCount;
     var["CB"]["gPRNGDimension"] = dict.keyExists(kRenderPassPRNGDimension) ? dict[kRenderPassPRNGDimension] : 0u;
+    var["CB"]["gViewTheta"] = mViewTheta;
+    var["CB"]["gViewPhi"] = mViewPhi;
+    var["CB"]["gViewSize"] = mViewSize;
+    var["CB"]["gBTFViewMode"] = mBTFViewMode;
+    var["CB"]["gViewHeight"] = mViewHeight;
+    var["CB"]["gMaxBounces"] = mMaxBounces;
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["gEnvMapSampler"]);
     // Bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
@@ -233,6 +239,11 @@ void PTTest::renderUI(Gui::Widgets& widget)
     dirty |= widget.slider("light theta", mLightTheta, 0.0f, 1.0f);
     dirty |= widget.slider("light phi", mLightPhi, 0.0f, 1.0f);
 
+    dirty |= widget.slider("view theta", mViewTheta, 0.0f, 1.0f);
+    dirty |= widget.slider("view phi", mViewPhi, 0.0f, 1.0f);
+    dirty |= widget.slider("view size", mViewSize, 0.0f, 10.0f);
+    dirty |= widget.slider("view height", mViewHeight, 0.0f, 10.0f);
+    dirty |= widget.checkbox("btf mode", mBTFViewMode);
     // If rendering options that modify the output have changed, set flag to indicate that.
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
     if (dirty)

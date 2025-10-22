@@ -1478,12 +1478,12 @@ Shape createShape(BuilderContext& ctx, const ShapeSceneEntity& entity)
         auto width1 = params.getFloat("width1", width);
 
         auto basis = params.getString("basis", "bezier");
-        if (basis != "bspline")
-            logWarning(entity.loc, "Basis '{}' is not supported. Using 'bspline' basis instead.", basis);
+        // if (basis != "bspline")
+        //     logWarning(entity.loc, "Basis '{}' is not supported. Using 'bspline' basis instead.", basis);
 
         auto curveType = params.getString("type", "flat");
-        if (curveType != "cylinder")
-            logWarning(entity.loc, "Curve type '{}' is not supported. Using 'cylinder' type instead.", curveType);
+        // if (curveType != "cylinder")
+        //     logWarning(entity.loc, "Curve type '{}' is not supported. Using 'cylinder' type instead.", curveType);
 
         auto P = params.getPoint3Array("P");
 
