@@ -53,7 +53,7 @@ public:
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return false; }
     virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override { return false; }
-
+    void handleOutput();
 private:
     void parseProperties(const Properties& props);
     void prepareVars();
@@ -95,7 +95,23 @@ private:
 
     float mViewTheta = 0;
     float mViewPhi = 0;
-    float mViewSize = 5;
+    float mViewSize = 1;
     float mViewHeight = 1;
-    bool mBTFViewMode = false;
+    float mViewHeightBot = 0;
+    bool mBTFViewMode = true;
+    bool mPluckerMode = true;
+    bool mShowOffset = false;
+    bool mChangeLight = false;
+
+    float4 mXYUV = float4(0.0);
+
+
+    bool mIsOutputing = false;
+    uint mOutputStep = 0;
+
+    uint mOutputIndx = 0;
+    uint mOutputOffsetIndx = 0;
+    uint mOutputSPP = 32;
+    std::string mOutputPath = "D:/Data/LF/test/{:06}_{:.3f}_{:.3f}_{:.6f}_{:.6f}.exr";
+    std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
 };

@@ -153,7 +153,7 @@ protected:
     /// Output size in pixels when 'Fixed' size is selected.
     uint2 mFixedOutputSize = {512, 512};
 
-    bool mOutputFrame = false;
+    bool mOutputFrame = true;
     bool mNeedReset = false;
 };
 

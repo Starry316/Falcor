@@ -28,7 +28,10 @@
 #include "PTTest.h"
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
-
+#define pX mXYUV.x
+#define pY mXYUV.y
+#define pU mXYUV.z
+#define pV mXYUV.w
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
     registry.registerClass<RenderPass, PTTest>();
@@ -142,23 +145,22 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
         mpScene->getLightCollection(pRenderContext);
     }
 
-    if (mpScene->getLightCount() > 0){
-
-        ref<Light> light= mpScene->getLight(0);
-        DirectionalLight *dirlight = (DirectionalLight *) light.get();
+    if (mpScene->getLightCount() > 0)
+    {
+        ref<Light> light = mpScene->getLight(0);
+        DirectionalLight* dirlight = (DirectionalLight*)light.get();
         if (light->getType() == LightType::Directional)
         {
             ref<DirectionalLight> dl = static_ref_cast<DirectionalLight>(light);
             float phi = M_2PI * mLightPhi;
             float theta = M_PI_2 * mLightTheta;
             float3 dir;
-            dir.x = -(cos(phi- M_PI)) * sin(theta);
-            dir.z = -(sin(phi- M_PI)) * sin(theta);
+            dir.x = -(cos(phi - M_PI)) * sin(theta);
+            dir.z = -(sin(phi - M_PI)) * sin(theta);
             dir.y = cos(theta);
             dl->setWorldDirection(-dir);
         }
     }
-    
 
     // Configure depth-of-field.
     const bool useDOF = mpScene->getCamera()->getApertureRadius() > 0.f;
@@ -197,7 +199,11 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     var["CB"]["gViewSize"] = mViewSize;
     var["CB"]["gBTFViewMode"] = mBTFViewMode;
     var["CB"]["gViewHeight"] = mViewHeight;
+    var["CB"]["gViewHeightBot"] = mViewHeightBot;
     var["CB"]["gMaxBounces"] = mMaxBounces;
+    var["CB"]["gXYUV"] = mXYUV;
+    var["CB"]["gPluckerMode"] = mPluckerMode;
+    var["CB"]["gShowOffset"] = mShowOffset;
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["gEnvMapSampler"]);
     // Bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
@@ -222,7 +228,177 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
 
     mFrameCount++;
 }
+void PTTest::handleOutput()
+{
+    auto camera = mpScene->getCamera();
+    if (!mChangeLight)
+    {
+        camera->setOutputPath(fmt::format(mOutputPath, mOutputIndx, pV, pY, mViewTheta, mViewPhi));
+    }
+    else
+    {
+        camera->setOutputPath(fmt::format(mOutputBTFPath, mOutputIndx, mOutputOffsetIndx, mLightTheta, mLightPhi, mViewTheta, mViewPhi));
+    }
 
+    if (!camera->isNextStep())
+    {
+        return;
+    }
+    camera->setNextStep(false);
+    camera->setAccumulating(mIsOutputing);
+    camera->setOutputFrameCount(mOutputSPP);
+    mOutputIndx++;
+
+    // Steps (match original increments)
+    const float phiLightStep = 1.0f / 10.0f;
+    const float thetaLightStep = 1.0f / 10.0f;
+
+    // const float phiStep = 1.0f / 100.0f;
+    // const float thetaStep = 1.0f / 200.0f;
+
+    const float phiStep = 1.0f / 60.0f;
+    const float thetaStep = 1.0f / 50.0f;
+
+    // const float yStep = 1.0f / 100.0f;
+    // const float vStep = 1.0f / 100.0f;
+
+    if (!mChangeLight)
+    {
+        mViewPhi += phiStep;
+        mViewTheta += thetaStep * phiStep;
+        if (mViewPhi >= 1.0f)
+        {
+            // Reset theta to original small value and carry to phi
+            mViewPhi = 0.0f;
+            // mViewTheta += thetaStep;
+            // If phi wrapped past end, we've finished the full nested iteration
+            if (mViewTheta >= 0.6f)
+            {
+                // finalize/stop outputing
+                mViewTheta = 0.0f;
+                mOutputStep = 0;
+                mOutputIndx = 0;
+                mpScene->getCamera()->setResetFlag(true);
+                mpScene->getCamera()->setNextStep(false);
+                mIsOutputing = false;
+                mpScene->getCamera()->setAccumulating(false);
+            }
+        }
+    }
+
+    // if (!mChangeLight)
+    // {
+    //     mViewPhi += phiStep;
+    //     if (mViewPhi >= 1.0f)
+    //     {
+    //         // Reset theta to original small value and carry to phi
+    //         mViewPhi = 0.0f;
+    //         mViewTheta += thetaStep;
+    //         // If phi wrapped past end, we've finished the full nested iteration
+    //         if (mViewTheta >= 0.6f)
+    //         {
+    //             // finalize/stop outputing
+    //             mViewTheta = 0.0f;
+    //             mOutputStep = 0;
+    //             mOutputIndx = 0;
+    //             mpScene->getCamera()->setResetFlag(true);
+    //             mpScene->getCamera()->setNextStep(false);
+    //             mIsOutputing = false;
+    //             mpScene->getCamera()->setAccumulating(false);
+    //         }
+    //     }
+    // }
+    else
+    {
+        mLightPhi += phiLightStep;
+        mLightTheta += thetaLightStep * phiLightStep;
+        if (mLightPhi >= 1.0f)
+        {
+            mLightPhi = 0.0f;
+            if (mLightTheta >= 0.6f)
+            {
+                mLightTheta = 0.01f;
+                mOutputOffsetIndx++;
+
+                mViewPhi += phiStep;
+                mViewTheta += thetaStep * phiStep;
+                if (mViewPhi >= 1.0f)
+                {
+                    // Reset theta to original small value and carry to phi
+                    mViewPhi = 0.0f;
+                    // mViewTheta += thetaStep;
+                    // If phi wrapped past end, we've finished the full nested iteration
+                    if (mViewTheta >= 0.6f)
+                    {
+                        // finalize/stop outputing
+                        mViewTheta = 0.0f;
+                        mOutputStep = 0;
+                        mOutputIndx = 0;
+                        mpScene->getCamera()->setResetFlag(true);
+                        mpScene->getCamera()->setNextStep(false);
+                        mIsOutputing = false;
+                        mpScene->getCamera()->setAccumulating(false);
+                    }
+                }
+            }
+        }
+    }
+
+    // else
+    // {
+    //     mLightPhi += phiLightStep;
+    //     if (mLightPhi >= 1.0f)
+    //     {
+    //         mLightPhi = 0.0f;
+    //         mLightTheta += thetaLightStep;
+    //         if (mLightTheta >= 0.4f)
+    //         {
+    //             mLightTheta = 0.05f;
+    //             mOutputOffsetIndx++;
+
+    //             mViewPhi += phiStep;
+    //             if (mViewPhi >= 1.0f)
+    //             {
+    //                 // Reset theta to original small value and carry to phi
+    //                 mViewPhi = 0.0f;
+    //                 mViewTheta += thetaStep;
+    //                 // If phi wrapped past end, we've finished the full nested iteration
+    //                 if (mViewTheta >= 0.3f)
+    //                 {
+    //                     // finalize/stop outputing
+    //                     mViewTheta = 0.0f;
+    //                     mOutputStep = 0;
+    //                     mOutputIndx = 0;
+    //                     mpScene->getCamera()->setResetFlag(true);
+    //                     mpScene->getCamera()->setNextStep(false);
+    //                     mIsOutputing = false;
+    //                     mpScene->getCamera()->setAccumulating(false);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
+    // pY += yStep;
+    // if (pY >= 1.0f)
+    // {
+    //     // Reset theta to original small value and carry to phi
+    //     pY = 0.0f;
+    //     pV += vStep;
+    //     // If phi wrapped past end, we've finished the full nested iteration
+    //     if (pV >= 1.0f)
+    //     {
+    //         // finalize/stop outputing
+    //         pV = 0.0f;
+    //         mOutputStep = 0;
+    //         mOutputIndx = 0;
+    //         mpScene->getCamera()->setResetFlag(true);
+    //         mpScene->getCamera()->setNextStep(false);
+    //         mIsOutputing = false;
+    //         mpScene->getCamera()->setAccumulating(false);
+    //     }
+    // }
+}
 void PTTest::renderUI(Gui::Widgets& widget)
 {
     bool dirty = false;
@@ -243,7 +419,79 @@ void PTTest::renderUI(Gui::Widgets& widget)
     dirty |= widget.slider("view phi", mViewPhi, 0.0f, 1.0f);
     dirty |= widget.slider("view size", mViewSize, 0.0f, 10.0f);
     dirty |= widget.slider("view height", mViewHeight, 0.0f, 10.0f);
+    dirty |= widget.slider("view height bot", mViewHeightBot, 0.0f, mViewHeight);
+
+    dirty |= widget.slider("x", pX, 0.0f, 1.0f);
+    dirty |= widget.slider("y", pY, 0.0f, 1.0f);
+    dirty |= widget.slider("u", pU, 0.0f, 1.0f);
+    dirty |= widget.slider("v", pV, 0.0f, 1.0f);
+
     dirty |= widget.checkbox("btf mode", mBTFViewMode);
+    dirty |= widget.checkbox("Plucker mode", mPluckerMode);
+    dirty |= widget.checkbox("Show offset", mShowOffset);
+    dirty |= widget.checkbox("Change Light", mChangeLight);
+
+    if (!mChangeLight)
+    {
+        widget.textbox("Output Path", mOutputPath);
+    }
+    else
+    {
+        widget.textbox("Output Path", mOutputBTFPath);
+    }
+
+    widget.var("OutputSPP", mOutputSPP);
+    if (mIsOutputing)
+    {
+        handleOutput();
+        if (widget.button("Stop", true))
+        {
+            auto camera = mpScene->getCamera();
+            camera->setOutputFrameCount(mOutputSPP);
+            camera->setAccumulating(false);
+            mIsOutputing = false;
+            dirty = true;
+        }
+    }
+    else
+    {
+        if (widget.button("Start Output"))
+        {
+            mIsOutputing = true;
+            dirty = true;
+            mLightTheta = 0.01f;
+            // mViewTheta = 0.05f;
+            mViewTheta = 0.01f;
+            pY = 0.0f;
+            pV = 0.0f;
+
+            auto camera = mpScene->getCamera();
+            camera->setOutputFrameCount(mOutputSPP);
+            camera->setAccumulating(true);
+        }
+
+        if (widget.button("Rest"))
+        {
+            mIsOutputing = false;
+            dirty = true;
+
+            auto camera = mpScene->getCamera();
+            camera->setOutputFrameCount(mOutputSPP);
+            camera->setAccumulating(false);
+            mIsOutputing = false;
+            dirty = true;
+            mOutputStep = 0;
+            mOutputOffsetIndx = 0;
+            mOutputIndx = 0;
+            mViewTheta = 0;
+            mViewPhi = 0;
+            mLightTheta = 0;
+            mLightPhi = 0;
+        }
+    }
+
+    //
+
     // If rendering options that modify the output have changed, set flag to indicate that.
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
     if (dirty)
@@ -337,11 +585,7 @@ void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
             }
         }
 
-    
-    
         mTracer.pProgram = Program::create(mpDevice, desc, mpScene->getSceneDefines());
-    
-    
     }
 }
 

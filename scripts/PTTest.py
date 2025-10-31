@@ -4,7 +4,7 @@ def render_graph_PTTest():
     g = RenderGraph("PTTest")
     AccumulateSTPass = createPass("AccumulateSTPass", {'enabled': True, 'precisionMode': 'Single'})
     g.addPass(AccumulateSTPass, "AccumulateSTPass")
-    ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
+    ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0, 'operator':'Linear'})
     g.addPass(ToneMapper, "ToneMapper")
     PTTest = createPass("PTTest", {'maxBounces': 3})
     g.addPass(PTTest, "PTTest")

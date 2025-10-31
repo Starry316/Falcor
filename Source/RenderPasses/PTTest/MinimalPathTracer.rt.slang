@@ -73,8 +73,13 @@ cbuffer CB
     float gViewPhi;
     float gViewHeight;
     float gViewSize;
+    float gViewHeightBot;
     bool gBTFViewMode;
+    bool gPluckerMode;
+    bool gShowOffset;
     uint gMaxBounces;
+    float4 gXYUV;
+
 }
 
 // Inputs
@@ -86,6 +91,13 @@ RWTexture2D<float4> gOutputColor;
 
 // Static configuration based on defines set from the host.
 #define is_valid(name) (is_valid_##name != 0)
+
+#define pX  gXYUV.x
+#define pY  gXYUV.y
+#define pU  gXYUV.z
+#define pV  gXYUV.w
+
+
 // static const uint kMaxBounces = MAX_BOUNCES;
 static const bool kComputeDirect = COMPUTE_DIRECT;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
@@ -372,6 +384,13 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // Load shading data.
     ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
 
+    if (gShowOffset) {
+        rayData.origin = sd.posW;
+        rayData.terminated = true;
+        return;
+    }
+
+
     // Create material instance.
     let lod = ExplicitLodTextureSampler(0.f);
     let mi = gScene.materials.getMaterialInstance(sd, lod);
@@ -391,9 +410,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
     // Compute ray origin for new rays spawned from the hit.
     float3 rayOrigin;
-   
     rayOrigin = sd.computeRayOrigin();
-    
 
     // Add contribution of direct light from analytic lights.
     if (kUseAnalyticLights)
@@ -401,16 +418,16 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
         rayData.radiance += rayData.thp * Lr;
     }
-    // if (kUseEnvLight )
-    // {
-    //     float3 envLi;
-    //     float3 envDir;
-    //     float envPdf;
-    //     if (generateEnvMapSample(rayOrigin, rayData.sg, envLi, envDir, envPdf)) {
-    //         if (dot(sd.getOrientedFaceNormal(), envDir) > kMinCosTheta)
-    //             rayData.radiance += mi.eval(sd, envDir, rayData.sg) * rayData.thp * envLi;
-    //     }
-    // }
+    if (kUseEnvLight )
+    {
+        float3 envLi;
+        float3 envDir;
+        float envPdf;
+        if (generateEnvMapSample(rayOrigin, rayData.sg, envLi, envDir, envPdf)) {
+            if (dot(sd.getOrientedFaceNormal(), envDir) > kMinCosTheta)
+                rayData.radiance += mi.eval(sd, envDir, rayData.sg) * rayData.thp * envLi;
+        }
+    }
 
     // Generate scatter ray for the next path segment.
     // The raygen shader will continue the path based on the returned payload.
@@ -420,6 +437,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         return;
     }
 
+    //
     rayData.pathLength++;
 }
 
@@ -456,6 +474,13 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
     else
         rayData = tracePrimaryRay(pixel, frameDim, sg);
 
+    if (gShowOffset) {
+        //float3 ret = rayData.origin.xzy;
+        float3 ret = rayData.origin.y;
+        // ret.xy = 0.5 + 0.5 * ret.xy;
+        return ret;
+    }
+
     for (uint bounce = 0; bounce < gMaxBounces; bounce++) {
         if (rayData.terminated) break;
         traceScatterRay(rayData);
@@ -467,12 +492,37 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
 ScatterRayData traceBTFPrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
     float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
     originUV = frac(originUV);
-
     originUV = 2 * originUV - 1;
-    const float3 primaryRayOrigin = float3(gViewSize * originUV.x, gViewHeight, gViewSize * originUV.y);
-    float3 primaryRayDir = spherical_to_cartesian_rad(float2(gViewTheta * M_PI_2, gViewPhi * M_2PI));
-    primaryRayDir = primaryRayDir.xzy;
-    primaryRayDir.y = - primaryRayDir.y; 
+
+
+    float3 primaryRayOrigin;
+    float3 primaryRayDir;
+
+    // if (gPluckerMode) {
+    //     float3 posXY = float3(originUV.x, gViewHeight, (2 * pY - 1) );
+    //     float3 posUV = float3(originUV.y, gViewHeightBot, (2 * pV - 1));
+    //     primaryRayOrigin = posXY;
+    //     primaryRayDir = normalizeSafe(posUV - posXY);
+    // }
+    if (gPluckerMode) {
+        // float3 posUV = float3((2 * pV - 1), gViewHeightBot, (2 * pY - 1));
+        // float3 posXY = float3(originUV.y, gViewHeight, originUV.x);
+
+        float3 posXY = float3((2 * pV - 1), gViewHeight, (2 * pY - 1));
+        float3 posUV = float3(originUV.y, gViewHeightBot, originUV.x);
+        primaryRayOrigin = posXY;
+        primaryRayDir = normalizeSafe(posUV - posXY);
+    }
+
+    else {
+        primaryRayOrigin = float3(gViewSize * originUV.x, gViewHeight, gViewSize * originUV.y);
+        primaryRayDir = spherical_to_cartesian_rad(float2(gViewTheta * M_PI_2, gViewPhi * M_2PI));
+        primaryRayDir = primaryRayDir.xzy;
+        primaryRayDir.y = -primaryRayDir.y;
+    }
+
+
+
 
     // Prepare ray payload.
     ScatterRayData rayData = ScatterRayData(sg);
@@ -509,12 +559,13 @@ void scatterMiss(inout ScatterRayData rayData)
     rayData.terminated = true;
 
     // Add contribution from distant light (env map) in this direction.
-    if (kUseEnvLight && (kComputeDirect || rayData.pathLength > 0))
+
     // if (kUseEnvLight && rayData.pathLength == 1)
-    {
-        float3 Le = gScene.envMap.eval(WorldRayDirection());
-        rayData.radiance += rayData.thp * Le;
-    }
+    // if (kUseEnvLight && (kComputeDirect || rayData.pathLength > 0))
+    // {
+    //     float3 Le = gScene.envMap.eval(WorldRayDirection());
+    //     rayData.radiance += rayData.thp * Le;
+    // }
 }
 
 [shader("miss")]
