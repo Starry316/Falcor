@@ -54,7 +54,7 @@ void SynthesisSample::onLoad(RenderContext* pRenderContext)
     mpDisplayPass = FullScreenPass::create(getDevice(), "Samples/SynthesisSample/Display.ps.slang");
     mpWriteTexPass = ComputePass::create(getDevice(), "Samples/SynthesisSample/WriteTex.cs.slang", "csMain");
     ResourceBindFlags flag = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
-    mpHF = Texture::createFromFile(getDevice(), "D:/Project/NDF-git/textures/isotropic_positive.hdr", false, false, flag);
+    mpHF = Texture::createFromFile(getDevice(), "D:/Scene/textures/isotropic_positive.hdr", false, false, flag);
 
     mpSamplesBuffer = getDevice()->createBuffer(
         mSampleSize * mSampleSize * 1 * sizeof(int),
