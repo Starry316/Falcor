@@ -237,7 +237,7 @@ void PTTest::handleOutput()
     }
     else
     {
-        camera->setOutputPath(fmt::format(mOutputBTFPath, mOutputIndx, mOutputOffsetIndx, mLightTheta, mLightPhi, mViewTheta, mViewPhi));
+        camera->setOutputPath(fmt::format(mOutputBTFPath, mOutputIndx, mLightTheta, mLightPhi, mViewTheta, mViewPhi));
     }
 
     if (!camera->isNextStep())
@@ -250,13 +250,16 @@ void PTTest::handleOutput()
     mOutputIndx++;
 
     // Steps (match original increments)
-    const float phiLightStep = 1.0f / 10.0f;
-    const float thetaLightStep = 1.0f / 10.0f;
+    const float phiLightStep = 1.0f / 1.0f;
+    const float thetaLightStep = 1.0f / 1.0f;
 
     // const float phiStep = 1.0f / 100.0f;
     // const float thetaStep = 1.0f / 200.0f;
 
-    const float phiStep = 1.0f / 60.0f;
+    // const float phiStep = 1.0f / 15.0f;
+    // const float thetaStep = 1.0f / 20.0f;
+
+    const float phiStep = 1.0f / 50.0f;
     const float thetaStep = 1.0f / 50.0f;
 
     // const float yStep = 1.0f / 100.0f;

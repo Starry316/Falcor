@@ -113,5 +113,10 @@ private:
     uint mOutputOffsetIndx = 0;
     uint mOutputSPP = 32;
     std::string mOutputPath = "D:/Data/LF/test/{:06}_{:.3f}_{:.3f}_{:.6f}_{:.6f}.exr";
-    std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
+    std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
+
+
+
+
+
 };
