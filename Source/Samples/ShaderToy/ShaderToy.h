@@ -31,12 +31,9 @@
 #include "Core/Pass/FullScreenPass.h"
 #include "Core/Pass/ComputePass.h"
 #include "Utils/Texture/Synthesis.h"
-// #include "Utils/Neural/NBTF.h"
-// #include "Utils/Debug/PixelDebug.h"
-// #include "Utils/Neural/cuda/CUDADefines.h"
+#include "Utils/Neural/NNMat.h"
+#include "Utils/Debug/PixelDebug.h"
 
-// #include <cuda_runtime.h>
-// #include <cuda_fp16.h>
 
 using namespace Falcor;
 // enum class RenderType : uint32_t
@@ -73,165 +70,28 @@ public:
     void onResize(uint32_t width, uint32_t height) override;
     void onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo) override;
     void onGuiRender(Gui* pGui) override;
-    // virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return mpPixelDebug->onMouseEvent(mouseEvent); }
+    virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return mpPixelDebug->onMouseEvent(mouseEvent); }
     void shaderInfer(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
     void cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
     void bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
     void display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
 private:
-//     std::unique_ptr<PixelDebug> mpPixelDebug;
+    std::unique_ptr<PixelDebug> mpPixelDebug;
 //     ref<Sampler> mpLinearSampler;
 //     float mAspectRatio = 0;
 //     ref<RasterizerState> mpNoCullRastState;
 //     ref<DepthStencilState> mpNoDepthDS;
 //     ref<BlendState> mpOpaqueBS;
 //     ref<FullScreenPass> mpMainPass;
-//     ref<FullScreenPass> mpDisplayPass;
-//     ref<ComputePass> mpBindInputPass;
-//     ref<ComputePass> mpDebugPass;
-//     float mUVScale = 1.0f;
-//     std::unique_ptr<NBTF> mpNBTFInt8;
-//     std::unique_ptr<NBTF> mpNBTF;
+    ref<FullScreenPass> mpDisplayPass;
 
-//     std::unique_ptr<TextureSynthesis> mpTextureSynthesis;
-
-// #ifdef PEBBLE
-//     std::string mNetInt8Name = "pebble_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "ganges_river_pebbles_disp_4k.png";
-//     std::string mHFFileName = "ganges_river_pebbles_disp_4k.png";
-//     bool mHDRBTF = false;
-// #endif
-
-// #ifdef LEATHER
-//     std::string mNetInt8Name = "leather11_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "ubo/leather11.png";
-//     std::string mHFFileName = "ubo/leather11.png";
-//     bool mHDRBTF = false;
-// #endif
-
-
-// #ifdef LEATHER_04R
-//     std::string mNetInt8Name = "leather04r_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "ubo/leather04.png";
-//     std::string mHFFileName = "ubo/leather04.png";
-//     bool mHDRBTF = false;
-// #endif
-
-
-
-// #ifdef METAL
-//     std::string mNetInt8Name = "metal_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "metal_grate_rusty_disp_4k.png";
-//     std::string mHFFileName = "metal_grate_rusty_disp_4k.png";
-//     bool mHDRBTF = true;
-// #endif
-
-
-// #ifdef METAL2
-//     std::string mNetInt8Name = "metal2_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "MetalGoldHammered001_DISP_6K.png";
-//     std::string mHFFileName = "MetalGoldHammered001_DISP_6K.png";
-//     bool mHDRBTF = true;
-// #endif
-
-
-// #ifdef BRICK
-//     std::string mNetInt8Name = "brick_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "castle_brick_02_red_disp_4k.png";
-//     std::string mHFFileName = "castle_brick_02_red_disp_4k.png";
-//     bool mHDRBTF = false;
-// #endif
-
-
-// #ifdef TILE
-//     std::string mNetInt8Name = "tile_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
-//     std::string mHFFileName = "TilesCeramicFishscale002_DISP_6k.jpg";
-//     bool mHDRBTF = false;
-// #endif
-
-
-
-// #ifdef TILE2
-//     std::string mNetInt8Name = "tile2_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "roof_tiles_14_disp_1k.png";
-//     std::string mHFFileName = "roof_tiles_14_disp_1k.png";
-//     bool mHDRBTF = false;
-// #endif
-
-// #ifdef FABRIC
-//     std::string mNetInt8Name = "fabric_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
-//     std::string mHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
-//     bool mHDRBTF = false;
-// #endif
-
-
-// #ifdef WEAVE
-//     std::string mNetInt8Name = "weave_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K.jpg";
-//     std::string mHFFileName = mShellHFFileName;
-//     bool mHDRBTF = false;
-// #endif
-
-
-// #ifdef DUMMY
-//     std::string mNetInt8Name = "Dummy";
-//     std::string mShellHFFileName = "roof_tiles_14_disp_1k.png";
-//     std::string mHFFileName = "roof_tiles_14_disp_1k.png";
-//     bool mHDRBTF = false;
-// #endif
-// #ifdef FABRIC12
-//     std::string mNetInt8Name = "fabric12_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
-//     std::string mHFFileName = "FabricWeaveWooly001_DISP_4K.jpg";
-//     bool mHDRBTF = false;
-// #endif
-// #ifdef WEAVE
-//     std::string mNetInt8Name = "weave_m32u8h8d8_int8";
-//     std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K.jpg";
-//     std::string mHFFileName = mShellHFFileName;
-//     bool mHDRBTF = false;
-// #endif
-// #ifdef WEAVE_SML
-//     std::string mNetInt8Name = "weave_small2_m32u8h8d8_int8";
-//     // std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K_small.jpg";
-//     std::string mShellHFFileName = "WickerWeavesBrownRattan001_DISP_6K_sml.jpg";
-//     std::string mHFFileName = mShellHFFileName;
-//     bool mHDRBTF = false;
-// #endif
-// #ifdef DUMMY
-//     std::string mNetInt8Name = "Dummy";
-//     std::string mShellHFFileName = "roof_tiles_14_disp_1k.png";
-//     std::string mHFFileName = "roof_tiles_14_disp_1k.png";
-//     bool mHDRBTF = false;
-// #endif
-
-//     // std::string mNetName = "leather11_m32u16h8d8";
-//     std::string mNetName = "fabric12_m32u16h8d8";
-
-//     uint mFrames = 1;
-
-//     bool mSynthesis = false;
-//     bool mFP16 = true;
-//     bool mShowShader = false;
-//     bool mDebugMLP = true;
-
-//     RenderType mRenderType = RenderType::CUDA;
-
-//     // cuda
-//     float mCudaTime = 0.0;
-//     double mCudaAvgTime = 0.0;
-//     cudaEvent_t mCudaStart, mCudaStop;
-//     ref<Texture> mpOutColor;
-//     ref<Buffer> mpTestInput;
-//     ref<Buffer> mpOutputBuffer;
-
-
-
-
+    std::shared_ptr<NNMat> mpNNMatT;
+    std::shared_ptr<NNMat> mpNNMatBTF;
+    // std::string mNeuBTFName = "NeuLF_P5TB_peball_U800-8_H100-8_D100-8_h32_bt1_L1_Filter";
+    std::string mNeuBTFName = "NeuBTF_P5Dir_fabric12_U800-8_H100-8_D100-8_h32_bt1_L1_Filter";
 //     int mCudaInferTimes = 1;
-//     Falcor::float2 mWo = { 0.0f, 0.0f };
-//     Falcor::float2 mWi = { 0.0f, 0.0f };
-
+    Falcor::float2 mWo = { 0.0f, 0.0f };
+    Falcor::float2 mWi = { 0.0f, 0.0f };
+    bool mIsIBL = true;
+    float mRealRes = 400;
 };

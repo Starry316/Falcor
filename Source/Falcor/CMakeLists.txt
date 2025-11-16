@@ -769,7 +769,29 @@ target_sources(Falcor PRIVATE
     # Utils/Neural/cuda/TextureHelper.h
     # Utils/Neural/cuda/CUDADefines.h
 
+    Utils/Neural/ActivationFunc.slang
+    Utils/Neural/MLP.slang
+    Utils/Neural/MLP.h
+    Utils/Neural/MLP.cpp
+    Utils/Neural/NBTF.h
+    Utils/Neural/NBTF.cpp
+    Utils/Neural/MLPCuda.h
+    Utils/Neural/MLPCuda.cpp
+    Utils/Neural/IOHelper.h
+    Utils/Neural/IOHelper.cpp
+    Utils/Neural/NNMat.h
+    Utils/Neural/NNMat.cpp
+    Utils/Neural/NNMat.slang
 
+
+
+    Utils/Neural/cuda/CUDAConstant.h
+    Utils/Neural/cuda/Utils.h
+    Utils/Neural/cuda/Inference.cu
+    Utils/Neural/cuda/Inference.h
+    Utils/Neural/cuda/TextureHelper.cpp
+    Utils/Neural/cuda/TextureHelper.h
+    Utils/Neural/cuda/CUDADefines.h
 
 
     Utils/Texture/Synthesis.slang

@@ -2,7 +2,7 @@ import Utils.Math.MathHelpers;
 import Utils.Neural.ActivationFunc;
 import Utils.Math.FormatConversion;
 #ifndef MAX_NN_DIM
-#define MAX_NN_DIM 8
+#define MAX_NN_DIM 4
 #endif
 struct MLP
 {
@@ -14,272 +14,469 @@ struct MLP
     Buffer<float> debugWeights;
     Buffer<float> debugBias;
 
-    float4 eval(inout float4 x[MAX_NN_DIM])
+    Buffer<float> tWeights;
+    Buffer<float> tBias;
+
+    void evalT(inout float input[5], inout float output[10])
     {
-        float4 y[MAX_NN_DIM];
+        float val1[16];
+
+
         int offset = 0;
         int biasOffset = 0;
-        for (int i = 0; i < layerNum; ++i)
-        {
-            if (i % 2 == 0)
-            {
-                float h = meta[2 * i + 1];
-                float w = meta[2 * i + 2];
 
-                int outNum = floor(w / 4);
-                for (int j = 0; j < outNum; ++j)
-                {
-                    y[j] = float4(0.0f);
-                }
-                for (int j = 0; j < h / 4; ++j)
-                {
-                    for (int k = 0; k < w / 4; ++k)
-                    {
-                        y[k] += mul(weights[outNum * j + k + offset], x[j]);
-                    }
-                }
-                for (int j = 0; j < outNum; ++j)
-                {
-                    y[j] += bias[j + biasOffset];
-                    y[j] = relu(y[j]);
-                }
-                biasOffset += outNum;
-                offset += (int)(h * w) / 16;
-            }
-            else
+        // t1
+        for (int k = 0; k < 16; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 5; ++j)
             {
-                float h = meta[2 * i + 1];
-                float w = meta[2 * i + 2];
-
-                int outNum = floor(w / 4);
-                for (int j = 0; j < outNum; ++j)
-                {
-                    x[j] = float4(0.0f);
-                }
-                for (int j = 0; j < h / 4; ++j)
-                {
-                    for (int k = 0; k < w / 4; ++k)
-                    {
-                        x[k] += mul(weights[outNum * j + k + offset], y[j]);
-                    }
-                }
-                for (int j = 0; j < outNum; ++j)
-                {
-                    x[j] += bias[j + biasOffset];
-                    x[j] = relu(x[j]);
-                }
-                biasOffset += outNum;
-                offset += (int)(h * w) / 16;
+                sum += tWeights[5 * k + j + offset] * input[j];
             }
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
         }
-        // final layer
-        if (layerNum % 2 == 1)
+        offset += 16 * 5;
+        biasOffset += 16;
+        for (int k = 0; k < 2; ++k)
         {
-            return relu(y[0]);
+            float sum = 0;
+            for (int j = 0; j < 16; ++j)
+            {
+                sum += tWeights[16 * k + j + offset] * val1[j];
+            }
+            sum += tBias[k + biasOffset];
+            output[k + 0] = tanh(sum);
         }
-        else
+
+
+        offset += 2 * 16;
+        biasOffset += 2;
+        // t2
+        for (int k = 0; k < 16; ++k)
         {
-            return relu(x[0]);
+            float sum = 0;
+            for (int j = 0; j < 5; ++j)
+            {
+                sum += tWeights[5 * k + j + offset] * input[j];
+            }
+            val1[k] = tBias[k + biasOffset] + sum;
+            val1[k] = leakyrelu(val1[k]);
+        }
+        offset += 16 * 5;
+        biasOffset += 16;
+        for (int k = 0; k < 2; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 16; ++j)
+            {
+                sum += tWeights[16 * k + j + offset] * val1[j];
+            }
+            output[k + 2] = tBias[k + biasOffset] + sum;
+            output[k + 2] = tanh(output[k + 2]);
+        }
+        offset += 2 * 16;
+        biasOffset += 2;
+
+        // t3
+        for (int k = 0; k < 16; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 5; ++j)
+            {
+                sum += tWeights[5 * k + j + offset] * input[j];
+            }
+            val1[k] = tBias[k + biasOffset] + sum;
+            val1[k] = leakyrelu(val1[k]);
+        }
+        offset += 16 * 5;
+        biasOffset += 16;
+        for (int k = 0; k < 2; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 16; ++j)
+            {
+                sum += tWeights[16 * k + j + offset] * val1[j];
+            }
+            output[k + 4] = tBias[k + biasOffset] + sum;
+            output[k + 4] = tanh(output[k + 4]);
+        }
+        offset += 2 * 16;
+        biasOffset += 2;
+
+        // t4
+        for (int k = 0; k < 16; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 5; ++j)
+            {
+                sum += tWeights[5 * k + j + offset] * input[j];
+            }
+            val1[k] = tBias[k + biasOffset] + sum;
+            val1[k] = leakyrelu(val1[k]);
+        }
+        offset += 16 * 5;
+        biasOffset += 16;
+        for (int k = 0; k < 2; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 16; ++j)
+            {
+                sum += tWeights[16 * k + j + offset] * val1[j];
+            }
+            output[k + 6] = tBias[k + biasOffset] + sum;
+            output[k + 6] = tanh(output[k + 6]);
+        }
+        offset += 2 * 16;
+        biasOffset += 2;
+
+        // t5
+        for (int k = 0; k < 16; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 5; ++j)
+            {
+                sum += tWeights[5 * k + j + offset] * input[j];
+            }
+            val1[k] = tBias[k + biasOffset] + sum;
+            val1[k] = leakyrelu(val1[k]);
+        }
+        offset += 16 * 5;
+        biasOffset += 16;
+        for (int k = 0; k < 2; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 16; ++j)
+            {
+                sum += tWeights[16 * k + j + offset] * val1[j];
+            }
+            output[k + 8] = tBias[k + biasOffset] + sum;
+            output[k + 8] = tanh(output[k + 8]);
         }
     }
 
-    float4 eval(inout float inputVal[24])
+    void eval8T(inout float input[5], inout float output[10])
     {
-        float val1[32];
-        float val2[32];
+        float val1[8];
+        float val2[8];
+
         int offset = 0;
         int biasOffset = 0;
 
-        int inNumFirst = 24;
-        int inNum = 32;
-        int outNum = 32;
-
-        for (int k = 0; k < outNum; ++k)
+        // t1
+        for (int k = 0; k < 8; ++k)
         {
             float sum = 0;
-            for (int j = 0; j < inNumFirst; ++j)
+            for (int j = 0; j < 5; ++j)
             {
-                sum += debugWeights[inNumFirst * k + j + offset] * inputVal[j];
+                sum += tWeights[5 * k + j + offset] * input[j];
             }
-            // val2[k] = sum + debugBias[k + biasOffset];
-            val2[k] = relu(sum);
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
         }
-        offset += outNum * inNumFirst;
-        biasOffset += outNum;
+        offset += 8 * 5;
+        biasOffset += 8;
 
-        for (int k = 0; k < outNum; ++k)
+        for (int k = 0; k < 8; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val1[j];
+            }
+            sum += tBias[k + biasOffset];
+            val2[k] = leakyrelu(sum);
+        }
+        offset += 8 * 8;
+        biasOffset += 8;
+
+        for (int k = 0; k < 2; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val2[j];
+            }
+            sum += tBias[k + biasOffset];
+            output[k + 0] = tanh(sum);
+        }
+        offset += 8 * 2;
+        biasOffset += 2;
+
+        // t2
+        for (int k = 0; k < 8; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 5; ++j)
+            {
+                sum += tWeights[5 * k + j + offset] * input[j];
+            }
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
+        }
+        offset += 8 * 5;
+        biasOffset += 8;
+
+        for (int k = 0; k < 8; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val1[j];
+            }
+            sum += tBias[k + biasOffset];
+            val2[k] = leakyrelu(sum);
+        }
+        offset += 8 * 8;
+        biasOffset += 8;
+
+        for (int k = 0; k < 2; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val2[j];
+            }
+            sum += tBias[k + biasOffset];
+            output[k + 2] = tanh(sum);
+        }
+        offset += 8 * 2;
+        biasOffset += 2;
+
+        // t3
+        for (int k = 0; k < 8; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 5; ++j)
+            {
+                sum += tWeights[5 * k + j + offset] * input[j];
+            }
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
+        }
+        offset += 8 * 5;
+        biasOffset += 8;
+
+        for (int k = 0; k < 8; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val1[j];
+            }
+            sum += tBias[k + biasOffset];
+            val2[k] = leakyrelu(sum);
+        }
+        offset += 8 * 8;
+        biasOffset += 8;
+
+        for (int k = 0; k < 2; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val2[j];
+            }
+            sum += tBias[k + biasOffset];
+            output[k + 4] = tanh(sum);
+        }
+        offset += 8 * 2;
+        biasOffset += 2;
+
+        // t4
+        for (int k = 0; k < 8; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 5; ++j)
+            {
+                sum += tWeights[5 * k + j + offset] * input[j];
+            }
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
+        }
+        offset += 8 * 5;
+        biasOffset += 8;
+
+        for (int k = 0; k < 8; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val1[j];
+            }
+            sum += tBias[k + biasOffset];
+            val2[k] = leakyrelu(sum);
+        }
+        offset += 8 * 8;
+        biasOffset += 8;
+
+        for (int k = 0; k < 2; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val2[j];
+            }
+            sum += tBias[k + biasOffset];
+            output[k + 6] = tanh(sum);
+        }
+        offset += 8 * 2;
+        biasOffset += 2;
+
+        // t5
+        for (int k = 0; k < 8; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 5; ++j)
+            {
+                sum += tWeights[5 * k + j + offset] * input[j];
+            }
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
+        }
+        offset += 8 * 5;
+        biasOffset += 8;
+
+        for (int k = 0; k < 8; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val1[j];
+            }
+            sum += tBias[k + biasOffset];
+            val2[k] = leakyrelu(sum);
+        }
+        offset += 8 * 8;
+        biasOffset += 8;
+
+        for (int k = 0; k < 2; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 8; ++j)
+            {
+                sum += tWeights[8 * k + j + offset] * val2[j];
+            }
+            sum += tBias[k + biasOffset];
+            output[k + 8] = tanh(sum);
+        }
+        offset += 8 * 2;
+        biasOffset += 2;
+
+
+
+    }
+
+    float3 evalBTFMLP(inout float val2[56])
+    {
+        float val1[32];
+
+        int offset = 0;
+        int biasOffset = 0;
+        int inNum = 46;
+        // int inNum = 26;
+
+        // l1
+        for (int k = 0; k < 32; ++k)
         {
             float sum = 0;
             for (int j = 0; j < inNum; ++j)
             {
-                sum += debugWeights[inNum * k + j + offset] * val2[j];
+                sum += tWeights[inNum * k + j + offset] * val2[j];
             }
-            // val1[k] = sum + debugBias[k + biasOffset];
-            val1[k] = relu(sum);
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
         }
-        offset += outNum * inNum;
-        biasOffset += outNum;
-
-        for (int k = 0; k < outNum; ++k)
+        offset += inNum * 32;
+        biasOffset += 32;
+        // l2
+        for (int k = 0; k < 32; ++k)
         {
             float sum = 0;
-            for (int j = 0; j < inNum; ++j)
+            for (int j = 0; j < 32; ++j)
             {
-                sum += debugWeights[inNum * k + j + offset] * val1[j];
+                sum += tWeights[32 * k + j + offset] * val1[j];
             }
-            // val2[k] = sum + debugBias[k + biasOffset];
-            val2[k] = relu(sum);
+            sum += tBias[k + biasOffset];
+            val2[k] = leakyrelu(sum);
         }
-        offset += outNum * inNum;
-        biasOffset += outNum;
+        offset += 32 * 32;
+        biasOffset += 32;
+
+        // l3
+        for (int k = 0; k < 32; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 32; ++j)
+            {
+                sum += tWeights[32 * k + j + offset] * val2[j];
+            }
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
+        }
+        offset += 32 * 32;
+        biasOffset += 32;
+
+        // l4
+        for (int k = 0; k < 32; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 32; ++j)
+            {
+                sum += tWeights[32 * k + j + offset] * val1[j];
+            }
+            sum += tBias[k + biasOffset];
+            val2[k] = leakyrelu(sum);
+        }
+        offset += 32 * 32;
+        biasOffset += 32;
+
+        // l5
+        for (int k = 0; k < 32; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < 32; ++j)
+            {
+                sum += tWeights[32 * k + j + offset] * val2[j];
+            }
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
+        }
+        offset += 32 * 32;
+        biasOffset += 32;
 
         for (int k = 0; k < 3; ++k)
         {
             float sum = 0;
-            for (int j = 0; j < inNum; ++j)
+            for (int j = 0; j < 32; ++j)
             {
-                sum += debugWeights[inNum * k + j + offset] * val2[j];
+                sum += tWeights[32 * k + j + offset] * val1[j];
             }
-            // val1[k] = sum + debugBias[k + biasOffset];
-            val1[k] = relu(sum);
+            sum += tBias[k + biasOffset];
+            val2[k] = relu(sum);
         }
-        return float4(val1[0], val1[1], val1[2], 1.0);
+
+        return float3(val2[0], val2[1], val2[2]);
+
     }
 
-    float4 evalDummy(inout float4 x[MAX_NN_DIM])
+    float4 eval(inout float4 x[MAX_NN_DIM])
     {
-        float4 y[MAX_NN_DIM];
-        int offset = 0;
-        int biasOffset = 0;
-        for (int i = 0; i < layerNum; ++i)
-        {
-            if (i % 2 == 0)
-            {
-                float h = meta[2 * i + 1] - 8;
-                float w = meta[2 * i + 2];
-
-                int outNum = floor(w / 4);
-                for (int j = 0; j < outNum; ++j)
-                {
-                    y[j] = float4(0.0f);
-                }
-                for (int j = 0; j < h / 4; ++j)
-                {
-                    for (int k = 0; k < w / 4; ++k)
-                    {
-                        y[k] += mul(weights[outNum * j + k + offset], x[j]);
-                    }
-                }
-                for (int j = 0; j < outNum; ++j)
-                {
-                    y[j] += bias[j + biasOffset];
-                    y[j] = relu(y[j]);
-                }
-                biasOffset += outNum;
-                offset += (int)(h * w) / 16;
-            }
-            else
-            {
-                float h = meta[2 * i + 1] - 8;
-                float w = meta[2 * i + 2] - 8;
-
-                int outNum = floor(w / 4);
-                for (int j = 0; j < outNum; ++j)
-                {
-                    x[j] = float4(0.0f);
-                }
-                for (int j = 0; j < h / 4; ++j)
-                {
-                    for (int k = 0; k < w / 4; ++k)
-                    {
-                        x[k] += mul(weights[outNum * j + k + offset], y[j]);
-                    }
-                }
-                for (int j = 0; j < outNum; ++j)
-                {
-                    x[j] += bias[j + biasOffset];
-                    x[j] = relu(x[j]);
-                }
-                biasOffset += outNum;
-                offset += (int)(h * w) / 16;
-            }
-        }
-        // final layer
-        if (layerNum % 2 == 1)
-        {
-            return relu(y[0]);
-        }
-        else
-        {
-            return relu(x[0]);
-        }
+        return float4(0);
     }
-    float4 evalDummy2(inout float4 x[MAX_NN_DIM])
+
+    float4 eval(inout float inputVal[24])
     {
-        float4 y[MAX_NN_DIM];
-        int offset = 0;
-        int biasOffset = 0;
-        for (int i = 0; i < layerNum; ++i)
-        {
-            if (i % 2 == 0)
-            {
-                float h = meta[2 * i + 1] - 8;
-                float w = meta[2 * i + 2];
+       return float4(0);
+    }
 
-                int outNum = floor(w / 4);
-                for (int j = 0; j < outNum; ++j)
-                {
-                    y[j] = float4(0.0f);
-                }
-                for (int j = 0; j < h / 4; ++j)
-                {
-                    for (int k = 0; k < w / 4; ++k)
-                    {
-                        y[k] += mul(weights[outNum * j + k + offset], x[j]);
-                    }
-                }
-                for (int j = 0; j < outNum; ++j)
-                {
-                    y[j] += bias[j + biasOffset];
-                    y[j] = relu(y[j]);
-                }
-                biasOffset += outNum;
-                offset += (int)(h * w) / 16;
-            }
-            else
-            {
-                float h = meta[2 * i + 1] - 8;
-                float w = meta[2 * i + 2] - 8;
+    float4 evalBTF(inout float4 x[MAX_NN_DIM], float4 uFine[2])
+    {
+        return float4(0);
+    }
 
-                int outNum = floor(w / 4);
-                for (int j = 0; j < outNum; ++j)
-                {
-                    x[j] = float4(0.0f);
-                }
-                for (int j = 0; j < h / 4; ++j)
-                {
-                    for (int k = 0; k < w / 4; ++k)
-                    {
-                        x[k] += mul(weights[outNum * j + k + offset], y[j]);
-                    }
-                }
-                for (int j = 0; j < outNum; ++j)
-                {
-                    x[j] += bias[j + biasOffset];
-                    x[j] = relu(x[j]);
-                }
-                biasOffset += outNum;
-                offset += (int)(h * w) / 16;
-            }
-        }
-        // final layer
-        if (layerNum % 2 == 1)
-        {
-            return relu(y[0]);
-        }
-        else
-        {
-            return relu(x[0]);
-        }
+    float4 evalBTF(inout float inputVal[24], float4 uFine[2], int inNumFirst)
+    {
+        return float4(0);
     }
 }

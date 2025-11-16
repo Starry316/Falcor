@@ -228,6 +228,9 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
 
     mFrameCount++;
 }
+
+
+
 void PTTest::handleOutput()
 {
     auto camera = mpScene->getCamera();
@@ -259,32 +262,62 @@ void PTTest::handleOutput()
     // const float phiStep = 1.0f / 15.0f;
     // const float thetaStep = 1.0f / 20.0f;
 
-    const float phiStep = 1.0f / 50.0f;
-    const float thetaStep = 1.0f / 50.0f;
+    const float phiStep = 1.0f / 200.0f;
+    const float thetaStep = 1.0f / 100.0f;
 
     // const float yStep = 1.0f / 100.0f;
     // const float vStep = 1.0f / 100.0f;
 
     if (!mChangeLight)
     {
-        mViewPhi += phiStep;
-        mViewTheta += thetaStep * phiStep;
-        if (mViewPhi >= 1.0f)
+        if (mPluckerMode)
         {
-            // Reset theta to original small value and carry to phi
-            mViewPhi = 0.0f;
-            // mViewTheta += thetaStep;
-            // If phi wrapped past end, we've finished the full nested iteration
-            if (mViewTheta >= 0.6f)
+            mViewPhi += phiStep;
+
+            if (mViewPhi >= 1.0f)
             {
-                // finalize/stop outputing
-                mViewTheta = 0.0f;
-                mOutputStep = 0;
-                mOutputIndx = 0;
-                mpScene->getCamera()->setResetFlag(true);
-                mpScene->getCamera()->setNextStep(false);
-                mIsOutputing = false;
-                mpScene->getCamera()->setAccumulating(false);
+                // Reset theta to original small value and carry to phi
+                mViewPhi = 0.0f;
+                mViewTheta += thetaStep;
+                // If phi wrapped past end, we've finished the full nested iteration
+                if (mViewTheta >= 1.0f)
+                {
+                    // finalize/stop outputing
+                    mViewTheta = 0.0f;
+                    mOutputStep = 0;
+                    mOutputIndx = 0;
+                    mpScene->getCamera()->setResetFlag(true);
+                    mpScene->getCamera()->setNextStep(false);
+                    mIsOutputing = false;
+                    mpScene->getCamera()->setAccumulating(false);
+                }
+            }
+        }
+
+        else
+        {
+            mViewPhi += phiStep;
+            mSampleTheta += thetaStep * phiStep;
+
+            mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
+
+            if (mViewPhi >= 1.0f)
+            {
+                // Reset theta to original small value and carry to phi
+                mViewPhi = 0.0f;
+                // mViewTheta += thetaStep;
+                // If phi wrapped past end, we've finished the full nested iteration
+                if (mViewTheta >= 0.95f)
+                {
+                    // finalize/stop outputing
+                    mViewTheta = 0.0f;
+                    mOutputStep = 0;
+                    mOutputIndx = 0;
+                    mpScene->getCamera()->setResetFlag(true);
+                    mpScene->getCamera()->setNextStep(false);
+                    mIsOutputing = false;
+                    mpScene->getCamera()->setAccumulating(false);
+                }
             }
         }
     }
@@ -314,7 +347,9 @@ void PTTest::handleOutput()
     else
     {
         mLightPhi += phiLightStep;
-        mLightTheta += thetaLightStep * phiLightStep;
+        mSampleLightTheta += thetaLightStep * phiLightStep;
+        mLightTheta = 2 * acos(1 - mSampleLightTheta) / M_PI;
+
         if (mLightPhi >= 1.0f)
         {
             mLightPhi = 0.0f;
@@ -324,14 +359,15 @@ void PTTest::handleOutput()
                 mOutputOffsetIndx++;
 
                 mViewPhi += phiStep;
-                mViewTheta += thetaStep * phiStep;
+                mSampleTheta += thetaStep * phiStep;
+                mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
                 if (mViewPhi >= 1.0f)
                 {
                     // Reset theta to original small value and carry to phi
                     mViewPhi = 0.0f;
                     // mViewTheta += thetaStep;
                     // If phi wrapped past end, we've finished the full nested iteration
-                    if (mViewTheta >= 0.6f)
+                    if (mViewTheta >= 0.8f)
                     {
                         // finalize/stop outputing
                         mViewTheta = 0.0f;
@@ -422,6 +458,7 @@ void PTTest::renderUI(Gui::Widgets& widget)
     dirty |= widget.slider("view phi", mViewPhi, 0.0f, 1.0f);
     dirty |= widget.slider("view size", mViewSize, 0.0f, 10.0f);
     dirty |= widget.slider("view height", mViewHeight, 0.0f, 10.0f);
+    dirty |= widget.var("view height_", mViewHeight);
     dirty |= widget.slider("view height bot", mViewHeightBot, 0.0f, mViewHeight);
 
     dirty |= widget.slider("x", pX, 0.0f, 1.0f);
@@ -590,6 +627,10 @@ void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
 
         mTracer.pProgram = Program::create(mpDevice, desc, mpScene->getSceneDefines());
     }
+#ifdef NN_PRECOMPUTE
+    mpNNMatT   = std::make_shared<NNMat>(mpDevice, mNeuBTFName, 1, 0);
+    mpNNMatBTF = std::make_shared<NNMat>(mpDevice, mNeuBTFName, 0, 1);
+#endif
 }
 
 void PTTest::prepareVars()

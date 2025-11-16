@@ -30,7 +30,7 @@
 #include "RenderGraph/RenderPass.h"
 #include "Utils/Sampling/SampleGenerator.h"
 #include "Rendering/Lights/EnvMapSampler.h"
-
+#include "Utils/Neural/NNMat.h"
 using namespace Falcor;
 
 class PTTest : public RenderPass
@@ -112,11 +112,14 @@ private:
     uint mOutputIndx = 0;
     uint mOutputOffsetIndx = 0;
     uint mOutputSPP = 32;
-    std::string mOutputPath = "D:/Data/LF/test/{:06}_{:.3f}_{:.3f}_{:.6f}_{:.6f}.exr";
+    std::string mOutputPath = "D:/Data/LF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
     std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
 
+    float mSampleTheta = 0;
+    float mSampleLightTheta = 0;
 
-
-
+    std::shared_ptr<NNMat> mpNNMatT;
+    std::shared_ptr<NNMat> mpNNMatBTF;
+    std::string mNeuBTFName = "NeuBTF_P5Dir_carpet02_U400-8_H100-8_D100-8_h32_bt1_L1_Filter";
 
 };

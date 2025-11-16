@@ -25,47 +25,56 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
-import Utils.Texture.HistogramBlending;
-import Utils.Neural.NBTF;
+#include "Utils/Math/MathConstants.slangh"
 import Utils.Debug.PixelDebug;
 import Utils.Math.FormatConversion;
+import Utils.Neural.NNMat;
+import Utils.Math.MathHelpers;
 cbuffer CB
 {
     float2 iResolution;
-    bool gSynthesis;
+    NNMat nnmatT;
+    NNMat nnmatBTF;
+    float2 gWi;
+    float2 gWo;
     bool gShowShader;
+    bool gIsIBL;
+    float gRealRes;
+
 };
 // cuda infer output
-Buffer<float> cudaColor;
-Texture2D<float4> ouputColor;
+// Buffer<float> cudaColor;
+// Texture2D<float4> ouputColor;
 
-
-float4 mainImage(float2 fragCoord, uint2 pixel)
+float4 mainImage(float2 texC, uint2 pixel)
 {
-    float4 cudaRet = float4(
-        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 0],
-        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 1],
-        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 2],
-        cudaColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]
-    );
-    print("ref", ouputColor[pixel]);
-    print("out", cudaRet);
-    print("dif", abs(cudaRet - ouputColor[pixel]));
+    texC = (floor(texC * gRealRes) + 0.5)/ gRealRes;
 
-    // print("output1", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 0]);
-    // print("output2", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 1]);
-    // print("output3", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 2]);
-    // print("output4", gInputColor[4 * (pixel.y * iResolution.x + pixel.x) + 3]);
+    float uv_remapped[10];
+    float3 wo = spherical_to_cartesian_rad(float2(gWo.x * M_PI_2, gWo.y * M_2PI));
+    float3 wi = spherical_to_cartesian_rad(float2(gWi.x * M_PI_2, gWi.y * M_2PI));
+    float2 uv = texC;
+    print("texC", texC);
+    print("pixel", pixel);
+    print("wi", wi);
+    print("wo", wo);
 
-    if (gShowShader)
-        return ouputColor[pixel];
+    if (gIsIBL)
+    {
+        uv = gWi;
 
-    return cudaRet;
+        wi = squareToDiskHemisphereShirley(texC);
+    }
+
+    nnmatT.evalT(wo, uv, uv_remapped);
+    float3 fr = nnmatBTF.evalBTF(wi, wo, uv_remapped);
+
+    return float4(fr, 1.0);
 }
 
 float4 main(float2 texC: TEXCOORD) : SV_TARGET
 {
     uint2 pixel = uint2(floor(texC * iResolution));
     printSetPixel(pixel);
-    return mainImage(texC * iResolution, pixel);
+    return mainImage(texC, pixel);
 }

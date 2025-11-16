@@ -16,7 +16,6 @@ MLPCuda::MLPCuda() {}
 void MLPCuda::loadFP32(ref<Device> pDevice, std::string networkPath)
 {
     std::vector<float> cudaWeight = readBinaryFile(networkPath.c_str());
-    // std::vector<float> cudaBias = readBinaryFile(fmt::format("{}/media/BTF/networks/Bias_flatten_{}.bin", mMediaPath, mNetName).c_str());
 
     mpFp32Buffer = pDevice->createBuffer(
         cudaWeight.size() * sizeof(float),
@@ -54,49 +53,13 @@ void MLPCuda::loadInt8(ref<Device> pDevice, std::string networkPath)
     logInfo("[MLPCuda] QINT8 buffer  {} {} {} {}", int8Weight[0], int8Weight[1], int8Weight[2], int8Weight[3]);
 }
 
-// void MLPCuda::inferInt8Histo(int* packedInput, float* output, int width, int height, int* valid, float scale)
-// {
-//     launchInferInt8TexHisto(
-//         (int*)mpInt8Buffer->getGpuAddress(),
-//         packedInput,
-//         mHTexObj,
-//         mDTexObj,
-//         mUTexObj,
-//         mTTexObj,
-//         mInvTexObj,
-//         output,
-//         width,
-//         height,
-//         valid,
-//         scale
-//     );
-// }
 
-// void MLPCuda::inferInt8Autocov(int* packedInput, float* output, int width, int height, int* valid, float scale)
-// {
-//     launchInferInt8TexAutocov(
-//         (int*)mpInt8Buffer->getGpuAddress(),
-//         packedInput,
-//         mHTexObj,
-//         mDTexObj,
-//         mUTexObj,
-//         mTTexObj,
-//         mInvTexObj,
-//         (float*)mpSampleBuffer->getGpuAddress(),
-//         output,
-//         width,
-//         height,
-//         valid,
-//         scale
-//     );
-// }
-
-void MLPCuda::inferInt8Hashed(int* packedInput, float* hashedUV, float* output, int width, int height, int* valid, float scale)
+void MLPCuda::inferInt8Syn(int* packedInput, float* quantizationScales,float* output, int width, int height, int* valid, float scale)
 {
-    launchInferInt8TexHashed(
+    launchInferSyn(
         (int*)mpInt8Buffer->getGpuAddress(),
         packedInput,
-        hashedUV,
+        quantizationScales,
         mHTexObj,
         mDTexObj,
         mUTexObj,
@@ -111,55 +74,10 @@ void MLPCuda::inferInt8Hashed(int* packedInput, float* hashedUV, float* output, 
     );
 }
 
-void MLPCuda::inferInt8(int* packedInput, float* output, int width, int height, int* valid, float scale)
+void MLPCuda::inferInt8(int* packedInput, float* quantizationScales, float* output, int width, int height, int* valid, float scale)
 {
-    launchInferInt8Tex((int*)mpInt8Buffer->getGpuAddress(), packedInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, valid, scale);
+    launchInferInt8((int*)mpInt8Buffer->getGpuAddress(), packedInput,  quantizationScales, mHTexObj, mDTexObj, mUTexObj, output, width, height, valid, scale);
 }
 
-void MLPCuda::inferFp32(int* packedInput, float* output, int width, int height, int* valid, float scale)
-{
-    launchInferFP32Tex(
-        (float*)mpFp32Buffer->getGpuAddress(), packedInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, valid, scale
-    );
-}
-
-void MLPCuda::inferFp16(int* packedInput, float* output, int width, int height, int* valid, float scale)
-{
-    launchInferFP16Tex(
-        (__half*)mpFp16Buffer->getGpuAddress(), packedInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, valid, scale
-    );
-}
-
-void MLPCuda::inferInt8Test(int* testInput, float* output, int width, int height, float scale)
-{
-    launchInferInt8TexTest((int*)mpInt8Buffer->getGpuAddress(), testInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, scale);
-}
-
-void MLPCuda::inferFp32Test(int* testInput, float* output, int width, int height, float scale)
-{
-    launchInferFp32TexTest((float*)mpFp32Buffer->getGpuAddress(), testInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, scale);
-}
-
-void MLPCuda::inferFp16Test(int* testInput, float* output, int width, int height, float scale)
-{
-    launchInferFp16TexTest((__half*)mpFp16Buffer->getGpuAddress(), testInput, mHTexObj, mDTexObj, mUTexObj, output, width, height, scale);
-}
-void MLPCuda::inferInt8ACFTest(int* testInput, float* output, int width, int height, float scale)
-{
-    launchInferInt8TexACFTest(
-        (int*)mpInt8Buffer->getGpuAddress(),
-        testInput,
-        mHTexObj,
-        mDTexObj,
-        mUTexObj,
-        mTTexObj,
-        mInvTexObj,
-        (float*)mpSampleBuffer->getGpuAddress(),
-        output,
-        width,
-        height,
-        scale
-    );
-}
 
 } // namespace Falcor

@@ -14,20 +14,23 @@ std::vector<float> readBinaryFile(const char* filename);
 void NBTF::loadFeature(ref<Device> pDevice, std::string featurePath)
 {
     std::filesystem::path projectDir = getProjectDirectory();
+    
     std::vector<float> PlaneMetaBuffer =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/PlaneMeta_{}.bin", projectDir.string(), featurePath).c_str());
+        readBinaryFile(fmt::format("{}/media/neural_materials/networks/PlaneMeta_{}.bin", projectDir.string(), featurePath).c_str());
+
     mUP.texDim = int2(PlaneMetaBuffer[0], PlaneMetaBuffer[1]);
     mHP.texDim = int2(PlaneMetaBuffer[2], PlaneMetaBuffer[3]);
     mDP.texDim = int2(PlaneMetaBuffer[4], PlaneMetaBuffer[5]);
+
     logInfo("[NBTF] Plane Dims");
     logInfo("[NBTF] U: {}, H: {}, D: {}", mUP.texDim, mHP.texDim, mDP.texDim);
 
     std::vector<float> DPlaneBuffer =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/DPlane_{}.bin", projectDir.string(), featurePath).c_str());
+        readBinaryFile(fmt::format("{}/media/neural_materials/networks/DPlane_{}.bin", projectDir.string(), featurePath).c_str());
     std::vector<float> UPlaneBuffer =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/UPlane_{}.bin", projectDir.string(), featurePath).c_str());
+        readBinaryFile(fmt::format("{}/media/neural_materials/networks/UPlane_{}.bin", projectDir.string(), featurePath).c_str());
     std::vector<float> HPlaneBuffer =
-        readBinaryFile(fmt::format("{}/media/BTF/networks/HPlane_{}.bin", projectDir.string(), featurePath).c_str());
+        readBinaryFile(fmt::format("{}/media/neural_materials/networks/HPlane_{}.bin", projectDir.string(), featurePath).c_str());
 
     ResourceBindFlags bindFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
 
@@ -91,8 +94,8 @@ NBTF::NBTF(ref<Device> pDevice, std::string networkName, bool buildCuda)
     if (buildCuda)
     {
         mpMLPCuda = std::make_unique<MLPCuda>();
-        mpMLPCuda->loadInt8(pDevice, fmt::format("{}/media/BTF/networks/Weight_int8_{}.bin", getProjectDirectory(), networkName));
-        mpMLPCuda->loadFP32(pDevice, fmt::format("{}/media/BTF/networks/Weight_fp32_{}.bin", getProjectDirectory(), networkName));
+        mpMLPCuda->loadInt8(pDevice, fmt::format("{}/media/neural_materials/networks/Weight_int8_{}.bin", getProjectDirectory(), networkName));
+        // mpMLPCuda->loadFP32(pDevice, fmt::format("{}/media/neural_materials/networks/Weight_fp32_{}.bin", getProjectDirectory(), networkName));
 
         mpMLPCuda->mUTexObj = createCudaTextureArray(mUP.featureData, mUP.texDim.x, mUP.texDim.x, mUP.texDim.y);
         mpMLPCuda->mHTexObj = createCudaTextureArray(mHP.featureData, mHP.texDim.x, mHP.texDim.x, mHP.texDim.y);
@@ -107,7 +110,7 @@ NBTF::NBTF(ref<Device> pDevice, std::string networkName, bool buildCuda)
     }
     // else
     // {
-    mpMLP = std::make_unique<MLP>(pDevice, networkName);
+    // mpMLP = std::make_unique<MLP>(pDevice, networkName);
     // }
 }
 
@@ -116,7 +119,7 @@ void NBTF::bindShaderData(const ShaderVar& var) const
     // if (mBuildCuda)
     //     return;
 
-    mpMLP->bindShaderData(var["mlp"]);
+    // mpMLP->bindShaderData(var["mlp"]);
     if (mHistogram)
         mpTextureSynthesis->bindFeatureData(var["histoFeatureData"]);
 

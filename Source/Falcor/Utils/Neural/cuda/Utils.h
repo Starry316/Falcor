@@ -85,16 +85,7 @@ inline __device__ int quantizeInt8x4h_safe(__half a, __half b, __half c, __half 
            (clampInt8(__half2int_rn(__hdiv(c, scale))) << 16) & 0x00ff0000 |
            (clampInt8(__half2int_rn(__hdiv(d, scale))) << 24) & 0xff000000;
 }
-// inline __device__ int quantizeInt8x4(float a, float b, float c, float d, const float scale)
-// {
-//     return (__float2int_rn((a / scale)) & 0x000000ff) | (__float2int_rn(b / scale) << 8) & 0x0000ff00 |
-//            (__float2int_rn(c / scale) << 16) & 0x00ff0000 | (__float2int_rn(d / scale) << 24) & 0xff000000;
-// }
-// inline __device__ int quantizeInt8x4(__half a, __half b, __half c, __half d, const __half scale)
-// {
-//     return (__half2int_rn(__hdiv(a, scale)) & 0x000000ff) | (__half2int_rn(__hdiv(b, scale)) << 8) & 0x0000ff00 |
-//            (__half2int_rn(__hdiv(c, scale)) << 16) & 0x00ff0000 | (__half2int_rn(__hdiv(d, scale)) << 24) & 0xff000000;
-// }
+
 __forceinline__ __device__ float dequantizeInt8(const int packedData, const float scale)
 {
     return __int2float_rn(packedData) * scale;
@@ -105,14 +96,11 @@ __forceinline__ __device__ float dequantizeInt8f_relu(const int packedData, cons
     // return relu(__int2float_rn(packedData) * scale);
     return __int2float_rn(relu(packedData)) * scale;
 }
-
-
 __forceinline__ __device__ __half dequantizeInt8h_relu(const int packedData, const __half scale)
 {
     // return relu(__hmul(__int2half_rn(packedData), scale));
     return __hmul(__int2half_rn(relu(packedData)), scale);
 }
-
 __forceinline__ __device__ void dequantizeInt8x4(const int packedData, __half& a, __half& b, __half& c, __half& d, const __half scale)
 {
     a = __hmul(__int2half_rn((int)packedData << 24 >> 24), scale);
@@ -134,11 +122,12 @@ __forceinline__ __device__ void unpackInt8x4(const int packedData, int& a, int& 
     c = (int)packedData << 8 >> 24;
     d = (int)packedData >> 24;
 }
-
 __forceinline__ __device__ int packInt16x2(int a, int b)
 {
     return (a & 0x0000ffff) | ((b << 16) & 0xffff0000);
 }
+
+
 // =====================================================================================================================
 // Synthesis Functions
 // =====================================================================================================================
@@ -156,8 +145,6 @@ __forceinline__  __device__ float rnd21(float p1, float p2)
     float temp = sinf(12.9898f * p1 + 78.233f * p2) * 43758.5453f;
     return (temp - floor(temp));
 }
-
-
 inline __device__ float B0cos(float2 uv)
 {
     float cosu = sinf(uv.x * 3.14159265f);
@@ -173,7 +160,6 @@ __forceinline__  __device__ float B0cos(float u, float v)
     return powf(cosu * cosv * cosu * cosv, 0.5f);
 }
 
-
 __forceinline__  __device__ float B1cos(float2 uv)
 {
     uv = float2{uv.x + 0.5f, uv.y + 0.5f};
@@ -188,8 +174,6 @@ inline __device__ float B1cos(float u, float v)
     float cosv = sinf((v + 0.5f) * 3.14159265f);
     return powf(cosu * cosv * cosu * cosv, 0.5f);
 }
-
-
 
 inline __device__ float BSingularity(float2 uv)
 {
@@ -215,6 +199,7 @@ inline __device__ float BSingularity(float u, float v)
     float cosv = sinf(newV * 3.14159265f);
     return 0.02f * cosu * cosv * cosu * cosv;
 }
+
 __device__ void TriangleGrid(float& w1, float& w2, float& w3, int2& vertex1, int2& vertex2, int2& vertex3, float2 st)
 {
     st = float2{3.4641016f * st.x, 3.4641016f * st.y};

@@ -29,7 +29,7 @@
 #include <fstream>
 #include "RenderGraph/RenderPassHelpers.h"
 #include "Utils/UI/TextRenderer.h"
-// #include "Utils/CudaUtils.h"
+#include "Utils/CudaUtils.h"
 FALCOR_EXPORT_D3D12_AGILITY_SDK
 
 void createTex(ref<Texture>& tex, ref<Device> device, Falcor::uint2 targetDim, bool buildCuda = false, bool isUint = false)
@@ -119,7 +119,7 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     // BlendState::Desc blendDesc;
     // mpOpaqueBS = BlendState::create(blendDesc);
 
-    // mpPixelDebug = std::make_unique<PixelDebug>(getDevice());
+    mpPixelDebug = std::make_unique<PixelDebug>(getDevice());
 
     // // Texture sampler
     // Sampler::Desc samplerDesc;
@@ -129,15 +129,10 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
     // // Load shaders
     // mpMainPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/Toy.ps.slang");
     // mpDebugPass = ComputePass::create(getDevice(), "Samples/ShaderToy/InferDebug.cs.slang", "csMain");
-    // mpDisplayPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/display.ps.slang");
-    // mpBindInputPass = ComputePass::create(getDevice(), "Samples/ShaderToy/bindInput.cs.slang", "csMain");
+    mpDisplayPass = FullScreenPass::create(getDevice(), "Samples/ShaderToy/display.ps.slang");
 
-    // // mpTextureSynthesis = std::make_unique<TextureSynthesis>();
-
-    // // mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
-
-    // mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
-    // mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, false);
+    mpNNMatT = std::make_shared<NNMat>(getDevice(), mNeuBTFName, 1, 0);
+    mpNNMatBTF = std::make_shared<NNMat>(getDevice(), mNeuBTFName, 0, 1);
 
     // cudaEventCreate(&mCudaStart);
     // cudaEventCreate(&mCudaStop);
@@ -183,31 +178,7 @@ void ShaderToy::cudaInfer(RenderContext* pRenderContext, const ref<Fbo>& pTarget
     // iResolution
     float width = (float)pTargetFbo->getWidth();
     float height = (float)pTargetFbo->getHeight();
-    // Falcor::uint2 targetDim = Falcor::uint2(width, height);
 
-    // auto output = (float*)mpOutputBuffer->getGpuAddress();
-    // // timer start
-    // cudaEventRecord(mCudaStart, NULL);
-    // for (size_t i = 0; i < mCudaInferTimes; i++)
-    // {
-    //     if (mRenderType == RenderType::CUDAINT8)
-    //         if (mSynthesis)
-    //             mpNBTFInt8->mpMLPCuda->inferInt8ACFTest((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
-    //         else
-    //             mpNBTFInt8->mpMLPCuda->inferInt8Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
-    //     else if (mRenderType == RenderType::CUDAFP16)
-    //         mpNBTFInt8->mpMLPCuda->inferFp16Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
-
-    //     else
-    //         mpNBTFInt8->mpMLPCuda->inferFp32Test((int*)mpTestInput->getGpuAddress(), output, targetDim.x, targetDim.y, mUVScale);
-    // }
-
-    // // timer end
-    // // cudaDeviceSynchronize();
-    // cudaEventRecord(mCudaStop, NULL);
-    // cudaEventSynchronize(mCudaStop);
-    // cudaEventElapsedTime(&mCudaTime, mCudaStart, mCudaStop);
-    // mCudaAvgTime += mCudaTime;
 }
 void ShaderToy::bindInput(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
 {
@@ -242,17 +213,20 @@ void ShaderToy::display(RenderContext* pRenderContext, const ref<Fbo>& pTargetFb
     float height = (float)pTargetFbo->getHeight();
     Falcor::uint2 targetDim = Falcor::uint2(width, height);
 
-    // auto var = mpDisplayPass->getRootVar()["CB"];
-    // var["iResolution"] = Falcor::float2(width, height);
-    // var["gSynthesis"] = mSynthesis;
-    // var["gShowShader"] = mShowShader || mRenderType == RenderType::SHADER_NN;
-    // mpDisplayPass->getRootVar()["cudaColor"] = mpOutputBuffer;
-    // mpDisplayPass->getRootVar()["ouputColor"] = mpOutColor;
+    auto var = mpDisplayPass->getRootVar()["CB"];
+    var["iResolution"] = Falcor::float2(width, height);
+    var["gWi"] = mWi;
+    var["gWo"] = mWo;
+    var["gIsIBL"] = mIsIBL;
+    var["gRealRes"] = mRealRes;
 
-    // mpPixelDebug->beginFrame(pRenderContext, targetDim);
-    // mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
-    // mpDisplayPass->execute(pRenderContext, pTargetFbo);
-    // mpPixelDebug->endFrame(pRenderContext);
+    mpNNMatT->bindShaderDataT(var["nnmatT"]);
+    mpNNMatBTF->bindShaderDataT(var["nnmatBTF"]);
+
+    mpPixelDebug->beginFrame(pRenderContext, targetDim);
+    mpPixelDebug->prepareProgram(mpDisplayPass->getProgram(), mpDisplayPass->getRootVar());
+    mpDisplayPass->execute(pRenderContext, pTargetFbo);
+    mpPixelDebug->endFrame(pRenderContext);
 }
 
 void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo)
@@ -262,18 +236,7 @@ void ShaderToy::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTa
     // Falcor::uint2 targetDim = Falcor::uint2(width, height);
     // createBuffer(mpOutputBuffer, getDevice(), targetDim);
 
-    // if (mRenderType == RenderType::SHADER_NN)
-    // {
-    //     shaderInfer(pRenderContext, pTargetFbo);
-    // }
-    // else
-    // {
-    //     if (mFrames < 2)
-    //         bindInput(pRenderContext, pTargetFbo);
-    //     cudaInfer(pRenderContext, pTargetFbo);
-    // }
-    // display(pRenderContext, pTargetFbo);
-    // getTextRenderer().render(pRenderContext, getFrameRate().getMsg(), pTargetFbo, {20, 20});
+    display(pRenderContext, pTargetFbo);
     // mFrames++;
 }
 void ShaderToy::onGuiRender(Gui* pGui)
@@ -282,8 +245,11 @@ void ShaderToy::onGuiRender(Gui* pGui)
     renderGlobalUI(pGui);
     bool dirty = false;
     // dirty |= w.dropdown("Render Type", mRenderType);
-    // dirty |= w.slider("Wi", mWi, 0.0f, 1.0f);
-    // dirty |= w.slider("Wo", mWo, 0.0f, 1.0f);
+    dirty |= w.slider("Wi", mWi, 0.0f, 1.0f);
+    dirty |= w.slider("Wo", mWo, 0.0f, 1.0f);
+    dirty |= w.checkbox("is IBL", mIsIBL);
+    dirty |= w.slider("Real Resolution", mRealRes, 1.0f, 1000.0f);
+    dirty |= w.var("Real Resolution_", mRealRes);
 
     // dirty |= w.slider("UV Scale", mUVScale, 0.0f, 10.0f);
     // dirty |= w.checkbox("Enable Synthesis", mSynthesis);
@@ -300,12 +266,12 @@ void ShaderToy::onGuiRender(Gui* pGui)
     // w.text("CUDA time: " + std::to_string(mCudaTime) + " ms");
     // w.text("CUDA avg time: " + std::to_string(mCudaAvgTime / mFrames) + " ms");
     // w.text("CUDA avg time (real): " + std::to_string(mCudaAvgTime / mFrames / mCudaInferTimes) + " ms");
-    // mpPixelDebug->renderUI(w);
+    mpPixelDebug->renderUI(w);
 }
 int runMain(int argc, char** argv)
 {
     SampleAppConfig config;
-    config.windowDesc.width = 1920;
+    config.windowDesc.width = 1080;
     config.windowDesc.height = 1080;
     config.windowDesc.resizableWindow = true;
     config.windowDesc.enableVSync = false;
@@ -316,40 +282,40 @@ int runMain(int argc, char** argv)
 }
 void printCudaDeviceProperties(int device)
 {
-    // cudaDeviceProp deviceProp;
-    // cudaGetDeviceProperties(&deviceProp, device);
+    cudaDeviceProp deviceProp;
+    cudaGetDeviceProperties(&deviceProp, device);
 
-    // std::cout << "Device " << device << ": " << deviceProp.name << std::endl;
-    // std::cout << "  Compute capability: " << deviceProp.major << "." << deviceProp.minor << std::endl;
-    // std::cout << "  Total global memory: " << deviceProp.totalGlobalMem << " bytes" << std::endl;
-    // std::cout << "  Shared memory per block: " << deviceProp.sharedMemPerBlock << " bytes" << std::endl;
-    // std::cout << "  Registers per block: " << deviceProp.regsPerBlock << std::endl;
-    // std::cout << "  Warp size: " << deviceProp.warpSize << std::endl;
-    // std::cout << "  Max threads per block: " << deviceProp.maxThreadsPerBlock << std::endl;
-    // std::cout << "  Max threads per multiprocessor: " << deviceProp.maxThreadsPerMultiProcessor << std::endl;
-    // std::cout << "  Max blocks per multiprocessor: " << deviceProp.maxBlocksPerMultiProcessor << std::endl;
-    // std::cout << "  Max grid size: (" << deviceProp.maxGridSize[0] << ", " << deviceProp.maxGridSize[1] << ", " << deviceProp.maxGridSize[2]
-    //           << ")" << std::endl;
-    // std::cout << "  Max block dimensions: (" << deviceProp.maxThreadsDim[0] << ", " << deviceProp.maxThreadsDim[1] << ", "
-    //           << deviceProp.maxThreadsDim[2] << ")" << std::endl;
-    // std::cout << "  Memory clock rate: " << deviceProp.memoryClockRate << " kHz" << std::endl;
-    // std::cout << "  Memory bus width: " << deviceProp.memoryBusWidth << " bits" << std::endl;
-    // std::cout << "  L2 cache size: " << deviceProp.l2CacheSize << " bytes" << std::endl;
-    // std::cout << "  Number of multiprocessors: " << deviceProp.multiProcessorCount << std::endl;
-    // std::cout << "  Clock rate: " << deviceProp.clockRate << " kHz" << std::endl;
-    // std::cout << "  Concurrent kernels: " << (deviceProp.concurrentKernels ? "Yes" : "No") << std::endl;
-    // std::cout << "  ECC enabled: " << (deviceProp.ECCEnabled ? "Yes" : "No") << std::endl;
+    std::cout << "Device " << device << ": " << deviceProp.name << std::endl;
+    std::cout << "  Compute capability: " << deviceProp.major << "." << deviceProp.minor << std::endl;
+    std::cout << "  Total global memory: " << deviceProp.totalGlobalMem << " bytes" << std::endl;
+    std::cout << "  Shared memory per block: " << deviceProp.sharedMemPerBlock << " bytes" << std::endl;
+    std::cout << "  Registers per block: " << deviceProp.regsPerBlock << std::endl;
+    std::cout << "  Warp size: " << deviceProp.warpSize << std::endl;
+    std::cout << "  Max threads per block: " << deviceProp.maxThreadsPerBlock << std::endl;
+    std::cout << "  Max threads per multiprocessor: " << deviceProp.maxThreadsPerMultiProcessor << std::endl;
+    std::cout << "  Max blocks per multiprocessor: " << deviceProp.maxBlocksPerMultiProcessor << std::endl;
+    std::cout << "  Max grid size: (" << deviceProp.maxGridSize[0] << ", " << deviceProp.maxGridSize[1] << ", " << deviceProp.maxGridSize[2]
+              << ")" << std::endl;
+    std::cout << "  Max block dimensions: (" << deviceProp.maxThreadsDim[0] << ", " << deviceProp.maxThreadsDim[1] << ", "
+              << deviceProp.maxThreadsDim[2] << ")" << std::endl;
+    std::cout << "  Memory clock rate: " << deviceProp.memoryClockRate << " kHz" << std::endl;
+    std::cout << "  Memory bus width: " << deviceProp.memoryBusWidth << " bits" << std::endl;
+    std::cout << "  L2 cache size: " << deviceProp.l2CacheSize << " bytes" << std::endl;
+    std::cout << "  Number of multiprocessors: " << deviceProp.multiProcessorCount << std::endl;
+    std::cout << "  Clock rate: " << deviceProp.clockRate << " kHz" << std::endl;
+    std::cout << "  Concurrent kernels: " << (deviceProp.concurrentKernels ? "Yes" : "No") << std::endl;
+    std::cout << "  ECC enabled: " << (deviceProp.ECCEnabled ? "Yes" : "No") << std::endl;
 }
 
 int main(int argc, char** argv)
 {
-    // int deviceCount;
-    // cudaGetDeviceCount(&deviceCount);
+    int deviceCount;
+    cudaGetDeviceCount(&deviceCount);
 
-    // for (int device = 0; device < deviceCount; ++device)
-    // {
-    //     printCudaDeviceProperties(device);
-    // }
+    for (int device = 0; device < deviceCount; ++device)
+    {
+        printCudaDeviceProperties(device);
+    }
 
     return catchAndReportAllExceptions([&]() { return runMain(argc, argv); });
 }

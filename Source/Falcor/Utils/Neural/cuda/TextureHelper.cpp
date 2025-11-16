@@ -26,6 +26,7 @@ cudaTextureObject_t createCudaTextureArray(std::vector<float> data, int width, i
     texDesc.addressMode[0] = cudaAddressModeWrap;
     texDesc.addressMode[1] = cudaAddressModeWrap;
     texDesc.addressMode[2] = cudaAddressModeWrap;
+    // texDesc.filterMode = cudaFilterModePoint;
     texDesc.filterMode = cudaFilterModeLinear;
     texDesc.readMode = cudaReadModeElementType;
     texDesc.normalizedCoords = 1;

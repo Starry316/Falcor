@@ -17,20 +17,20 @@ public:
 
     void loadInt8(ref<Device> pDevice, std::string networkPath);
     void loadFP32(ref<Device> pDevice, std::string networkPath);
-    // void loadTex(ref<Device> pDevice, std::string featurePath);
 
     void inferInt8(int* packedInput, float* output, int width, int height, int* valid, float scale);
-    // void inferInt8Histo(int* packedInput, float* output, int width, int height, int* valid, float scale);
-    // void inferInt8Autocov(int* packedInput, float* output, int width, int height, int* valid, float scale);
-    void inferInt8Hashed(int* packedInput, float* hashedUV, float* output, int width, int height, int* valid, float scale);
-    void inferFp32(int* packedInput, float* output, int width, int height, int* valid, float scale);
-    void inferFp16(int* packedInput, float* output, int width, int height, int* valid, float scale);
+    void inferInt8(int* packedInput, float* quantizationScales, float* output, int width, int height, int* valid, float scale);
+    void inferInt8Hashed(int* packedInput,  float* output, int width, int height, int* valid, float scale);
+    void inferInt8Syn(int* packedInput, float* quantizationScales, float* output, int width, int height, int* valid, float scale);
 
-    // for infer speed test
-    void inferInt8Test(int* testInput, float* output, int width, int height, float scale);
-    void inferFp32Test(int* testInput, float* output, int width, int height, float scale);
-    void inferFp16Test(int* testInput, float* output, int width, int height, float scale);
-    void inferInt8ACFTest(int* testInput, float* output, int width, int height, float scale);
+    // void inferFp32(int* packedInput, float* output, int width, int height, int* valid, float scale);
+    // void inferFp16(int* packedInput, float* output, int width, int height, int* valid, float scale);
+
+    // // for infer speed test
+    // void inferInt8Test(int* testInput, float* output, int width, int height, float scale);
+    // void inferFp32Test(int* testInput, float* output, int width, int height, float scale);
+    // void inferFp16Test(int* testInput, float* output, int width, int height, float scale);
+    // void inferInt8ACFTest(int* testInput, float* output, int width, int height, float scale);
 
     ref<Buffer> mpInt8Buffer;
     ref<Buffer> mpSampleBuffer;

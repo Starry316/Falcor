@@ -227,6 +227,7 @@ float2 ndir_to_oct_equal_area_unorm(float3 n)
     return p * 0.5f + 0.5f;
 }
 
+
 /**
  * Converts point in the octahedral map to normalized direction (equal area, unsigned normalized).
  * @param[in] p Position in octahedral map in [0,1] for each component.

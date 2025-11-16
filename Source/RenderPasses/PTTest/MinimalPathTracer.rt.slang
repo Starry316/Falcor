@@ -481,6 +481,11 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
         return ret;
     }
 
+    if (gBTFViewMode) {
+        if (any(abs(rayData.origin.xz) >= 0.5 * gViewSize))
+            return float3(1.0f);
+    }
+
     for (uint bounce = 0; bounce < gMaxBounces; bounce++) {
         if (rayData.terminated) break;
         traceScatterRay(rayData);
@@ -491,9 +496,10 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
 
 ScatterRayData traceBTFPrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
     float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
-    originUV = frac(originUV);
+    // float2 originUV = ((float2)pixel + 0.5) / (float2)frameDim;
+    // originUV = 1 - frac(originUV);
     originUV = 2 * originUV - 1;
-
+    originUV = originUV * 0.5;
 
     float3 primaryRayOrigin;
     float3 primaryRayDir;
@@ -507,18 +513,22 @@ ScatterRayData traceBTFPrimaryRay(const uint2 pixel, const uint2 frameDim, Sampl
     if (gPluckerMode) {
         // float3 posUV = float3((2 * pV - 1), gViewHeightBot, (2 * pY - 1));
         // float3 posXY = float3(originUV.y, gViewHeight, originUV.x);
+        float2 targetXY = float2(gViewTheta, gViewPhi);
+        // TO -0.5, 0.5
+        targetXY = 2 * targetXY - 1;
 
-        float3 posXY = float3((2 * pV - 1), gViewHeight, (2 * pY - 1));
-        float3 posUV = float3(originUV.y, gViewHeightBot, originUV.x);
-        primaryRayOrigin = posXY;
-        primaryRayDir = normalizeSafe(posUV - posXY);
+        float3 posUV = float3(gViewSize * originUV.x, gViewHeight, gViewSize * originUV.y);
+        float3 posXY = float3(gViewSize * targetXY.x, gViewHeightBot, gViewSize * targetXY.y);
+        primaryRayOrigin = posUV;
+        primaryRayDir = normalizeSafe(posXY - posUV);
     }
 
     else {
         primaryRayOrigin = float3(gViewSize * originUV.x, gViewHeight, gViewSize * originUV.y);
         primaryRayDir = spherical_to_cartesian_rad(float2(gViewTheta * M_PI_2, gViewPhi * M_2PI));
         primaryRayDir = primaryRayDir.xzy;
-        primaryRayDir.y = -primaryRayDir.y;
+        // primaryRayDir.y = -primaryRayDir.y;
+        primaryRayDir = -primaryRayDir;
     }
 
 

@@ -1,0 +1,52 @@
+
+box = Material('Box')
+box.baseColor = float4(0.2, 0.2, 0.3, 1.0)
+box.roughness = 0.2
+box.metallic = 0.1
+
+
+mtl1 = StandardMaterial('BTFMaterial1')
+# mtl1.loadTexture(MaterialTextureSlot.Displacement, f"textures/white.png")
+# mtl1.displacementScale = 0.1
+
+dummyMesh = TriangleMesh.createQuad()
+dummyMeshID = sceneBuilder.addTriangleMesh(dummyMesh, box)
+dummyNodeID = sceneBuilder.addNode('dummy', Transform(scaling=0.1, translation=float3(100000, 0, 0), rotationEulerDeg=float3(0, 0, 0)))
+
+
+
+quadRefMesh = TriangleMesh.createQuad()
+refMeshID = sceneBuilder.addTriangleMesh(quadRefMesh, mtl1)
+refNodeID = sceneBuilder.addNode('Ref', Transform(scaling=80, translation=float3(0, 0, 0), rotationEulerDeg=float3(0, 0, 0)))
+
+
+
+
+sceneBuilder.addMeshInstance(refNodeID, refMeshID)
+sceneBuilder.addMeshInstance(dummyNodeID, dummyMeshID)
+# sceneBuilder.addMeshInstance(fbxNodeID, fbxMeshID)
+
+
+pointLight = PointLight('Point light')
+pointLight.intensity = float3(200.0, 200.0, 200.0)
+pointLight.position = float3(0, 12.0, 8)
+sceneBuilder.addLight(pointLight)
+
+
+
+# Add camera
+camera2 = Camera('Camera2')
+camera2.position = float3(48.250381, 45.738564, 59.226540)
+camera2.target = float3(47.731422, 45.167511, 58.590473)
+camera2.up = float3(0, 1, 0)
+camera2.focalLength = 35
+sceneBuilder.addCamera(camera2)
+
+
+sceneBuilder.envMap = EnvMap('envmap/45_1k_downsampled.exr')
+# sceneBuilder.envMap = EnvMap('envmap/studio_downsampled.exr')
+sceneBuilder.envMap.rotation = float3(0, 0, 0)
+sceneBuilder.envMap.intensity = 1
+
+
+
