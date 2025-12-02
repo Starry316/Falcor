@@ -269,8 +269,8 @@ private:
     float lightPhi = 0.0;
 
     bool mApplySyn = true;
-    bool mShowSig = false;
-    bool mUsePointLight = false;
+    bool mShowGT = false;
+    bool mUsePointLight = true;
 
     /// GPU fence for synchronizing readback.
     ref<Fence> mpFence;
@@ -288,6 +288,9 @@ private:
     bool mShowTracedHF = false;
     bool mTracedShadowRay = true;
     bool mHDRBTF = false;
+
+    bool mShowFeatureMap = false;
+    int  mFeatureLevel = 0;
 
     Falcor::float3 mEnvRotAngle = Falcor::float3(0.0f, 0.0f, 0.0f);
     // cuda
@@ -307,9 +310,23 @@ private:
     // std::string mNeuBTFName = "NeuBTF_MultiPlane5LReLURegFliterXYZ_fur_U400-8_H100-8_D100-8_h32_bt1_L1_pretrain";
     // std::string mNeuBTFName = "NeuLF_P5TB_peb_U400-8_H100-8_D100-8_h32_bt1_L1_Filter";
     // std::string mNeuBTFName = "NeuLF_P5TB_peball_U800-8_H100-8_D100-8_h32_bt1_L1_Filter";
-    std::string mNeuBTFName = "NeuBTF_P5Dir_fabric12_U800-8_H100-8_D100-8_h32_bt1_L1_Filter";
+    // std::string mNeuBTFName = "NeuLF_P5TB_bunnysp_U800-8_H100-8_D100-8_h48_bt1_L1_Filter";
+    // std::string mNeuBTFName = "NeuLF_P5TB_bunnydisk_U800-8_H100-8_D100-8_h48_bt1_L1_Filter";
+    // std::string mNeuBTFName = "NeuLF_P5TPos_furball_U600-8_H100-8_D100-8_h48_bt1_L1_Filter";
+    // std::string mNeuBTFName = "NeuLF_P5TPos_bunnydisk_U800-8_H100-8_D100-8_h48_bt1_L1_Filter";
+    // std::string mNeuBTFName = "NeuLF_P5T3L_fur_hemi2_U400-8_H100-8_D100-8_h32_bt1_L1_Filter_Reg";
+    // std::string mNeuBTFName = "NeuLF_P5T3LPos_fur_hemi3_U600-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
     // std::string mNeuBTFName = "NeuBTF_MultiPlane5LReLURegFliterXYZ_leather11_U400-8_H100-8_D100-8_h32_bt1_L1_pretrain";
     // std::string mNeuBTFName = "NeuBTF_MultiPlane5LReLURegFliterXYZDirXYZWIO_leather11_U400-8_H100-8_D100-8_h32_bt1_L1_pretrain";
+
+
+
+    // std::string mNeuBTFName = "NeuLF_P5T3LPos_wire_U400-8_H100-8_D100-8_h32_bt1_L1_Filter_Reg";
+    // std::string mNeuBTFName = "NeuLF_P5T3LPos_fur_hemi3_U600-8_H100-8_D100-8_h32_bt1_L1_Filter_Reg";
+    // std::string mNeuBTFName = "NeuLF_P5T3LPos_fur_hemi4_U1000-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
+    std::string mNeuBTFName = "NeuLF_P5T3LPos_fur_ss_al1_U1500-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
+    // std::string mNeuBTFName = "NeuBTF_P5T3LPos_fur_hemi_btf_800_U800-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg_HDR";
+
 
 
 };

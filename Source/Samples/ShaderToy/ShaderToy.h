@@ -88,10 +88,10 @@ private:
     std::shared_ptr<NNMat> mpNNMatT;
     std::shared_ptr<NNMat> mpNNMatBTF;
     // std::string mNeuBTFName = "NeuLF_P5TB_peball_U800-8_H100-8_D100-8_h32_bt1_L1_Filter";
-    std::string mNeuBTFName = "NeuBTF_P5Dir_fabric12_U800-8_H100-8_D100-8_h32_bt1_L1_Filter";
+    std::string mNeuBTFName = "NeuBTF_P5T3LPos_fur_hemi_btf_800_U800-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg_HDR";
 //     int mCudaInferTimes = 1;
     Falcor::float2 mWo = { 0.0f, 0.0f };
     Falcor::float2 mWi = { 0.0f, 0.0f };
-    bool mIsIBL = true;
+    bool mIsIBL = false;
     float mRealRes = 400;
 };

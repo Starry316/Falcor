@@ -132,7 +132,9 @@ void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const Render
     var["CB"]["gTracedShadowRay"] = mTracedShadowRay;
     var["CB"]["gRenderTargetDim"] = targetDim;
     var["CB"]["gShowTracedHF"] = mShowTracedHF;
-
+    var["CB"]["gShowGT"] = mShowGT;
+    var["CB"]["gShowFeatureMap"] = mShowFeatureMap;
+    var["CB"]["gFeatureLevel"] = mFeatureLevel;
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["envMapSampler"]);
 
@@ -221,7 +223,9 @@ void NeuralMatRendering::renderUI(Gui::Widgets& widget)
     //     dirty = true;
     // }
 
-    // dirty |= widget.checkbox("Show previous", mShowSig);
+    dirty |= widget.checkbox("Show GT", mShowGT);
+    dirty |= widget.checkbox("Show Feature Map", mShowFeatureMap);
+    dirty |= widget.slider("Feature Level", mFeatureLevel, 0, 6);
     dirty |= widget.checkbox("Use Point Light", mUsePointLight);
     dirty |= widget.slider("Env rot X", mEnvRotAngle.x, 0.0f, 360.0f);
     if (widget.button("X -", true))

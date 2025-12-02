@@ -35,6 +35,57 @@ struct NNMat
         return (exp(abs(I) * log(17.0)) - 1) / 16;
     }
 
+    // Local Shirley square->disk mapping (contained in NNMat to avoid polluting global namespace)
+    float2 squareToDiskShirleyLocal(float2 uv, float eps)
+    {
+        uv = 2.f * uv - 1.f;
+        float u = uv.x;
+        float v = uv.y;
+
+        float absu = abs(u);
+        float absv = abs(v);
+        bool mask = absu > absv;
+
+        float r = mask ? u : v;
+        float phi;
+        if (mask)
+        {
+            phi = M_PI_4 * (v / (u + eps));
+        }
+        else
+        {
+            phi = M_PI_2 - M_PI_4 * (u / (v + eps));
+        }
+
+        if (absu + absv == 0.0f)
+        {
+            phi = 0.0f;
+            r = 0.0f;
+        }
+
+        float dx = r * cos(phi);
+        float dy = r * sin(phi);
+        return float2(dx, dy);
+    }
+
+    float2 squareToDiskShirleyLocal(float2 uv)
+    {
+        return squareToDiskShirleyLocal(uv, 1e-12f);
+    }
+
+    float3 squareToDiskHemisphereShirleyLocal(float2 uv, float eps)
+    {
+        float2 d = squareToDiskShirleyLocal(uv, eps);
+        float sq = min(1.0f, dot(d, d));
+        float z = sqrt(max(0.0f, 1.0f - sq));
+        return float3(d, z);
+    }
+
+    float3 squareToDiskHemisphereShirleyLocal(float2 uv)
+    {
+        return squareToDiskHemisphereShirleyLocal(uv, 1e-12f);
+    }
+
     float3 evalIBL(float3 wo, float2 uv, float3 rotAngles)
     {
         float4 x[MAX_NN_DIM];
@@ -172,21 +223,34 @@ struct NNMat
 
     void evalT(float3 wo, float2 uv, inout float uv_remapped[10])
     {
+        // uv = uv.yx;
         // wo.z = max(wo.z, 0.1);
         wo = normalizeSafe(wo);
+        float3 pos = squareToDiskHemisphereShirley(uv);
+        pos = normalizeSafe(pos);
 
-        // uv = 1 - uv;
 
-        // uv = uv.yx;
-        float inputVal[5];
-        inputVal[0] = uv.x;
-        inputVal[1] = uv.y;
-        inputVal[2] = wo.x;
-        inputVal[3] = wo.y;
-        inputVal[4] = wo.z;
+        float inputVal[8];
+        // inputVal[0] = uv.x;
+        // inputVal[1] = uv.y;
+        // inputVal[2] = wo.x;
+        // inputVal[3] = wo.y;
+        // inputVal[4] = wo.z;
+        // inputVal[5] = pos.x;
+        // inputVal[6] = pos.y;
+        // inputVal[7] = pos.z;
 
-        mlp.evalT(inputVal, uv_remapped);
-        // mlp.eval8T(inputVal, uv_remapped);
+
+        inputVal[0] = wo.x;
+        inputVal[1] = wo.y;
+        inputVal[2] = wo.z;
+        inputVal[3] = pos.x;
+        inputVal[4] = pos.y;
+        inputVal[5] = pos.z;
+
+
+        // mlp.evalT(inputVal, uv_remapped);
+        mlp.eval8T(inputVal, uv_remapped);
         for (uint i = 0; i < 10; i++)
         {
             uv_remapped[i] = 0.5 * uv_remapped[i] + 0.5;
@@ -203,17 +267,17 @@ struct NNMat
         // wi.z = max(wi.z, 0.9);
         wi = normalizeSafe(wi);
         float4 tex;
-        float2 h, d;
-        dirToRusinkiewicz(wi, wo, h, d);
-        float3 vh = spherical_to_cartesian_rad(h);
-        float3 vd = spherical_to_cartesian_rad(d);
+        // float2 h, d;
+        // dirToRusinkiewicz(wi, wo, h, d);
+        // float3 vh = spherical_to_cartesian_rad(h);
+        // float3 vd = spherical_to_cartesian_rad(d);
 
 
-        h = hemisphereDirToDiskSquare(vh).yx;
-        d = hemisphereDirToDiskSquare(vd).yx;
+        // h = hemisphereDirToDiskSquare(vh).yx;
+        // d = hemisphereDirToDiskSquare(vd).yx;
         int offset = 0;
         int count = 0;
-        float inputVal[56];
+        float inputVal[66];
         // inputVal[0] = vh.x;
         // inputVal[1] = vh.y;
         // inputVal[2] = vh.z;
@@ -224,12 +288,13 @@ struct NNMat
         inputVal[0] = wo.x;
         inputVal[1] = wo.y;
         inputVal[2] = wo.z;
+
         inputVal[3] = wi.x;
         inputVal[4] = wi.y;
         inputVal[5] = wi.z;
 
-        // offset = 3;
-        offset = 6;
+        offset = 3;
+        // offset = 6;
 
         // tex = hP.SampleLevel(gSampler, float3(h, 0), 0.f);
         // inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
@@ -241,64 +306,79 @@ struct NNMat
         // tex = dP.SampleLevel(gSampler, float3(d, 1), 0.f);
         // inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
 
-
-        // tex = u1P.SampleLevel(gSampler, float3(uv_remapped[0 + 0], uv_remapped[1 + 0], 0), 0.f);
-        // inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
-        // tex = u1P.SampleLevel(gSampler, float3(uv_remapped[0 + 2], uv_remapped[1 + 2], 1), 0.f);
-        // inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
-        // tex = u1P.SampleLevel(gSampler, float3(uv_remapped[0 + 4], uv_remapped[1 + 4], 2), 0.f);
-        // inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
-        // tex = u1P.SampleLevel(gSampler, float3(uv_remapped[0 + 6], uv_remapped[1 + 6], 3), 0.f);
-        // inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
-        // tex = u1P.SampleLevel(gSampler, float3(uv_remapped[0 + 8], uv_remapped[1 + 8], 4), 0.f);
-        // inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
+        int layerNum = 3;
         int layer = 0;
+        int uvOffset = 0;
         float2 uvSample;
-
-        // reuse uvSample, load each uv twice while advancing texture-array layer index
-        uvSample = float2(uv_remapped[0 + 0], uv_remapped[1 + 0]);
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
-        uvSample = float2(uv_remapped[0 + 2], uv_remapped[1 + 2]);
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
-        uvSample = float2(uv_remapped[0 + 4], uv_remapped[1 + 4]);
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
-        uvSample = float2(uv_remapped[0 + 6], uv_remapped[1 + 6]);
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
-        uvSample = float2(uv_remapped[0 + 8], uv_remapped[1 + 8]);
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-        tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f); layer++;
-        inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
-
-
+        [unroll]
+        for (int i = 0; i < 5; i++) {
+            uvSample = float2(uv_remapped[0 + uvOffset], uv_remapped[1 + uvOffset]);
+            uvOffset += 2;
+            for (int j = 0; j < layerNum; j++) {
+                tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+                layer++;
+                inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
+            }
+        }
 
         // int disOffset = 14;
-        //return abs(float3(inputVal[disOffset], inputVal[disOffset + 1], inputVal[disOffset+2]));
+        // return abs(float3(inputVal[disOffset], inputVal[disOffset + 1], inputVal[disOffset+2]));
+        return mlp.evalBTFMLP(inputVal, offset);
+    }
 
-        return mlp.evalBTFMLP(inputVal);
+    float3 evalFeatureMap(float3 wi, float3 wo, inout float uv_remapped[10], int level)
+    // float3 evalBTF(float3 wi, float3 wo, inout float2 uv)
+    {
+        // wo.z = max(wo.z, 0.1);
+        // wo.z = max(wo.z, 0.9);
+        wo = normalizeSafe(wo);
+
+        // wi.z = max(wi.z, 0.9);
+        wi = normalizeSafe(wi);
+        float4 tex;
+        float2 h, d;
+        dirToRusinkiewicz(wi, wo, h, d);
+        float3 vh = spherical_to_cartesian_rad(h);
+        float3 vd = spherical_to_cartesian_rad(d);
+
+        h = hemisphereDirToDiskSquare(vh).yx;
+        d = hemisphereDirToDiskSquare(vd).yx;
+        int offset = 0;
+        int count = 0;
+        float inputVal[64];
+
+
+        inputVal[0] = wo.x;
+        inputVal[1] = wo.y;
+        inputVal[2] = wo.z;
+        inputVal[3] = wi.x;
+        inputVal[4] = wi.y;
+        inputVal[5] = wi.z;
+
+        offset = 6;
+        // offset = 6;
+
+
+        int layerNum = 3;
+        int layer = 0;
+        int uvOffset = 0;
+        float2 uvSample;
+        [unroll]
+        for (int i = 0; i < 5; i++) {
+            uvSample = float2(uv_remapped[0 + uvOffset], uv_remapped[1 + uvOffset]);
+            uvOffset += 2;
+            for (int j = 0; j < layerNum; j++) {
+                tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+                layer++;
+                inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
+            }
+        }
+        int disOffset = 6 + level * layerNum * 4;
+        return abs(float3(inputVal[disOffset], inputVal[disOffset + 1], inputVal[disOffset + 2]));
 
 
     }
+
+
 
 }

@@ -55,6 +55,10 @@ cbuffer CB
     bool gShowTracedHF;
     bool gTracedShadowRay;
     bool gApplySyn;
+    bool gShowGT;
+
+    bool gShowFeatureMap;
+    int  gFeatureLevel;
     EnvMapSampler envMapSampler;
     NNMat nnmatT;
     NNMat nnmatBTF;
@@ -616,6 +620,146 @@ float3 customSphereIntersectionTest(ScatterRayData rayData, float3 sphereCenter,
     }
     return gScene.envMap.eval(rayData.direction);
 }
+/**
+ * Inverse of sample_sphere: maps a (possibly non-normalized) direction on the
+ * unit sphere back to the uniform sample `u` that would produce it.
+ * @param[in] v Direction (will be normalized).
+ * @return `u` in [0,1)^2 such that sample_sphere(u) ~= normalize(v).
+ */
+float2 sample_sphere_inverse(float3 v)
+{
+    // Ensure we operate on a unit vector
+    v = normalize(v);
+
+    // Recover u.x from cosTheta: cosTheta = 1 - 2*u.x => u.x = (1 - cosTheta)/2
+    float cosTheta = v.z;
+    float ux = (1.0f - cosTheta) * 0.5f;
+    ux = saturate(ux);
+
+    // Recover u.y from phi. Use atan2(y,x) in [-pi,pi], remap to [0,2pi).
+    float uy;
+    float2 xy = v.xy;
+    if (length(xy) < 1e-8f)
+    {
+        // At the poles phi is undefined; choose 0.
+        uy = 0.0f;
+    }
+    else
+    {
+        float phi = atan2(v.y, v.x);
+        if (phi < 0.0f)
+            phi += M_2PI;
+        uy = phi * M_1_2PI; // divide by 2*pi
+        // Numerical safety: keep in [0,1)
+        uy = clamp(uy, 0.0f, nextafter(1.0f, 0.0f));
+    }
+
+    return float2(ux, uy);
+}
+float3 customSphereIntersectionTestLF(ScatterRayData rayData, float3 sphereCenter, float sphereRadius)
+{
+    float t;
+    float3 background;
+    if (kUseEnvLight)
+        background = gScene.envMap.eval(rayData.direction);
+    else background = handleMiss(DispatchRaysIndex().xy);
+    float3 wo = -rayData.direction.xzy;
+    // if (intersectRaySphere(rayData.origin, rayData.direction, sphereCenter, sphereRadius, t, 0.f, kRayTMax, false))
+    sphereRadius = 3.25;
+    sphereCenter.y = 15.3 - sphereRadius;
+
+
+    if (intersectRaySphere(rayData.origin, rayData.direction, sphereCenter, sphereRadius, t, 0.f, kRayTMax, false))
+    {
+        float3 hitPos = rayData.origin + rayData.direction * t;
+
+        float3 wiWS; // world space incident direction
+        float3 Li = evalDirectAnalytic(hitPos, rayData.sg, wiWS);
+
+        // if (kUseEnvLight)
+        // {
+        //     float3 envLi;
+        //     float envPdf;
+        //     if (generateEnvMapSample(hitPos, rayData.sg, envLi, wiWS, envPdf))
+
+        //     }
+
+
+        hitPos.y -= sphereCenter.y;
+        hitPos /= sphereRadius;
+
+        // hemisphere detection
+        if (hitPos.y <= 0)
+            return background;
+
+        float2 uv = hemisphereDirToDiskSquare(normalizeSafe(hitPos.xzy));
+
+
+
+        float uv_remapped[10];
+        nnmatT.evalT(wo, frac(uv * UV_SCALE), uv_remapped);
+        float3 ret = float3(nnmatBTF.evalBTF(float3(0), wo, uv_remapped));
+        if (gShowFeatureMap)
+            ret = nnmatBTF.evalFeatureMap(float3(0), wo, uv_remapped, gFeatureLevel);
+        if (all(ret < HF_SCALE) && !gApplySyn)
+        {
+            return background;
+        }
+        return ret;
+    }
+    return background;
+}
+
+float3 customSphereIntersectionTestBTF(ScatterRayData rayData, float3 sphereCenter, float sphereRadius)
+{
+    float t;
+    float3 background;
+    if (kUseEnvLight)
+        background = gScene.envMap.eval(rayData.direction);
+    else background = handleMiss(DispatchRaysIndex().xy);
+    float3 wo = -rayData.direction.xzy;
+    sphereRadius = 1;
+    // sphereRadius = 3.25;
+    // sphereCenter.y = 15.3 - sphereRadius;
+
+    if (intersectRaySphere(rayData.origin, rayData.direction, sphereCenter, sphereRadius, t, 0.f, kRayTMax, false))
+    {
+        float3 hitPos = rayData.origin + rayData.direction * t;
+        float3 envLi = float3(0.0f);
+        float3 wiEnv = float3(0.0f); // world space incident direction
+        float3 wiLight = float3(0.0f);
+        float3 Li = evalDirectAnalytic(hitPos, rayData.sg, wiLight);
+        // float3 Li = float3(1.0f);
+        float3 ret = float3(0.0f);
+        if (kUseEnvLight)
+        {
+            float dummyPdf;
+            generateEnvMapSample(hitPos, rayData.sg, envLi, wiEnv, dummyPdf);
+        }
+
+        hitPos.y -= sphereCenter.y;
+        hitPos /= sphereRadius;
+        // hemisphere detection
+        if (hitPos.y <= 0)
+            return background;
+
+        float2 uv = hemisphereDirToDiskSquare(normalizeSafe(hitPos.xzy));
+        float uv_remapped[10];
+        nnmatT.evalT(wo, frac(uv * UV_SCALE), uv_remapped);
+        // if (gShowFeatureMap)
+        //     return nnmatBTF.evalFeatureMap(float3(0), wo, uv_remapped, gFeatureLevel);
+
+        // #ifdef POINTLIGHT
+        // ret = Li * (exp(nnmatBTF.evalBTF(wiLight.xzy, wo, uv_remapped)) - 1);
+        ret = envLi * (exp(nnmatBTF.evalBTF(wiEnv.xzy, wo, uv_remapped)) - 1);
+
+// #endif
+
+        return ret ;
+    }
+    return background;
+}
+
 
 // #define LFRENDERING
 float4 tracePath(const uint2 pixel, const uint2 frameDim)
@@ -634,10 +778,19 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     rayData.origin = primaryRayOrigin;
     rayData.direction = primaryRayDir;
 
-// #ifdef LFRENDERING
-
+#ifdef LFRENDERING
+    if (gShowGT) {
+        traceScatterRay(rayData);
+        return float4(rayData.radiance, 1.0f);
+    }
+    return float4(customSphereIntersectionTestLF(rayData, float3(0.0,0, 0.0), 1), 1.0f);
     // return float4(customSphereIntersectionTest(rayData, float3(0.0, -MAX_HEIGHT * 20, 0.0), MAX_HEIGHT * 20), 1.0f);
-// #endif
+#endif
+
+    return float4(customSphereIntersectionTestBTF(rayData, float3(0.0, 0, 0.0), 1), 1.0f);
+
+
+
 
     // ===========================  NeuMat  ===========================
     // We only trace the primary ray and mark the valid pixels in cudaValidBuffer.
@@ -646,7 +799,11 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     // cudaValidBuffer[(pixel.y * gRenderTargetDim.x + pixel.x)] = rayData.terminated ? 0 : 1;
     return float4(rayData.radiance, 1.0f);
 }
-
+float3 handleMiss(const uint2 pixel)
+{
+    // Draw a checkerboard pattern.
+    return ((pixel.x ^ pixel.y) & 0x8) != 0 ? float3(0.5f) : float3(0.1f);
+}
 //
 // Shader entry points for miss shaders.
 //
@@ -658,11 +815,15 @@ void scatterMiss(inout ScatterRayData rayData)
 
     uint2 pixel = DispatchRaysIndex().xy;
 
+
     // Add contribution from distant light (env map) in this direction.
     if (kUseEnvLight)
     {
         float3 Le = gScene.envMap.eval(WorldRayDirection());
         rayData.radiance += Le;
+    }
+    else {
+        rayData.radiance = handleMiss(pixel);
     }
 }
 
@@ -738,13 +899,11 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
 #ifdef LFRENDERING
     rayData.terminated = true;
-    float2 uv_raw = frac(abs(sd.uv) * UV_SCALE);
-    // float2 xy = uv_raw - wo.xy * 0.55;
-    // xy = clamp(xy, float2(0.0), float2(1.0));
-    // wo = normalize(float3(uv_raw - xy, 0.55));
+    // float2 uv_raw = frac(abs(sd.uv) * UV_SCALE);
 
-    nnmatT.evalT(wo, frac(uv_raw), uv_remapped);
-    rayData.radiance = nnmatBTF.evalBTF(float3(0), wo, uv_remapped);
+    // nnmatT.evalT(wo, frac(uv_raw), uv_remapped);
+    // rayData.radiance = nnmatBTF.evalBTF(float3(0), wo, uv_remapped);
+    rayData.radiance = (sd.frame.N + 1) * 0.5 ;
     return;
 #endif
 

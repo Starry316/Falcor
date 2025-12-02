@@ -302,6 +302,8 @@ float3 sample_sphere(float2 u)
     return float3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
 }
 
+
+
 /**
  * Uniform sampling of the unit hemisphere using sphere sampling.
  * @param[in] u Uniform random numbers in [0,1)^2.

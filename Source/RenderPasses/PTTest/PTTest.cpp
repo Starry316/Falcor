@@ -262,8 +262,8 @@ void PTTest::handleOutput()
     // const float phiStep = 1.0f / 15.0f;
     // const float thetaStep = 1.0f / 20.0f;
 
-    const float phiStep = 1.0f / 200.0f;
-    const float thetaStep = 1.0f / 100.0f;
+    const float phiStep   = 1.0f / 50.0f;
+    const float thetaStep = 1.0f / 20.0f;
 
     // const float yStep = 1.0f / 100.0f;
     // const float vStep = 1.0f / 100.0f;
@@ -298,17 +298,21 @@ void PTTest::handleOutput()
         {
             mViewPhi += phiStep;
             mSampleTheta += thetaStep * phiStep;
-
-            mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
-
+            float cosTheta = 1.0f - 2.0f * mSampleTheta;
+            mViewTheta = acosf(cosTheta) / M_PI;
+            // mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
+            // mViewTheta += thetaStep * phiStep;
             if (mViewPhi >= 1.0f)
             {
                 // Reset theta to original small value and carry to phi
                 mViewPhi = 0.0f;
                 // mViewTheta += thetaStep;
                 // If phi wrapped past end, we've finished the full nested iteration
-                if (mViewTheta >= 0.95f)
-                {
+                // if (mViewTheta >= 0.95f)
+
+            }
+            if (mViewTheta >= 0.9f)
+            {
                     // finalize/stop outputing
                     mViewTheta = 0.0f;
                     mOutputStep = 0;
@@ -317,7 +321,6 @@ void PTTest::handleOutput()
                     mpScene->getCamera()->setNextStep(false);
                     mIsOutputing = false;
                     mpScene->getCamera()->setAccumulating(false);
-                }
             }
         }
     }
@@ -451,7 +454,7 @@ void PTTest::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Use importance sampling", mUseImportanceSampling);
     widget.tooltip("Use importance sampling for materials", true);
 
-    dirty |= widget.slider("light theta", mLightTheta, 0.0f, 1.0f);
+    dirty |= widget.slider("light theta", mLightTheta, 0.0f, 2.0f);
     dirty |= widget.slider("light phi", mLightPhi, 0.0f, 1.0f);
 
     dirty |= widget.slider("view theta", mViewTheta, 0.0f, 1.0f);

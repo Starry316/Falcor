@@ -51,13 +51,21 @@ float4 mainImage(float2 texC, uint2 pixel)
     texC = (floor(texC * gRealRes) + 0.5)/ gRealRes;
 
     float uv_remapped[10];
-    float3 wo = spherical_to_cartesian_rad(float2(gWo.x * M_PI_2, gWo.y * M_2PI));
-    float3 wi = spherical_to_cartesian_rad(float2(gWi.x * M_PI_2, gWi.y * M_2PI));
+    float3 wo = spherical_to_cartesian_rad(float2(gWo.x * M_PI, gWo.y * M_2PI));
+    float3 wi = spherical_to_cartesian_rad(float2(gWi.x * M_PI, gWi.y * M_2PI));
     float2 uv = texC;
-    print("texC", texC);
+
+    float3 pos = squareToDiskHemisphereShirley(uv);
+    pos = normalizeSafe(pos);
+
+
+
+    print("uv", uv);
     print("pixel", pixel);
     print("wi", wi);
     print("wo", wo);
+    print("pos", pos);
+
 
     if (gIsIBL)
     {
@@ -66,10 +74,25 @@ float4 mainImage(float2 texC, uint2 pixel)
         wi = squareToDiskHemisphereShirley(texC);
     }
 
+
+
     nnmatT.evalT(wo, uv, uv_remapped);
+
+    // print("uv0", float2(uv_remapped[0], uv_remapped[1]));
+    // print("uv1", float2(uv_remapped[2], uv_remapped[3]));
+    // print("uv2", float2(uv_remapped[4], uv_remapped[5]));
+    // print("uv3", float2(uv_remapped[6], uv_remapped[7]));
+    // print("uv4", float2(uv_remapped[8], uv_remapped[9]));
+
+    // // float3 fr = nnmatBTF.evalFeatureMap(wi, wo, uv_remapped, 4);
+
+
     float3 fr = nnmatBTF.evalBTF(wi, wo, uv_remapped);
 
+    // print("fr", fr);
+
     return float4(fr, 1.0);
+
 }
 
 float4 main(float2 texC: TEXCOORD) : SV_TARGET

@@ -384,8 +384,10 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // Load shading data.
     ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
 
+
+
     if (gShowOffset) {
-        rayData.origin = sd.posW;
+        rayData.radiance = sd.frame.N;
         rayData.terminated = true;
         return;
     }
@@ -470,21 +472,22 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
     ScatterRayData rayData;
     // ScatterRayData rayData = tracePrimaryRay(pixel, frameDim, sg);
     if (gBTFViewMode)
-        rayData = traceBTFPrimaryRay(pixel, frameDim, sg);
+        // rayData = traceBTFPrimaryRay(pixel, frameDim, sg);
+        rayData = traceFullSpherePrimaryRay(pixel, frameDim, sg);
     else
         rayData = tracePrimaryRay(pixel, frameDim, sg);
 
     if (gShowOffset) {
-        //float3 ret = rayData.origin.xzy;
-        float3 ret = rayData.origin.y;
-        // ret.xy = 0.5 + 0.5 * ret.xy;
+        float3 ret = rayData.radiance;
+        // float3 ret = rayData.origin.y;
+        ret = 0.5 + 0.5 * ret;
         return ret;
     }
 
-    if (gBTFViewMode) {
-        if (any(abs(rayData.origin.xz) >= 0.5 * gViewSize))
-            return float3(1.0f);
-    }
+    // if (gBTFViewMode) {
+    //     if (any(abs(rayData.origin.xz) >= 0.5 * gViewSize))
+    //         return float3(1.0f);
+    // }
 
     for (uint bounce = 0; bounce < gMaxBounces; bounce++) {
         if (rayData.terminated) break;
@@ -493,6 +496,66 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
 
     return rayData.radiance;
 }
+
+float3 fromLocal(const float3 v, const float3 T, const float3 B, const float3 N) {
+    return T * v.x + B * v.y + N * v.z;
+}
+
+
+ScatterRayData traceFullSpherePrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
+    float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
+
+    // ndir_to_oct_equal_area_unorm
+    float3 primaryRayOrigin;
+
+    float3 sphericalDir = squareToDiskHemisphereShirley(originUV).xzy;
+    float R = gViewHeight;
+
+    primaryRayOrigin = sphericalDir * R;
+
+    float3 primaryRayDir;
+    primaryRayDir = spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI));
+
+    primaryRayDir = -primaryRayDir.xzy;
+
+    // float3 T = perp_stark(sphericalDir);
+    // float3 B = cross(sphericalDir, T);
+    // primaryRayDir = -fromLocal(primaryRayDir, T, B, sphericalDir);
+
+
+    // Prepare ray payload.
+    ScatterRayData rayData = ScatterRayData(sg);
+    rayData.origin = primaryRayOrigin;
+    rayData.direction = primaryRayDir;
+    rayData.pathLength = 1;
+    traceScatterRay(rayData);
+    return rayData;
+}
+// ScatterRayData traceFullSpherePrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
+//         float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
+//         originUV = 2 * originUV - 1;
+//         // ndir_to_oct_equal_area_unorm
+//         float3 primaryRayOrigin;
+
+//         primaryRayOrigin = float3(originUV.x * gViewSize, gViewHeight, originUV.y * gViewSize);
+
+//         float3 primaryRayDir;
+//         primaryRayDir = spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI));
+
+//         primaryRayDir = -primaryRayDir.xzy;
+
+//         // float3 T = perp_stark(sphericalDir);
+//         // float3 B = cross(sphericalDir, T);
+//         // primaryRayDir = -fromLocal(primaryRayDir, T, B, sphericalDir);
+
+//         // Prepare ray payload.
+//         ScatterRayData rayData = ScatterRayData(sg);
+//         rayData.origin = primaryRayOrigin;
+//         rayData.direction = primaryRayDir;
+//         rayData.pathLength = 1;
+//         traceScatterRay(rayData);
+//         return rayData;
+// }
 
 ScatterRayData traceBTFPrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
     float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
@@ -567,9 +630,17 @@ void scatterMiss(inout ScatterRayData rayData)
 {
     // Ray missed the scene. Mark the ray as terminated.
     rayData.terminated = true;
+    if (rayData.pathLength == 1) {
+        rayData.radiance = 0;
+        if (gShowOffset) rayData.radiance = 2;
+        return;
+    }
 
     // Add contribution from distant light (env map) in this direction.
-
+    if (kUseEnvLight) {
+        float3 Le = gScene.envMap.eval(WorldRayDirection());
+        rayData.radiance += rayData.thp * Le;
+    }
     // if (kUseEnvLight && rayData.pathLength == 1)
     // if (kUseEnvLight && (kComputeDirect || rayData.pathLength > 0))
     // {
