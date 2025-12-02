@@ -154,7 +154,94 @@ struct MLP
             output[k + 8] = tanh(output[k + 8]);
         }
     }
+    float2 evalTTriMLP(inout float input[6])
+    {
+        float val1[16];
+        float val2[16];
+        float2 t;
+        int offset = 0;
+        int biasOffset = 0;
+        int hiddenNum = 16;
+        int inNum = 6;
+        // t1
+        for (int k = 0; k < hiddenNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNum; ++j)
+            {
+                sum += tWeights[inNum * k + j + offset] * input[j];
+            }
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
+        }
+        offset += hiddenNum * inNum;
+        biasOffset += hiddenNum;
 
+        for (int k = 0; k < hiddenNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < hiddenNum; ++j)
+            {
+                sum += tWeights[hiddenNum * k + j + offset] * val1[j];
+            }
+            sum += tBias[k + biasOffset];
+            val2[k] = leakyrelu(sum);
+        }
+        offset += hiddenNum * hiddenNum;
+        biasOffset += hiddenNum;
+
+        for (int k = 0; k < 1; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < hiddenNum; ++j)
+            {
+                sum += tWeights[hiddenNum * k + j + offset] * val2[j];
+            }
+            sum += tBias[k + biasOffset];
+            t.x = leakyrelu(sum);
+        }
+        offset += hiddenNum * 3;
+        biasOffset += 3;
+
+        // t2
+        for (int k = 0; k < hiddenNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < inNum; ++j)
+            {
+                sum += tWeights[inNum * k + j + offset] * input[j];
+            }
+            sum += tBias[k + biasOffset];
+            val1[k] = leakyrelu(sum);
+        }
+        offset += hiddenNum * inNum;
+        biasOffset += hiddenNum;
+
+        for (int k = 0; k < hiddenNum; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < hiddenNum; ++j)
+            {
+                sum += tWeights[hiddenNum * k + j + offset] * val1[j];
+            }
+            sum += tBias[k + biasOffset];
+            val2[k] = leakyrelu(sum);
+        }
+        offset += hiddenNum * hiddenNum;
+        biasOffset += hiddenNum;
+
+        for (int k = 0; k < 1; ++k)
+        {
+            float sum = 0;
+            for (int j = 0; j < hiddenNum; ++j)
+            {
+                sum += tWeights[hiddenNum * k + j + offset] * val2[j];
+            }
+            sum += tBias[k + biasOffset];
+            t.y = leakyrelu(sum);
+        }
+        return t;
+    }
     void eval8T(inout float input[8], inout float output[10])
     {
         float val1[16];
@@ -364,9 +451,6 @@ struct MLP
         }
         offset += hiddenNum * 2;
         biasOffset += 2;
-
-
-
     }
 
     float3 evalBTFMLP(inout float val2[66])
@@ -463,7 +547,7 @@ struct MLP
 
         return float3(val2[0], val2[1], val2[2]);
     }
-    float3 evalBTFMLP(inout float val2[66], int inNum)
+    float3 evalBTFMLP(inout float val2[78], int inNum)
     {
         float val1[64];
 

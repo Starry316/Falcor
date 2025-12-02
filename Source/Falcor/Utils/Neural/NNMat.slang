@@ -221,6 +221,99 @@ struct NNMat
         return ret;
     }
 
+    void evalTTri(float3 wo, float2 uv, inout float uv_remapped[10])
+    {
+        wo = normalizeSafe(wo);
+        float3 pos = squareToDiskHemisphereShirley(uv);
+        pos = normalizeSafe(pos);
+
+        float inputVal[6];
+        inputVal[0] = -wo.x;
+        inputVal[1] = -wo.y;
+        inputVal[2] = -wo.z;
+        inputVal[3] = pos.x;
+        inputVal[4] = pos.y;
+        inputVal[5] = pos.z;
+        float2 t = mlp.evalTTriMLP(inputVal);
+        float3 pos1 = 0.5 * tanh(-t.x * wo + pos) + 0.5;
+        float3 pos2 = 0.5 * tanh(-t.y * wo + pos) + 0.5;
+
+        uv_remapped[0] = pos1.x;
+        uv_remapped[1] = pos1.y;
+        uv_remapped[2] = pos1.z;
+        uv_remapped[3] = pos2.x;
+        uv_remapped[4] = pos2.y;
+        uv_remapped[5] = pos2.z;
+
+    }
+    float3 evalLFTri(float3 wi, float3 wo, inout float uv_remapped[10])
+    {
+        wo = normalizeSafe(wo);
+        wi = normalizeSafe(wi);
+        float4 tex;
+
+        int offset = 0;
+        int count = 0;
+        float inputVal[78];
+
+
+        inputVal[0] = wo.x;
+        inputVal[1] = wo.y;
+        inputVal[2] = wo.z;
+
+        inputVal[3] = wi.x;
+        inputVal[4] = wi.y;
+        inputVal[5] = wi.z;
+
+        offset = 3;
+        // offset = 6;
+
+
+        float3 pos1 = float3(uv_remapped[0], uv_remapped[1], uv_remapped[2]);
+        float3 pos2 = float3(uv_remapped[3], uv_remapped[4], uv_remapped[5]);
+
+        uv_remapped[0] = pos1.x;
+        uv_remapped[1] = pos1.y;
+        uv_remapped[2] = pos1.y;
+        uv_remapped[3] = pos1.z;
+        uv_remapped[4] = pos1.x;
+        uv_remapped[5] = pos1.z;
+
+        uv_remapped[6] = pos2.x;
+        uv_remapped[7] = pos2.y;
+        uv_remapped[8] = pos2.y;
+        uv_remapped[9] = pos2.z;
+        // uv_remapped[4] = pos2.x;
+        // uv_remapped[5] = pos2.z;
+
+
+        int layerNum = 3;
+        int layer = 0;
+        int uvOffset = 0;
+        float2 uvSample;
+        [unroll]
+        for (int i = 0; i < 5; i++) {
+            uvSample = float2(uv_remapped[0 + uvOffset], uv_remapped[1 + uvOffset]);
+            uvOffset += 2;
+            for (int j = 0; j < layerNum; j++) {
+                tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+                layer++;
+                inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
+            }
+        }
+
+        for (int j = 0; j < layerNum; j++) {
+            tex = hP.SampleLevel(gSampler, float3(pos2.x, pos2.z, j), 0.f);
+            inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
+        }
+
+
+        // int disOffset = 14;
+        // return abs(float3(inputVal[disOffset], inputVal[disOffset + 1], inputVal[disOffset+2]));
+        return mlp.evalBTFMLP(inputVal, offset);
+    }
+
+
     void evalT(float3 wo, float2 uv, inout float uv_remapped[10])
     {
         // uv = uv.yx;
@@ -260,24 +353,13 @@ struct NNMat
     float3 evalBTF(float3 wi, float3 wo, inout float uv_remapped[10])
     // float3 evalBTF(float3 wi, float3 wo, inout float2 uv)
     {
-        // wo.z = max(wo.z, 0.1);
-        // wo.z = max(wo.z, 0.9);
         wo = normalizeSafe(wo);
-
-        // wi.z = max(wi.z, 0.9);
         wi = normalizeSafe(wi);
         float4 tex;
-        // float2 h, d;
-        // dirToRusinkiewicz(wi, wo, h, d);
-        // float3 vh = spherical_to_cartesian_rad(h);
-        // float3 vd = spherical_to_cartesian_rad(d);
 
-
-        // h = hemisphereDirToDiskSquare(vh).yx;
-        // d = hemisphereDirToDiskSquare(vd).yx;
         int offset = 0;
         int count = 0;
-        float inputVal[66];
+        float inputVal[75];
         // inputVal[0] = vh.x;
         // inputVal[1] = vh.y;
         // inputVal[2] = vh.z;

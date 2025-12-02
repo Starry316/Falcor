@@ -694,11 +694,14 @@ float3 customSphereIntersectionTestLF(ScatterRayData rayData, float3 sphereCente
 
         float2 uv = hemisphereDirToDiskSquare(normalizeSafe(hitPos.xzy));
 
-
-
         float uv_remapped[10];
-        nnmatT.evalT(wo, frac(uv * UV_SCALE), uv_remapped);
-        float3 ret = float3(nnmatBTF.evalBTF(float3(0), wo, uv_remapped));
+        nnmatT.evalTTri(wo, frac(uv * UV_SCALE), uv_remapped);
+        float3 ret = float3(nnmatBTF.evalLFTri(float3(0), wo, uv_remapped));
+
+        // nnmatT.evalT(wo, frac(uv * UV_SCALE), uv_remapped);
+        // float3 ret = float3(nnmatBTF.evalBTF(float3(0), wo, uv_remapped));
+
+
         if (gShowFeatureMap)
             ret = nnmatBTF.evalFeatureMap(float3(0), wo, uv_remapped, gFeatureLevel);
         if (all(ret < HF_SCALE) && !gApplySyn)
@@ -745,13 +748,18 @@ float3 customSphereIntersectionTestBTF(ScatterRayData rayData, float3 sphereCent
 
         float2 uv = hemisphereDirToDiskSquare(normalizeSafe(hitPos.xzy));
         float uv_remapped[10];
-        nnmatT.evalT(wo, frac(uv * UV_SCALE), uv_remapped);
+        // nnmatT.evalT(wo, frac(uv * UV_SCALE), uv_remapped);
+
+        nnmatT.evalTTri(wo, frac(uv * UV_SCALE), uv_remapped);
+
+        ret = envLi * nnmatBTF.evalLFTri(wiEnv.xzy, wo, uv_remapped);
+
         // if (gShowFeatureMap)
         //     return nnmatBTF.evalFeatureMap(float3(0), wo, uv_remapped, gFeatureLevel);
 
         // #ifdef POINTLIGHT
         // ret = Li * (exp(nnmatBTF.evalBTF(wiLight.xzy, wo, uv_remapped)) - 1);
-        ret = envLi * (exp(nnmatBTF.evalBTF(wiEnv.xzy, wo, uv_remapped)) - 1);
+        // ret = envLi * (exp(nnmatBTF.evalBTF(wiEnv.xzy, wo, uv_remapped)) - 1);
 
 // #endif
 
@@ -761,7 +769,7 @@ float3 customSphereIntersectionTestBTF(ScatterRayData rayData, float3 sphereCent
 }
 
 
-// #define LFRENDERING
+#define LFRENDERING
 float4 tracePath(const uint2 pixel, const uint2 frameDim)
 {
     // Create sample generator.

@@ -324,8 +324,11 @@ private:
     // std::string mNeuBTFName = "NeuLF_P5T3LPos_wire_U400-8_H100-8_D100-8_h32_bt1_L1_Filter_Reg";
     // std::string mNeuBTFName = "NeuLF_P5T3LPos_fur_hemi3_U600-8_H100-8_D100-8_h32_bt1_L1_Filter_Reg";
     // std::string mNeuBTFName = "NeuLF_P5T3LPos_fur_hemi4_U1000-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
-    std::string mNeuBTFName = "NeuLF_P5T3LPos_fur_ss_al1_U1500-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
+    // std::string mNeuBTFName = "NeuLF_P5T3LPos_fur_ss_al1_U1500-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
     // std::string mNeuBTFName = "NeuBTF_P5T3LPos_fur_hemi_btf_800_U800-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg_HDR";
+    // std::string mNeuBTFName = "NeuLF_3DP2Pos_fur_hemi4_U1000-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
+    std::string mNeuBTFName = "NeuLF_3DP2Pos_wire_U1000-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
+    // std::string mNeuBTFName = "NeuBTF_3DP2Pos_fur_hemi_btf_800_U800-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg_HDR";
 
 
 
