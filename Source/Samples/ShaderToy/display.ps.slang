@@ -54,10 +54,12 @@ float4 mainImage(float2 texC, uint2 pixel)
     float3 wo = spherical_to_cartesian_rad(float2(gWo.x * M_PI, gWo.y * M_2PI));
     float3 wi = spherical_to_cartesian_rad(float2(gWi.x * M_PI, gWi.y * M_2PI));
     float2 uv = texC;
+    // uv = float2(0.5, 0.5);
+
 
     float3 pos = squareToDiskHemisphereShirley(uv);
     pos = normalizeSafe(pos);
-
+    wo = normalizeSafe(wo);
 
 
     print("uv", uv);
@@ -66,19 +68,36 @@ float4 mainImage(float2 texC, uint2 pixel)
     print("wo", wo);
     print("pos", pos);
 
-
-    if (gIsIBL)
-    {
-        uv = gWi;
-
-        wi = squareToDiskHemisphereShirley(texC);
-    }
+    float3 pos1, pos2;
+    nnmatT.evalTTriDoubleSidePos(wo, uv, pos1, pos2);
 
 
+    // nnmatT.evalTTriDoubleSide(wo, frac(uv), pos1, pos2);
+    // ret = float3(nnmatBTF.evalLFTriDoubleSide(float3(0), wo, pos1, pos2));
 
-    nnmatT.evalT(wo, uv, uv_remapped);
+    // float inputVal[6];
+    // inputVal[0] = -wo.x;
+    // inputVal[1] = -wo.y;
+    // inputVal[2] = -wo.z;
+    // inputVal[3] = pos.x;
+    // inputVal[4] = pos.y;
+    // inputVal[5] = pos.z;
+    // float2 t = nnmatT.mlp.evalTTriMLP(inputVal);
+    // pos1 = 0.5 * tanh(-t.x * wo + pos) + 0.5;
+    // pos2 = 0.5 * tanh(-t.y * wo + pos) + 0.5;
 
-    // print("uv0", float2(uv_remapped[0], uv_remapped[1]));
+    float3 fr = nnmatBTF.evalLFTriDoubleSideFull(wi, wo, pos1, pos2);
+
+    // print("pos1", pos1);
+    // print("pos2", pos2);
+    // print("t", t);
+
+    // print("tw0", nnmatBTF.mlp.tBias[0]);
+    // print("tw1", nnmatBTF.mlp.tBias[1]);
+    // print("tw2", nnmatBTF.mlp.tBias[2]);
+    // print("tw3", nnmatBTF.mlp.tBias[3]);
+    // print("tw4", nnmatBTF.mlp.tBias[4]);
+
     // print("uv1", float2(uv_remapped[2], uv_remapped[3]));
     // print("uv2", float2(uv_remapped[4], uv_remapped[5]));
     // print("uv3", float2(uv_remapped[6], uv_remapped[7]));
@@ -87,7 +106,7 @@ float4 mainImage(float2 texC, uint2 pixel)
     // // float3 fr = nnmatBTF.evalFeatureMap(wi, wo, uv_remapped, 4);
 
 
-    float3 fr = nnmatBTF.evalBTF(wi, wo, uv_remapped);
+    // float3 fr = nnmatBTF.evalBTF(wi, wo, uv_remapped);
 
     // print("fr", fr);
 

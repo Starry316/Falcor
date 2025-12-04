@@ -150,7 +150,7 @@ void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const Render
     for (auto channel : kOutputChannels)
         bind(channel);
 
-    var["gMaxSampler"] = mpMaxSampler;
+    var["gPointSampler"] = mpPointSampler;
 
     // mpNNMat->bindShaderData(var["CB"]["nnmat"]);
     mpNNMatT->bindShaderDataT(var["CB"]["nnmatT"]);
@@ -429,9 +429,9 @@ void NeuralMatRendering::setScene(RenderContext* pRenderContext, const ref<Scene
 
     // Create max sampler for HF texel fetch.
     Sampler::Desc samplerDesc = Sampler::Desc();
-    samplerDesc.setReductionMode(TextureReductionMode::Max);
+    samplerDesc.setReductionMode(TextureReductionMode::Standard);
     samplerDesc.setFilterMode(TextureFilteringMode::Point, TextureFilteringMode::Point, TextureFilteringMode::Point);
-    mpMaxSampler = mpDevice->createSampler(samplerDesc);
+    mpPointSampler = mpDevice->createSampler(samplerDesc);
 
     // cuda timer
     cudaEventCreate(&mCudaStart);

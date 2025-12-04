@@ -62,8 +62,17 @@ void NNMat::loadBTFFeature(ref<Device> pDevice, std::string featurePath)
     mHP.texDim = int2(PlaneMetaBuffer[2], PlaneMetaBuffer[3]);
     mDP.texDim = int2(PlaneMetaBuffer[4], PlaneMetaBuffer[5]);
 
+    int uPLayerNum = 5;
+    if (PlaneMetaBuffer.size() > 6)
+    {
+        uPLayerNum = int(PlaneMetaBuffer[6]);
+    }
+
     logInfo("[NNMatBTF] Plane Dims");
     logInfo("[NNMatBTF] U: {}, H: {}, D: {}", mUP.texDim,  mHP.texDim, mDP.texDim);
+    logInfo("[NNMatBTF] U Plane num: {}", uPLayerNum);
+
+
     ResourceBindFlags bindFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
 
     std::vector<float> DPlaneBuffer =
@@ -79,7 +88,7 @@ void NNMat::loadBTFFeature(ref<Device> pDevice, std::string featurePath)
 
     std::vector<float> UPlaneBuffer;
     UPlaneBuffer=  readBinaryFile(fmt::format("{}/media/nn_mat/btf/U_{}.bin", projectDir.string(), featurePath).c_str());
-    mUP1.featureTex = pDevice->createTexture2D(mUP.texDim.x, mUP.texDim.x, ResourceFormat::RGBA32Float, mUP.texDim.y * 5, 1, UPlaneBuffer.data(), bindFlags);
+    mUP1.featureTex = pDevice->createTexture2D(mUP.texDim.x, mUP.texDim.x, ResourceFormat::RGBA32Float, mUP.texDim.y * uPLayerNum, 1, UPlaneBuffer.data(), bindFlags);
 
     // UPlaneBuffer=  readBinaryFile(fmt::format("{}/media/nn_mat/btf/U2_{}.bin", projectDir.string(), featurePath).c_str());
     // mUP2.featureTex = pDevice->createTexture2D(mUP.texDim.x, mUP.texDim.x, ResourceFormat::RGBA32Float, mUP.texDim.y, 1, UPlaneBuffer.data(), bindFlags);

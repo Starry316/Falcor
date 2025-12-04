@@ -243,7 +243,7 @@ private:
     // displacement map
     ref<Texture> mpHF;
     // max filter sampler for HF texel fetch.
-    ref<Sampler> mpMaxSampler;
+    ref<Sampler> mpPointSampler;
     std::unique_ptr<PixelDebug> mpPixelDebug;
     // cuda inference output buffer
     ref<Buffer> mpOutputBuffer;
@@ -327,9 +327,15 @@ private:
     // std::string mNeuBTFName = "NeuLF_P5T3LPos_fur_ss_al1_U1500-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
     // std::string mNeuBTFName = "NeuBTF_P5T3LPos_fur_hemi_btf_800_U800-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg_HDR";
     // std::string mNeuBTFName = "NeuLF_3DP2Pos_fur_hemi4_U1000-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
-    std::string mNeuBTFName = "NeuLF_3DP2Pos_wire_U1000-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
+
+    // std::string mNeuBTFName = "NeuLF_3DP2Pos_wire_U1000-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg";
     // std::string mNeuBTFName = "NeuBTF_3DP2Pos_fur_hemi_btf_800_U800-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg_HDR";
 
-
+    // std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlend_wirefull_U600-8_H100-8_D100-8_h64_bt1_L1_Filter_finetune_grad_zero";
+    // std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlend_bunny_U600-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+    // std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlend_fur_ss_al1_U1500-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+    // std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlendFullOct_wireoct_U800-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+    // std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlendFull_fur_hemi5_U1000-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+    std::string mNeuBTFName = "NeuLF_DualTriP2_fur_hemi5_U1000-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
 
 };

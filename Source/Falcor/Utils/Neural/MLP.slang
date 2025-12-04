@@ -547,7 +547,7 @@ struct MLP
 
         return float3(val2[0], val2[1], val2[2]);
     }
-    float3 evalBTFMLP(inout float val2[78], int inNum)
+    float3 evalBTFMLP(inout float val2[64], int inNum)
     {
         float val1[64];
 

@@ -262,40 +262,40 @@ void PTTest::handleOutput()
     // const float phiStep = 1.0f / 15.0f;
     // const float thetaStep = 1.0f / 20.0f;
 
-    const float phiStep   = 1.0f / 50.0f;
-    const float thetaStep = 1.0f / 20.0f;
+    const float phiStep   = 1.0f / 60.0f;
+    const float thetaStep = 1.0f / 30.0f;
 
     // const float yStep = 1.0f / 100.0f;
     // const float vStep = 1.0f / 100.0f;
 
     if (!mChangeLight)
     {
-        if (mPluckerMode)
-        {
-            mViewPhi += phiStep;
+        // if (mPluckerMode)
+        // {
+        //     mViewPhi += phiStep;
 
-            if (mViewPhi >= 1.0f)
-            {
-                // Reset theta to original small value and carry to phi
-                mViewPhi = 0.0f;
-                mViewTheta += thetaStep;
-                // If phi wrapped past end, we've finished the full nested iteration
-                if (mViewTheta >= 1.0f)
-                {
-                    // finalize/stop outputing
-                    mViewTheta = 0.0f;
-                    mOutputStep = 0;
-                    mOutputIndx = 0;
-                    mpScene->getCamera()->setResetFlag(true);
-                    mpScene->getCamera()->setNextStep(false);
-                    mIsOutputing = false;
-                    mpScene->getCamera()->setAccumulating(false);
-                }
-            }
-        }
+        //     if (mViewPhi >= 1.0f)
+        //     {
+        //         // Reset theta to original small value and carry to phi
+        //         mViewPhi = 0.0f;
+        //         mViewTheta += thetaStep;
+        //         // If phi wrapped past end, we've finished the full nested iteration
+        //         if (mViewTheta >= 1.0f)
+        //         {
+        //             // finalize/stop outputing
+        //             mViewTheta = 0.0f;
+        //             mOutputStep = 0;
+        //             mOutputIndx = 0;
+        //             mpScene->getCamera()->setResetFlag(true);
+        //             mpScene->getCamera()->setNextStep(false);
+        //             mIsOutputing = false;
+        //             mpScene->getCamera()->setAccumulating(false);
+        //         }
+        //     }
+        // }
 
-        else
-        {
+        // else
+        // {
             mViewPhi += phiStep;
             mSampleTheta += thetaStep * phiStep;
             float cosTheta = 1.0f - 2.0f * mSampleTheta;
@@ -311,7 +311,7 @@ void PTTest::handleOutput()
                 // if (mViewTheta >= 0.95f)
 
             }
-            if (mViewTheta >= 0.9f)
+            if (mViewTheta >= 0.99f)
             {
                     // finalize/stop outputing
                     mViewTheta = 0.0f;
@@ -322,7 +322,7 @@ void PTTest::handleOutput()
                     mIsOutputing = false;
                     mpScene->getCamera()->setAccumulating(false);
             }
-        }
+        // }
     }
 
     // if (!mChangeLight)

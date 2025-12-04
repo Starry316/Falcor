@@ -6,7 +6,9 @@ import Utils.Math.MathHelpers;
 #ifndef MAX_NN_DIM
 #define MAX_NN_DIM 4
 #endif
-
+float3 softClip(float3 x, float a = 10) {
+    return x - (1.0 / a) * log(exp(a * (x - 1.0))) + (1.0 / a) * log(exp(a * (-1.0 - x)));
+}
 struct NNMat
 {
     Texture2DArray<float4> uP;
@@ -254,7 +256,7 @@ struct NNMat
 
         int offset = 0;
         int count = 0;
-        float inputVal[78];
+        float inputVal[64];
 
 
         inputVal[0] = wo.x;
@@ -312,7 +314,186 @@ struct NNMat
         // return abs(float3(inputVal[disOffset], inputVal[disOffset + 1], inputVal[disOffset+2]));
         return mlp.evalBTFMLP(inputVal, offset);
     }
+    // void evalTTriDoubleSide(float3 wo, float2 uv, inout float3 pos1, inout float3 pos2)
+    // {
+    //     wo = normalizeSafe(wo);
+    //     float3 pos = squareToDiskHemisphereShirley(uv);
+    //     pos = normalizeSafe(pos);
 
+    //     float inputVal[6];
+    //     inputVal[0] = -wo.x;
+    //     inputVal[1] = -wo.y;
+    //     inputVal[2] = -wo.z;
+    //     inputVal[3] = pos.x;
+    //     inputVal[4] = pos.y;
+    //     inputVal[5] = pos.z;
+    //     float2 t = mlp.evalTTriMLP(inputVal);
+    //     pos1 = 0.5 * tanh(-t.x * wo + pos) + 0.5;
+    //     pos2 = 0.5 * tanh(-t.y * wo + pos) + 0.5;
+    // }
+    void evalTTriDoubleSide(float3 wo, float2 uv, inout float3 pos1, inout float3 pos2)
+    {
+        wo = normalizeSafe(wo);
+        float3 pos = squareToDiskHemisphereShirley(uv);
+        // float3 pos = spherical_to_cartesian_rad(uv);
+        // float3 pos = oct_to_ndir_unorm(uv);
+        pos = normalizeSafe(pos);
+
+        float inputVal[6];
+        inputVal[0] = -wo.x;
+        inputVal[1] = -wo.y;
+        inputVal[2] = -wo.z;
+        inputVal[3] = pos.x;
+        inputVal[4] = pos.y;
+        inputVal[5] = pos.z;
+        float2 t = mlp.evalTTriMLP(inputVal);
+        pos1 = 0.5 * tanh(-t.x * wo + pos) + 0.5;
+        pos2 = 0.5 * tanh(-t.y * wo + pos) + 0.5;
+    }
+
+
+
+    void evalTTriDoubleSideSoft(float3 wo, float2 uv, inout float3 pos1, inout float3 pos2)
+    {
+        float inputVal[6];
+        wo = normalizeSafe(wo);
+        float3 pos = squareToDiskHemisphereShirley(uv);
+        // float3 pos = spherical_to_cartesian_rad(uv);
+        // float3 pos = oct_to_ndir_unorm(uv);
+        pos = normalizeSafe(pos);
+        inputVal[0] = -wo.x;
+        inputVal[1] = -wo.y;
+        inputVal[2] = -wo.z;
+        inputVal[3] = pos.x;
+        inputVal[4] = pos.y;
+        inputVal[5] = pos.z;
+        float2 t = mlp.evalTTriMLP(inputVal);
+        pos1 = 0.5 * softClip(-t.x * wo + pos) + 0.5;
+        pos2 = 0.5 * softClip(-t.y * wo + pos) + 0.5;
+    }
+    void evalTTriDoubleSidePos(float3 wo, float3 pos, inout float uvremapped[6])
+    {
+
+        uvremapped[0] = -wo.x;
+        uvremapped[1] = -wo.y;
+        uvremapped[2] = -wo.z;
+        uvremapped[3] = pos.x;
+        uvremapped[4] = pos.y;
+        uvremapped[5] = pos.z;
+        float2 t = mlp.evalTTriMLP(uvremapped);
+        float3 pos1 = 0.5 * tanh(-t.x * wo + pos) + 0.5;
+        float3 pos2 = 0.5 * tanh(-t.y * wo + pos) + 0.5;
+        uvremapped[0] = pos1.x;
+        uvremapped[1] = pos1.y;
+        uvremapped[2] = pos1.z;
+        uvremapped[3] = pos2.x;
+        uvremapped[4] = pos2.y;
+        uvremapped[5] = pos2.z;
+
+    }
+    float3 evalLFTriDoubleSide(float3 wi, float3 wo,  float3 pos1,  float3 pos2)
+    {
+        wo = normalizeSafe(wo);
+        wi = normalizeSafe(wi);
+        float4 tex;
+
+        int offset = 0;
+        int count = 0;
+        float inputVal[64];
+
+        inputVal[0] = wo.x;
+        inputVal[1] = wo.y;
+        inputVal[2] = wo.z;
+
+        // inputVal[3] = wi.x;
+        // inputVal[4] = wi.y;
+        // inputVal[5] = wi.z;
+
+        offset = 3;
+
+        float t = 0;
+        int layerNum = 2;
+        int layer = 0;
+        float2 uvSample = 0;
+
+        uvSample = pos1.xy;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
+        }
+
+
+        uvSample = pos1.yz;
+        t = pos1.x;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] = t * tex.x; inputVal[offset + 1] = t * tex.y; inputVal[offset + 2] = t * tex.z; inputVal[offset + 3] = t * tex.w; offset += 4;
+        }
+        offset -= 4 * layerNum;
+        t = 1 - t;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] += t * tex.x; inputVal[offset + 1] += t * tex.y; inputVal[offset + 2] += t * tex.z; inputVal[offset + 3] += t * tex.w; offset += 4;
+        }
+
+        uvSample = pos1.xz;
+        t = pos1.y;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] = t * tex.x; inputVal[offset + 1] = t * tex.y; inputVal[offset + 2] = t * tex.z; inputVal[offset + 3] = t * tex.w; offset += 4;
+        }
+        offset -= 4 * layerNum;
+        t = 1 - t;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] += t * tex.x; inputVal[offset + 1] += t * tex.y; inputVal[offset + 2] += t * tex.z; inputVal[offset + 3] += t * tex.w; offset += 4;
+        }
+
+        // // layer 2
+        uvSample = pos2.xy;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
+        }
+
+        uvSample = pos2.yz;
+        t = pos2.x;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] = t * tex.x; inputVal[offset + 1] = t * tex.y; inputVal[offset + 2] = t * tex.z; inputVal[offset + 3] = t * tex.w; offset += 4;
+        }
+        offset -= 4 * layerNum;
+        t = 1 - t;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] += t * tex.x; inputVal[offset + 1] += t * tex.y; inputVal[offset + 2] += t * tex.z; inputVal[offset + 3] += t * tex.w; offset += 4;
+        }
+
+        uvSample = pos2.xz;
+        t = pos2.y;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] = t * tex.x; inputVal[offset + 1] = t * tex.y; inputVal[offset + 2] = t * tex.z; inputVal[offset + 3] = t * tex.w; offset += 4;
+        }
+        offset -= 4 * layerNum;
+        t = 1 - t;
+        for (int j = 0; j < layerNum; j++) {
+            tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+            layer++;
+            inputVal[offset] += t * tex.x; inputVal[offset + 1] += t * tex.y; inputVal[offset + 2] += t * tex.z; inputVal[offset + 3] += t * tex.w; offset += 4;
+        }
+        // return abs(float3(inputVal[0 + 3 + level * 8], inputVal[1 + 3 + level * 8], inputVal[2 + 3 +level  * 8]));
+        return mlp.evalBTFMLP(inputVal, offset);
+    }
 
     void evalT(float3 wo, float2 uv, inout float uv_remapped[10])
     {
@@ -359,7 +540,7 @@ struct NNMat
 
         int offset = 0;
         int count = 0;
-        float inputVal[75];
+        float inputVal[64];
         // inputVal[0] = vh.x;
         // inputVal[1] = vh.y;
         // inputVal[2] = vh.z;
@@ -408,59 +589,155 @@ struct NNMat
         return mlp.evalBTFMLP(inputVal, offset);
     }
 
-    float3 evalFeatureMap(float3 wi, float3 wo, inout float uv_remapped[10], int level)
+    float3 evalFeatureMap(float3 wi, float3 wo, float3 pos1, float3 pos2, int level)
     // float3 evalBTF(float3 wi, float3 wo, inout float2 uv)
     {
-        // wo.z = max(wo.z, 0.1);
-        // wo.z = max(wo.z, 0.9);
         wo = normalizeSafe(wo);
-
-        // wi.z = max(wi.z, 0.9);
         wi = normalizeSafe(wi);
         float4 tex;
-        float2 h, d;
-        dirToRusinkiewicz(wi, wo, h, d);
-        float3 vh = spherical_to_cartesian_rad(h);
-        float3 vd = spherical_to_cartesian_rad(d);
 
-        h = hemisphereDirToDiskSquare(vh).yx;
-        d = hemisphereDirToDiskSquare(vd).yx;
         int offset = 0;
         int count = 0;
         float inputVal[64];
 
+        inputVal[0] = wo.x;
+        inputVal[1] = wo.y;
+        inputVal[2] = wo.z;
+
+        // inputVal[3] = wi.x;
+        // inputVal[4] = wi.y;
+        // inputVal[5] = wi.z;
+
+        offset = 3;
+
+        float t = 0;
+        int layerNum = 2;
+        int layer = 0;
+        float2 uvSample = 0;
+        // float3 pos1 = float3(uvremapped[0], uvremapped[1], uvremapped[2]);
+        // float3 pos2 = float3(uvremapped[3], uvremapped[4], uvremapped[5]);
+
+        // Prepare uv/t pairs for pos1 (3) and pos2 (3).
+        float2 uvSamples[6];
+        float tVals[6];
+        uvSamples[0] = pos1.xy; tVals[0] = pos1.z;
+        uvSamples[1] = pos1.yz; tVals[1] = pos1.x;
+        uvSamples[2] = pos1.xz; tVals[2] = pos1.y;
+        uvSamples[3] = pos2.xy; tVals[3] = pos2.z;
+        uvSamples[4] = pos2.yz; tVals[4] = pos2.x;
+        uvSamples[5] = pos2.xz; tVals[5] = pos2.y;
+
+        // For each uv/t pair: sample layerNum textures for weight t (write), then sample next layerNum textures for weight (1-t) (add).
+        for (int idx = 0; idx < 6; ++idx) {
+            float2 uvs = uvSamples[idx];
+            float wt = tVals[idx];
+
+            // first pass: write wt * tex into a block of layerNum entries
+            int blockOffset = offset;
+            for (int j = 0; j < layerNum; ++j) {
+                tex = u1P.SampleLevel(gPointSampler, float3(uvs.x, uvs.y, layer), 0.f);
+                layer++;
+                inputVal[blockOffset + 0] = wt * tex.x;
+                inputVal[blockOffset + 1] = wt * tex.y;
+                inputVal[blockOffset + 2] = wt * tex.z;
+                inputVal[blockOffset + 3] = wt * tex.w;
+                blockOffset += 4;
+            }
+
+            // second pass: add (1-wt) * tex into the same block (layers continue increasing)
+            blockOffset = offset;
+            float wt2 = 1.0 - wt;
+            for (int j = 0; j < layerNum; ++j) {
+                tex = u1P.SampleLevel(gPointSampler, float3(uvs.x, uvs.y, layer), 0.f);
+                layer++;
+                inputVal[blockOffset + 0] += wt2 * tex.x;
+                inputVal[blockOffset + 1] += wt2 * tex.y;
+                inputVal[blockOffset + 2] += wt2 * tex.z;
+                inputVal[blockOffset + 3] += wt2 * tex.w;
+                blockOffset += 4;
+            }
+
+            // advance offset by total block size
+            offset += 4 * layerNum;
+        }
+
+        return abs(float3(inputVal[0 + 3 + level * layerNum * 4], inputVal[1 + 3 + level * layerNum * 4], inputVal[2 + 3 +level  * layerNum * 4]));
+
+    }
+
+    float3 evalLFTriDoubleSideFull(float3 wi, float3 wo, float3 pos1, float3 pos2)
+    // float3 evalLFTriDoubleSideFull(float3 wi, float3 wo, inout float uvremapped[6])
+    {
+        wo = normalizeSafe(wo);
+        wi = normalizeSafe(wi);
+        float4 tex;
+
+        int offset = 0;
+        int count = 0;
+        float inputVal[64];
 
         inputVal[0] = wo.x;
         inputVal[1] = wo.y;
         inputVal[2] = wo.z;
-        inputVal[3] = wi.x;
-        inputVal[4] = wi.y;
-        inputVal[5] = wi.z;
 
-        offset = 6;
-        // offset = 6;
+        // inputVal[3] = wi.x;
+        // inputVal[4] = wi.y;
+        // inputVal[5] = wi.z;
 
+        offset = 3;
 
-        int layerNum = 3;
+        float t = 0;
+        int layerNum = 2;
         int layer = 0;
-        int uvOffset = 0;
-        float2 uvSample;
-        [unroll]
-        for (int i = 0; i < 5; i++) {
-            uvSample = float2(uv_remapped[0 + uvOffset], uv_remapped[1 + uvOffset]);
-            uvOffset += 2;
-            for (int j = 0; j < layerNum; j++) {
-                tex = u1P.SampleLevel(gSampler, float3(uvSample.x, uvSample.y, layer), 0.f);
+        float2 uvSample = 0;
+        // float3 pos1 = float3(uvremapped[0], uvremapped[1], uvremapped[2]);
+        // float3 pos2 = float3(uvremapped[3], uvremapped[4], uvremapped[5]);
+
+        // Prepare uv/t pairs for pos1 (3) and pos2 (3).
+        float2 uvSamples[6];
+        float tVals[6];
+        uvSamples[0] = pos1.xy; tVals[0] = pos1.z;
+        uvSamples[1] = pos1.yz; tVals[1] = pos1.x;
+        uvSamples[2] = pos1.xz; tVals[2] = pos1.y;
+        uvSamples[3] = pos2.xy; tVals[3] = pos2.z;
+        uvSamples[4] = pos2.yz; tVals[4] = pos2.x;
+        uvSamples[5] = pos2.xz; tVals[5] = pos2.y;
+
+        // For each uv/t pair: sample layerNum textures for weight t (write), then sample next layerNum textures for weight (1-t) (add).
+        for (int idx = 0; idx < 6; ++idx) {
+            float2 uvs = uvSamples[idx];
+            float wt = tVals[idx];
+
+            // first pass: write wt * tex into a block of layerNum entries
+            int blockOffset = offset;
+            for (int j = 0; j < layerNum; ++j) {
+                tex = u1P.SampleLevel(gPointSampler, float3(uvs.x, uvs.y, layer), 0.f);
                 layer++;
-                inputVal[offset] = tex.x; inputVal[offset + 1] = tex.y; inputVal[offset + 2] = tex.z; inputVal[offset + 3] = tex.w; offset += 4;
+                inputVal[blockOffset + 0] = wt * tex.x;
+                inputVal[blockOffset + 1] = wt * tex.y;
+                inputVal[blockOffset + 2] = wt * tex.z;
+                inputVal[blockOffset + 3] = wt * tex.w;
+                blockOffset += 4;
             }
+
+            // second pass: add (1-wt) * tex into the same block (layers continue increasing)
+            blockOffset = offset;
+            float wt2 = 1.0 - wt;
+            for (int j = 0; j < layerNum; ++j) {
+                tex = u1P.SampleLevel(gPointSampler, float3(uvs.x, uvs.y, layer), 0.f);
+                layer++;
+                inputVal[blockOffset + 0] += wt2 * tex.x;
+                inputVal[blockOffset + 1] += wt2 * tex.y;
+                inputVal[blockOffset + 2] += wt2 * tex.z;
+                inputVal[blockOffset + 3] += wt2 * tex.w;
+                blockOffset += 4;
+            }
+
+            // advance offset by total block size
+            offset += 4 * layerNum;
         }
-        int disOffset = 6 + level * layerNum * 4;
-        return abs(float3(inputVal[disOffset], inputVal[disOffset + 1], inputVal[disOffset + 2]));
-
-
+        // return abs(float3(inputVal[0 + 3 + level * 8], inputVal[1 + 3 + level * 8], inputVal[2 + 3 +level  * 8]));
+        return mlp.evalBTFMLP(inputVal, offset);
     }
-
-
 
 }

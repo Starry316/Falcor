@@ -19,6 +19,7 @@ MLP::MLP(ref<Device> pDevice, std::string networkName, bool isT, bool isBTFMLP)
             readBinaryFile(fmt::format("{}/media/nn_mat/btf/t_bias_{}.bin", projectDir.string(), networkName).c_str());
 
         logInfo("[MLP] T weight size {} T bias size {}", weightsBuffer.size(), biasBuffer.size());
+        logInfo("[MLP] T bias {} {} {} {}  ", biasBuffer[0], biasBuffer[1], biasBuffer[2], biasBuffer[3]);
         mpTWeights = pDevice->createBuffer(
             weightsBuffer.size() * sizeof(float),
             ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,

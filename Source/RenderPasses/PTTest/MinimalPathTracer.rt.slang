@@ -508,7 +508,8 @@ ScatterRayData traceFullSpherePrimaryRay(const uint2 pixel, const uint2 frameDim
     // ndir_to_oct_equal_area_unorm
     float3 primaryRayOrigin;
 
-    float3 sphericalDir = squareToDiskHemisphereShirley(originUV).xzy;
+    // float3 sphericalDir = squareToDiskHemisphereShirley(originUV).xzy;
+    float3 sphericalDir = oct_to_ndir_equal_area_unorm(originUV).xzy;
     float R = gViewHeight;
 
     primaryRayOrigin = sphericalDir * R;
@@ -632,7 +633,7 @@ void scatterMiss(inout ScatterRayData rayData)
     rayData.terminated = true;
     if (rayData.pathLength == 1) {
         rayData.radiance = 0;
-        if (gShowOffset) rayData.radiance = 2;
+        if (gShowOffset) rayData.radiance = -1;
         return;
     }
 
