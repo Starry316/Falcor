@@ -136,7 +136,7 @@ void ShaderToy::onLoad(RenderContext* pRenderContext)
 
     // mpTextureSynthesis->readHFData("D:/textures/synthetic/ganges_river_pebbles_disp_4k.png", getDevice());
 
-    mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
+    // mpNBTFInt8 = std::make_unique<NBTF>(getDevice(), mNetInt8Name, true);
     mpNBTF = std::make_unique<NBTF>(getDevice(), mNetName, false);
 
     cudaEventCreate(&mCudaStart);
