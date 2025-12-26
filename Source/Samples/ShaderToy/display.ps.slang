@@ -56,11 +56,13 @@ float4 mainImage(float2 texC, uint2 pixel)
     float2 uv = texC;
     // uv = float2(0.5, 0.5);
 
-
-    float3 pos = squareToDiskHemisphereShirley(uv);
+    // float3 pos = squareToDiskHemisphereShirley(uv);
+    float3 pos = oct_to_ndir_equal_area_unorm(uv);
     pos = normalizeSafe(pos);
     wo = normalizeSafe(wo);
 
+    // pos = float3(0.2800, 0.0000, 0.9600);
+    // wo = float3(0.1564, -0.3744, -0.91);
 
     print("uv", uv);
     print("pixel", pixel);
@@ -69,8 +71,82 @@ float4 mainImage(float2 texC, uint2 pixel)
     print("pos", pos);
 
     float3 pos1, pos2;
-    nnmatT.evalTTriDoubleSidePos(wo, uv, pos1, pos2);
 
+    nnmatT.evalTTriDoubleSidePos(wo, pos, pos1, pos2);
+
+    print("pos1", pos1);
+    print("pos2", pos2);
+
+    float pos_remapped[6];
+    pos_remapped[0] = pos1.x;
+    pos_remapped[1] = pos1.y;
+    pos_remapped[2] = pos1.z;
+    pos_remapped[3] = pos2.x;
+    pos_remapped[4] = pos2.y;
+    pos_remapped[5] = pos2.z;
+    nnmatT.evalW(pos_remapped);
+
+    print("tw0", pos_remapped[0]);
+    print("tw1", pos_remapped[1]);
+    print("tw2", pos_remapped[2]);
+    print("tw3", pos_remapped[3]);
+    print("tw4", pos_remapped[4]);
+    print("tw5", pos_remapped[5]);
+
+    float2 uvSamples[6];
+    uvSamples[0] = pos1.xy;
+    uvSamples[1] = pos1.yz;
+    uvSamples[2] = pos1.xz;
+    uvSamples[3] = pos2.xy;
+    uvSamples[4] = pos2.yz;
+    uvSamples[5] = pos2.xz;
+
+    print("uvSample0", uvSamples[0]);
+    print("uvSample1", uvSamples[1]);
+    print("uvSample2", uvSamples[2]);
+    print("uvSample3", uvSamples[3]);
+    print("uvSample4", uvSamples[4]);
+    print("uvSample5", uvSamples[5]);
+
+    int layer = 0;
+    int layerNum = 2;
+    float4 tex1, tex2, tex;
+    for (int idx = 0; idx < 6; ++idx) {
+        float2 uvs = uvSamples[idx];
+        float wt = pos_remapped[idx];
+        float wt2 = 1.0 - wt;
+        // first pass: write wt * tex into a block of layerNum entries
+
+        tex1 = nnmatBTF.u1P.SampleLevel(nnmatBTF.gPointSampler, float3(uvs.x, uvs.y, layer++), 0.f);
+        tex = nnmatBTF.u1P.SampleLevel(nnmatBTF.gPointSampler, float3(uvs.x, uvs.y, layer++), 0.f);
+
+        print("U", tex1);
+
+        // second pass: add (1-wt) * tex into the same block (layers continue increasing)
+
+        tex2 = nnmatBTF.u1P.SampleLevel(nnmatBTF.gPointSampler, float3(uvs.x, uvs.y, layer++), 0.f);
+        tex = nnmatBTF.u1P.SampleLevel(nnmatBTF.gPointSampler, float3(uvs.x, uvs.y, layer++), 0.f);
+
+        print("U_t", tex2);
+        print("UN", wt2 * tex2 + wt * tex1);
+    }
+
+
+
+    float inputVal[64];
+
+    float3 fr = 0;
+    fr =nnmatBTF.evalLFTriDoubleSideFullWithWeight(wo, wo, pos1, pos2, pos_remapped);
+
+    // int offset = 32;
+    // float4 u1 = float4(inputVal[0 + offset], inputVal[1 + offset], inputVal[2 + offset], inputVal[3 + offset]);
+    // print("u1", u1);
+    // float4 u2 = float4(inputVal[4 + offset], inputVal[5 + offset], inputVal[6 + offset], inputVal[7 + offset]);
+    // print("u2", u2);
+
+    // float4 tex = nnmatBTF.u1P.SampleLevel(nnmatBTF.gSampler, float3(texC, 22), 0.f);
+    // print("tex", tex);
+    // fr = abs(tex.rgb);
 
     // nnmatT.evalTTriDoubleSide(wo, frac(uv), pos1, pos2);
     // ret = float3(nnmatBTF.evalLFTriDoubleSide(float3(0), wo, pos1, pos2));
@@ -86,7 +162,7 @@ float4 mainImage(float2 texC, uint2 pixel)
     // pos1 = 0.5 * tanh(-t.x * wo + pos) + 0.5;
     // pos2 = 0.5 * tanh(-t.y * wo + pos) + 0.5;
 
-    float3 fr = nnmatBTF.evalLFTriDoubleSideFull(wi, wo, pos1, pos2);
+    // float3 fr = nnmatBTF.evalLFTriDoubleSideFull(wi, wo, pos1, pos2);
 
     // print("pos1", pos1);
     // print("pos2", pos2);
@@ -108,7 +184,7 @@ float4 mainImage(float2 texC, uint2 pixel)
 
     // float3 fr = nnmatBTF.evalBTF(wi, wo, uv_remapped);
 
-    // print("fr", fr);
+    print("fr", fr);
 
     return float4(fr, 1.0);
 

@@ -522,104 +522,7 @@ float2 mapSpherePointToSquareUV(float3 point, float3 sphereCenter, float R, floa
 //     // match earlier convention (returns v flipped)
 //     return float2(u, 1.0f - v);
 // }
-float3 customSphereIntersectionTest(ScatterRayData rayData, float3 sphereCenter, float sphereRadius)
-{
-    float t;
-    float3 backgroundColor = float3(0.0f);
 
-    if (intersectRaySphere(rayData.origin, rayData.direction, sphereCenter, sphereRadius, t, 0.f, kRayTMax, false))
-    {
-        float3 hitPos = rayData.origin + rayData.direction * t;
-        float3 normal = normalize(hitPos - sphereCenter);
-        float h = HF_OFFSET;
-        float3 subSphereCenter = sphereCenter - h * normal;
-        // subSphereCenter.y -= h;
-
-        bool inside, insideInternal;
-
-        bool hitInternal =
-            intersectRaySphere(rayData.origin, rayData.direction, subSphereCenter, sphereRadius, t, 0.f, kRayTMax, false);
-        float2 uv = mapSpherePointToSquareUV(hitPos, sphereCenter, sphereRadius, M_PI_2, M_PI_2, inside);
-        float2 xy = mapSpherePointToSquareUV(
-            rayData.origin + rayData.direction * t, subSphereCenter, sphereRadius, M_PI_2, M_PI_2, insideInternal
-        );
-        float3 background = gScene.envMap.eval(rayData.direction);
-        if (inside)
-        {
-            if (gShowTracedHF) {
-                if (hitInternal)
-                {
-                    // if (insideInternal) {
-                        float3 wo = toLocal(-rayData.direction, normalize(rayData.origin + rayData.direction * t - sphereCenter));
-
-                        float uv_remapped[10];
-                        nnmatT.evalT(wo, frac(uv * UV_SCALE), uv_remapped);
-                        float3 ret = float3(nnmatBTF.evalBTF(float3(0), wo, uv_remapped));
-
-                        if (all(ret > HF_SCALE))
-                        {
-                            if (gApplySyn)
-                                background = float3(0.2, 0.1, 0.1) + 0.2 + 0.8 * background;
-                            return background;
-                        }
-
-                        else
-                            return ret;
-                }
-                else {
-                    if (gApplySyn)
-                    {
-                        return 0.2 + 0.8 * background;
-                    }
-                }
-            }
-            else {
-                float3 wo = toLocal(-rayData.direction, normal);
-                // if (gShowTracedHF && insideInternal && hitInternal)
-                // {
-                //     // xy = uv - wo.xy * h;
-                //     // if (any(xy < 0.0f) || any(xy > 1.0f))
-                //     //     return 0.0;
-                //     // xy = clamp(xy, float2(0.0), float2(1.0));
-                //     wo = normalize(float3(uv - xy, h));
-                // }
-
-                float uv_remapped[10];
-                nnmatT.evalT(wo, frac(uv * UV_SCALE), uv_remapped);
-                float3 ret = float3(nnmatBTF.evalBTF(float3(0), wo, uv_remapped));
-
-                if (all(ret > HF_SCALE))
-                {
-                    if (gApplySyn)
-                    {
-                        if (hitInternal)
-                                background = float3(0.2, 0.1, 0.1) + 0.2 + 0.8 * background;
-                        else background = 0.2 + 0.8 * background;
-                    }
-                    return background;
-                }
-
-                else
-                    return ret;
-
-            }
-
-
-
-        }
-        // if (hitInternal)
-        // return float3(0.2, 0.1, 0.1) + float3(0.2f) + 0.8 * gScene.envMap.eval(rayData.direction);
-        if (gApplySyn)
-        {
-            if (hitInternal)
-                return float3(0.2, 0.1, 0.1) + float3(0.2f) + 0.8 * gScene.envMap.eval(rayData.direction);
-
-            return float3(0.2f) + 0.8 * gScene.envMap.eval(rayData.direction);
-        }
-        return gScene.envMap.eval(rayData.direction);
-    }
-    return gScene.envMap.eval(rayData.direction);
-}
 /**
  * Inverse of sample_sphere: maps a (possibly non-normalized) direction on the
  * unit sphere back to the uniform sample `u` that would produce it.
@@ -674,45 +577,48 @@ float3 customSphereIntersectionTestLF(ScatterRayData rayData, float3 sphereCente
         background = gScene.envMap.eval(rayData.direction);
     else background = handleMiss(DispatchRaysIndex().xy);
     float3 wo = -rayData.direction.xzy;
-    sphereRadius = 3.25;
-    sphereCenter.y = 15.3 - sphereRadius;
+    // sphereRadius = 3.25;
+    // sphereCenter.y = 15.3 - sphereRadius;
 
-    if (intersectRaySphere(rayData.origin, rayData.direction, sphereCenter, sphereRadius, t, 0.f, kRayTMax, false))
+    if (!intersectRaySphere(rayData.origin, rayData.direction, sphereCenter, sphereRadius, t, 0.f, kRayTMax, false))
+        return background;
+
+    float3 hitPos = rayData.origin + rayData.direction * t;
+    float3 ret = float3(0.0f);
+    hitPos.y -= sphereCenter.y;
+    hitPos /= sphereRadius;
+    hitPos = hitPos.xzy;
+
+    // hemisphere detection
+    // if (hitPos.z <= 0.01)
+    //     return background;
+
+    float3 pos1, pos2;
+    nnmatT.evalTTriDoubleSidePos(wo, hitPos, pos1, pos2);
+    float pos_remapped[6];
+    pos_remapped[0] = pos1.x;
+    pos_remapped[1] = pos1.y;
+    pos_remapped[2] = pos1.z;
+    pos_remapped[3] = pos2.x;
+    pos_remapped[4] = pos2.y;
+    pos_remapped[5] = pos2.z;
+    nnmatT.evalW(pos_remapped);
+    traceScatterRay(rayData);
+
+    ret = nnmatBTF.evalLFTriDoubleSideFullWithWeight(wo, wo, pos1, pos2, pos_remapped);
+    // ret = nnmatBTF.evalLFTriDoubleSideFull(wo, wo, pos1, pos2);
+
+
+    if (gShowFeatureMap)
+        ret = nnmatBTF.evalFeatureMap(wo, wo, pos1, pos2, gFeatureLevel);
+    if (all(ret < HF_SCALE) && !gApplySyn)
     {
-        float3 hitPos = rayData.origin + rayData.direction * t;
-        float3 ret = float3(0.0f);
-        hitPos.y -= sphereCenter.y;
-        hitPos /= sphereRadius;
-        hitPos = hitPos.xzy;
-
-        // hemisphere detection
-
-        if (hitPos.z <= 0)
-            return background;
-        float2 uv = hemisphereDirToDiskSquare(normalizeSafe(hitPos));
-        // float2 uv = cartesian_to_spherical_rad(hitPos);
-        // float uv_remapped[6];
-
-
-        float3 pos1, pos2;
-        // nnmatT.evalTTriDoubleSide(wo, uv, pos1, pos2);
-        nnmatT.evalTTriDoubleSideSoft(wo, uv, pos1, pos2);
-
-
-        ret = nnmatBTF.evalLFTriDoubleSideFull(wo, wo, pos1, pos2);
-        // ret = nnmatBTF.evalLFTriDoubleSide(wo, wo, pos1, pos2);
-
-
-        if (gShowFeatureMap)
-            ret = nnmatBTF.evalFeatureMap(wo, wo, pos1, pos2, gFeatureLevel);
-        if (all(ret < HF_SCALE) && !gApplySyn)
-        {
-            return background;
-        }
-        // return float3(uv_remapped[0], uv_remapped[1], uv_remapped[2]);
-        return ret;
+        return background;
     }
-    return background;
+    // return float3(uv_remapped[0], uv_remapped[1], uv_remapped[2]);
+    // return ret;
+    return exp(ret) - 1.0f;
+
 }
 
 
@@ -789,14 +695,10 @@ float4 tracePath(const uint2 pixel, const uint2 frameDim)
     rayData.origin = primaryRayOrigin;
     rayData.direction = primaryRayDir;
 
-// #ifdef LFRENDERING
+    return float4(customSphereIntersectionTestLF(rayData, float3(0.0, 0, 0.0), 1), 1.0f);
 
-    return float4(customSphereIntersectionTestLF(rayData, float3(0.0,0, 0.0), 1), 1.0f);
-    // return float4(customSphereIntersectionTest(rayData, float3(0.0, -MAX_HEIGHT * 20, 0.0), MAX_HEIGHT * 20), 1.0f);
-// #endif
 
 //     return float4(customSphereIntersectionTestBTF(rayData, float3(0.0, 0, 0.0), 1), 1.0f);
-
 
 
 
@@ -892,95 +794,95 @@ void rayGen()
 void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
     // Load shading data.
-    ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
+    // ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
 
-    // Create material instance.
-    let lod = ExplicitLodTextureSampler(0.f);
-    let mi = gScene.materials.getMaterialInstance(sd, lod);
+    // // Create material instance.
+    // let lod = ExplicitLodTextureSampler(0.f);
+    // let mi = gScene.materials.getMaterialInstance(sd, lod);
 
-    float3 wo = sd.frame.toLocal(sd.V);
-    float3 wiWS; // world space incident direction
+    // float3 wo = sd.frame.toLocal(sd.V);
+    // float3 wiWS; // world space incident direction
 
-    float3 Li = evalDirectAnalytic(sd.computeRayOrigin(), rayData.sg, wiWS);
+    // float3 Li = evalDirectAnalytic(sd.computeRayOrigin(), rayData.sg, wiWS);
 
-    float uv_remapped[10];
+    // float uv_remapped[10];
 
-#ifdef LFRENDERING
-    rayData.terminated = true;
-    // float2 uv_raw = frac(abs(sd.uv) * UV_SCALE);
+// #ifdef LFRENDERING
+//     rayData.terminated = true;
+//     // float2 uv_raw = frac(abs(sd.uv) * UV_SCALE);
 
-    // nnmatT.evalT(wo, frac(uv_raw), uv_remapped);
-    // rayData.radiance = nnmatBTF.evalBTF(float3(0), wo, uv_remapped);
-    rayData.radiance = (sd.frame.N + 1) * 0.5 ;
-    return;
-#endif
+//     // nnmatT.evalT(wo, frac(uv_raw), uv_remapped);
+//     // rayData.radiance = nnmatBTF.evalBTF(float3(0), wo, uv_remapped);
+//     rayData.radiance = (sd.frame.N + 1) * 0.5 ;
+//     return;
+// #endif
 
-#ifdef POINTLIGHT
-    if (sd.materialID == 1)
-    {
-        float3 wi = sd.frame.toLocal(wiWS);
-        rayData.terminated = true;
-        float NdotL = wi.z > 0 ? wi.z : 0;
-        float2 uv_raw = frac(abs(sd.uv) * UV_SCALE);
-        // float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
-        //  rayData.radiance = Li * fr * NdotL;
+// #ifdef POINTLIGHT
+//     if (sd.materialID == 1)
+//     {
+//         float3 wi = sd.frame.toLocal(wiWS);
+//         rayData.terminated = true;
+//         float NdotL = wi.z > 0 ? wi.z : 0;
+//         float2 uv_raw = frac(abs(sd.uv) * UV_SCALE);
+//         // float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
+//         //  rayData.radiance = Li * fr * NdotL;
 
-        // float2 xy = uv_raw - wo.xy * 0.55;
-        // xy = clamp(xy, float2(0.0), float2(1.0));
-        // wo = normalize(float3(uv_raw - xy, 0.55));
-        // if (any(xy >= float2(1.0)) || any(xy <= float2(0.0)))
-        // {
+//         // float2 xy = uv_raw - wo.xy * 0.55;
+//         // xy = clamp(xy, float2(0.0), float2(1.0));
+//         // wo = normalize(float3(uv_raw - xy, 0.55));
+//         // if (any(xy >= float2(1.0)) || any(xy <= float2(0.0)))
+//         // {
 
-        //     return;
-        // }
+//         //     return;
+//         // }
 
-        rayData.terminated = true;
+//         rayData.terminated = true;
 
-        nnmatT.evalT(wo, frac(uv_raw), uv_remapped);
-        rayData.radiance = Li * nnmatBTF.evalBTF(wi, wo, uv_remapped) * NdotL;
-        // rayData.radiance = nnmatBTF.evalBTF(wi, wo, uv_raw);
-    }
-    else
-    {
-        rayData.terminated = true;
-        rayData.radiance = Li * mi.eval(sd, wiWS, rayData.sg);
-    }
-#endif
-    if (kUseEnvLight)
-    {
-        float3 envLi;
-        float envPdf;
-        if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, wiWS, envPdf))
-        {
-            if (sd.materialID == 1)
-            {
-                float3 wi = sd.frame.toLocal(wiWS);
-                // float3 wi = wiWS.xzy;
-                float NdotL = wi.z > 0 ? wi.z : 0;
-                float2 uv_raw = frac(abs(sd.uv) * UV_SCALE);
-                float2 xy = uv_raw - wo.xy * 0.55;
-                // if (any(xy >= float2(1.0)) || any(xy <= float2(0.0)))
-                // {
-                //     rayData.terminated = false;
-                //     return;
-                // }
-                xy = clamp(xy, float2(0.0), float2(1.0));
-                // wo = normalize(float3(uv_raw - xy, 0.55));
+//         nnmatT.evalT(wo, frac(uv_raw), uv_remapped);
+//         rayData.radiance = Li * nnmatBTF.evalBTF(wi, wo, uv_remapped) * NdotL;
+//         // rayData.radiance = nnmatBTF.evalBTF(wi, wo, uv_raw);
+//     }
+//     else
+//     {
+//         rayData.terminated = true;
+//         rayData.radiance = Li * mi.eval(sd, wiWS, rayData.sg);
+//     }
+// #endif
+//     if (kUseEnvLight)
+//     {
+//         float3 envLi;
+//         float envPdf;
+//         if (generateEnvMapSample(sd.computeRayOrigin(), rayData.sg, envLi, wiWS, envPdf))
+//         {
+//             if (sd.materialID == 1)
+//             {
+//                 float3 wi = sd.frame.toLocal(wiWS);
+//                 // float3 wi = wiWS.xzy;
+//                 float NdotL = wi.z > 0 ? wi.z : 0;
+//                 float2 uv_raw = frac(abs(sd.uv) * UV_SCALE);
+//                 float2 xy = uv_raw - wo.xy * 0.55;
+//                 // if (any(xy >= float2(1.0)) || any(xy <= float2(0.0)))
+//                 // {
+//                 //     rayData.terminated = false;
+//                 //     return;
+//                 // }
+//                 xy = clamp(xy, float2(0.0), float2(1.0));
+//                 // wo = normalize(float3(uv_raw - xy, 0.55));
 
-                // float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
-                nnmatT.evalT(wo, frac(uv_raw), uv_remapped);
-                float3 fr = nnmatBTF.evalBTF(wi, wo, uv_remapped);
+//                 // float3 fr = nnmat.evalDebug(wi, wo, uv_raw, 0, 0);
+//                 nnmatT.evalT(wo, frac(uv_raw), uv_remapped);
+//                 float3 fr = nnmatBTF.evalBTF(wi, wo, uv_remapped);
 
-                // float3 fr = float3(0.0f);
-                rayData.terminated = true;
-                rayData.radiance += envLi * fr * NdotL;
-            }
-            else
-            {
-                rayData.terminated = true;
-                rayData.radiance += envLi * mi.eval(sd, wiWS, rayData.sg);
-            }
-        }
-    }
+//                 // float3 fr = float3(0.0f);
+//                 rayData.terminated = true;
+//                 rayData.radiance += envLi * fr * NdotL;
+//             }
+//             else
+//             {
+//                 rayData.terminated = true;
+//                 rayData.radiance += envLi * mi.eval(sd, wiWS, rayData.sg);
+//             }
+//         }
+//     }
 }
 

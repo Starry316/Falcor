@@ -156,9 +156,9 @@ void NeuralMatRendering::tracingPass(RenderContext* pRenderContext, const Render
     mpNNMatT->bindShaderDataT(var["CB"]["nnmatT"]);
     mpNNMatBTF->bindShaderDataT(var["CB"]["nnmatBTF"]);
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, Falcor::uint3(targetDim, 1));
-    pRenderContext->submit(false);
-    pRenderContext->signal(mpFence.get());
-    mpFence->wait();
+    // pRenderContext->submit(false);
+    // pRenderContext->signal(mpFence.get());
+    // mpFence->wait();
 }
 
 // After the inference pass, we muliply the reflectance with the Li and write the result to the output buffer.

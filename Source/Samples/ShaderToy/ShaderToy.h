@@ -90,7 +90,7 @@ private:
     // std::string mNeuBTFName = "NeuLF_P5TB_peball_U800-8_H100-8_D100-8_h32_bt1_L1_Filter";
     // std::string mNeuBTFName = "NeuBTF_P5T3LPos_fur_hemi_btf_800_U800-12_H100-8_D100-8_h64_bt1_L1_Filter_Reg_HDR";
     // std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlend_wirefull_U600-8_H100-8_D100-8_h64_bt1_L1_Filter";
-       std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlendFullOct_wireoct_U800-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+    std::string mNeuBTFName = "NeuLF_DualTriP2OctBlend_wireoct_U800-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
 
 //     int mCudaInferTimes = 1;
     Falcor::float2 mWo = { 0.0f, 0.0f };

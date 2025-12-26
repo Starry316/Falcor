@@ -262,8 +262,8 @@ void PTTest::handleOutput()
     // const float phiStep = 1.0f / 15.0f;
     // const float thetaStep = 1.0f / 20.0f;
 
-    const float phiStep   = 1.0f / 60.0f;
-    const float thetaStep = 1.0f / 30.0f;
+    const float phiStep   = 1.0f / 40.0f;
+    const float thetaStep = 1.0f / 20.0f;
 
     // const float yStep = 1.0f / 100.0f;
     // const float vStep = 1.0f / 100.0f;
@@ -311,7 +311,7 @@ void PTTest::handleOutput()
                 // if (mViewTheta >= 0.95f)
 
             }
-            if (mViewTheta >= 0.99f)
+            if (mViewTheta >= 0.98f)
             {
                     // finalize/stop outputing
                     mViewTheta = 0.0f;

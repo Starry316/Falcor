@@ -123,6 +123,11 @@ NNMat::NNMat(ref<Device> pDevice, std::string networkName, bool isT, bool isWi)
 
     Sampler::Desc samplerDesc = Sampler::Desc();
     samplerDesc.setFilterMode(TextureFilteringMode::Point, TextureFilteringMode::Point, TextureFilteringMode::Point);
+    samplerDesc.setAddressingMode(
+        TextureAddressingMode::Border,
+        TextureAddressingMode::Border,
+        TextureAddressingMode::Border
+    );
     mpPointSampler = pDevice->createSampler(samplerDesc);
 
 

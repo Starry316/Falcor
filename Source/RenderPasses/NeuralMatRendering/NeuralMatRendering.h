@@ -336,6 +336,12 @@ private:
     // std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlend_fur_ss_al1_U1500-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
     // std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlendFullOct_wireoct_U800-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
     // std::string mNeuBTFName = "NeuLF_3DP2PosDoulbeFaceBlendFull_fur_hemi5_U1000-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
-    std::string mNeuBTFName = "NeuLF_DualTriP2_fur_hemi5_U1000-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+    // std::string mNeuBTFName = "NeuLF_DualTriP2_fur_hemi5_U1000-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+
+    // std::string mNeuBTFName = "NeuLF_DualTriP2OctBlend_bunny_U800-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+    // std::string mNeuBTFName = "NeuLF_DualTriP2Blend_fur_hemi4_U900-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+    // std::string mNeuBTFName = "NeuLF_DualTriP2BlendHR_fur_overfit_U1000-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
+    std::string mNeuBTFName = "NeuLF_DualTriP2BlendHR_fur_U500-8_H100-8_D100-8_h64_bt1_L1_Filter_grad";
 
 };
+
