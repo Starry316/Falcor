@@ -61,6 +61,7 @@ import Scene.Raytracing;
 import Scene.Intersection;
 import Utils.Math.MathHelpers;
 import Utils.Geometry.GeometryHelpers;
+import Utils.Geometry.IntersectionHelpers;
 import Utils.Sampling.SampleGenerator;
 import Rendering.Lights.LightHelpers;
 import Rendering.Lights.EnvMapSampler;
@@ -368,7 +369,20 @@ bool generateEnvMapSample(float3 origin, inout SampleGenerator sg, inout float3 
 
     return any(Li > 0.f);
 }
+float3 SnapToVoxelCenter(float3 p)
+{
+    const int N = 100;
+    const float h = 2.0 / N;
+    const float3 firstCenter = float3(-1.0 + 0.5 * h);
 
+    // clamp p into the voxelable region for centers
+    float3 p2 = clamp(p, float3(-1.0), float3(1.0));
+
+    int3 i = int3(round((p2 - firstCenter) / h));
+    i = clamp(i, int3(0), int3(N - 1));
+
+    return firstCenter + i * h;
+}
 /**
  * Process a hit.
  * Loads the shading data, samples analytic lights and samples a new scatter ray.
@@ -387,7 +401,12 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
 
     if (gShowOffset) {
-        rayData.radiance = sd.frame.N;
+        // rayData.radiance = sd.frame.N;
+        // rayData.radiance = distance(rayData.origin, sd.posW);
+
+        //rayData.radiance = SnapToVoxelCenter(sd.posW).xzy;
+        rayData.radiance = sd.posW.xzy;
+
         rayData.terminated = true;
         return;
     }
@@ -443,20 +462,26 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     rayData.pathLength++;
 }
 
-/**
- * This is the main entry point for the minimal path tracer.
- *
- * One path per pixel is generated, which is traced into the scene.
- * The path tracer is written as a for-loop over path segments.
- *
- * Built-in light sources (point, directional) are sampled explicitly at each
- * path vertex. The contributions from area lights (env map and mesh lights)
- * are explicitly added by the scatter ray hit/miss shaders.
- *
- * @param[in] pixel Pixel to trace a path for.
- * @param[in] frameDim Dimension of the frame in pixels.
- * @return Returns the estimated color (radiance).
- */
+ScatterRayData traceFullSpherePosPrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
+    float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
+
+    // ndir_to_oct_equal_area_unorm
+    float3 primaryRayOrigin;
+    primaryRayOrigin = spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI)).xzy;
+    float R = gViewHeight;
+    primaryRayOrigin = primaryRayOrigin * R;
+    float3 primaryRayDir;
+    primaryRayDir = oct_to_ndir_equal_area_unorm(originUV).xzy;
+
+
+    // Prepare ray payload.
+    ScatterRayData rayData = ScatterRayData(sg);
+    rayData.origin = primaryRayOrigin;
+    rayData.direction = primaryRayDir;
+    rayData.pathLength = 1;
+    traceScatterRay(rayData);
+    return rayData;
+}
 float3 tracePath(const uint2 pixel, const uint2 frameDim)
 {
 
@@ -473,20 +498,19 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
     // ScatterRayData rayData = tracePrimaryRay(pixel, frameDim, sg);
     if (gBTFViewMode)
         // rayData = traceBTFPrimaryRay(pixel, frameDim, sg);
-        rayData = traceFullSpherePrimaryRay(pixel, frameDim, sg);
+        if (gPluckerMode)
+            rayData = traceFullSpherePosPrimaryRay(pixel, frameDim, sg);
+        else
+            rayData = traceFullSpherePrimaryRay(pixel, frameDim, sg);
+
+
     else
         rayData = tracePrimaryRay(pixel, frameDim, sg);
 
-    if (gShowOffset) {
-        float3 ret = rayData.radiance;
-        // float3 ret = rayData.origin.y;
-        ret = 0.5 + 0.5 * ret;
-        return ret;
-    }
-
-    // if (gBTFViewMode) {
-    //     if (any(abs(rayData.origin.xz) >= 0.5 * gViewSize))
-    //         return float3(1.0f);
+    // if (gShowOffset) {
+    //     float3 ret = abs(rayData.origin);
+    //     if (rayData.terminated) ret = -5.0f;
+    //     return ret;
     // }
 
     for (uint bounce = 0; bounce < gMaxBounces; bounce++) {
@@ -503,7 +527,8 @@ float3 fromLocal(const float3 v, const float3 T, const float3 B, const float3 N)
 
 
 ScatterRayData traceFullSpherePrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
-    float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
+    // float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
+    float2 originUV = ((float2)pixel + 0.5f) / (float2)frameDim;
 
     // ndir_to_oct_equal_area_unorm
     float3 primaryRayOrigin;
@@ -633,7 +658,12 @@ void scatterMiss(inout ScatterRayData rayData)
     rayData.terminated = true;
     if (rayData.pathLength == 1) {
         rayData.radiance = 0;
-        if (gShowOffset) rayData.radiance = -1;
+        if (gShowOffset) {
+
+            // float t;
+            // intersectRaySphere(rayData.origin, rayData.direction, float3(0), 1.1, t, 0.f, kRayTMax, false);
+            rayData.radiance = 0;
+        }
         return;
     }
 

@@ -262,8 +262,8 @@ void PTTest::handleOutput()
     // const float phiStep = 1.0f / 15.0f;
     // const float thetaStep = 1.0f / 20.0f;
 
-    const float phiStep   = 1.0f / 40.0f;
-    const float thetaStep = 1.0f / 20.0f;
+    // const float phiStep   = 1.0f / phiCount;
+    // const float thetaStep = 1.0f / thetaCount;
 
     // const float yStep = 1.0f / 100.0f;
     // const float vStep = 1.0f / 100.0f;
@@ -297,21 +297,18 @@ void PTTest::handleOutput()
         // else
         // {
             mViewPhi += phiStep;
-            mSampleTheta += thetaStep * phiStep;
-            float cosTheta = 1.0f - 2.0f * mSampleTheta;
-            mViewTheta = acosf(cosTheta) / M_PI;
+
             // mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
             // mViewTheta += thetaStep * phiStep;
-            if (mViewPhi >= 1.0f)
+            if (mViewPhi >= 0.999999f)
             {
                 // Reset theta to original small value and carry to phi
                 mViewPhi = 0.0f;
-                // mViewTheta += thetaStep;
-                // If phi wrapped past end, we've finished the full nested iteration
-                // if (mViewTheta >= 0.95f)
-
+                mSampleTheta += thetaStep;
+                float cosTheta = 1.0f - 2.0f * mSampleTheta;
+                mViewTheta = acosf(cosTheta) / M_PI;
             }
-            if (mViewTheta >= 0.98f)
+            if (mSampleTheta >= 0.999999f)
             {
                     // finalize/stop outputing
                     mViewTheta = 0.0f;
@@ -504,7 +501,10 @@ void PTTest::renderUI(Gui::Widgets& widget)
             dirty = true;
             mLightTheta = 0.01f;
             // mViewTheta = 0.05f;
-            mViewTheta = 0.01f;
+            // mSampleTheta = thetaStep * 0.1f;
+            mSampleTheta = 0.01f;
+            mViewPhi = 0.0f;
+            mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
             pY = 0.0f;
             pV = 0.0f;
 

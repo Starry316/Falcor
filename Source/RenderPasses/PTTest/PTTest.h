@@ -122,4 +122,10 @@ private:
     std::shared_ptr<NNMat> mpNNMatBTF;
     std::string mNeuBTFName = "NeuBTF_P5Dir_carpet02_U400-8_H100-8_D100-8_h32_bt1_L1_Filter";
 
+    float phiCount = 60.0f;
+    float thetaCount = 30.0f;
+
+    float phiStep   = 1.0f / phiCount;
+    float thetaStep = 0.98f / (thetaCount - 1.0f);
+
 };
