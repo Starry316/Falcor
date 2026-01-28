@@ -5,6 +5,9 @@ target_sources(HelloDXR PRIVATE
     HelloDXR.h
     HelloDXR.3d.slang
     HelloDXR.rt.slang
+    SSR.cs.slang
+    utils.slangh
+    PostProcess.cs.slang
 )
 
 target_copy_shaders(HelloDXR Samples/HelloDXR)

@@ -36,7 +36,56 @@ extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registr
 {
     registry.registerClass<RenderPass, PTTest>();
 }
+float3 spherical_to_cartesian_radXZY(float2 sph)
+{
+    float3 p;
+    p.x = -cos(sph.y - M_PI) * sin(sph.x);
+    p.z = -sin(sph.y - M_PI) * sin(sph.x);
+    p.y = cos(sph.x);
+    return p;
+}
 
+float4x4 MakeViewFromCameraPos(float3 cameraPos)
+{
+    // Forward: from camera to origin
+    float3 fwd = normalize(-cameraPos);
+
+    // Stable Y-up basis
+    float3 worldUp = float3(0.0f, 1.0f, 0.0f);
+    if (abs(dot(fwd, worldUp)) > 0.99999999f)
+        worldUp = float3(0.0f, 0.0f, 1.0f);
+
+    float3 right = normalize(cross(worldUp, fwd));
+    float3 up = cross(fwd, right);
+
+    // World -> Camera:
+    // x = dot(right, P) - dot(right, C)
+    // y = dot(up,    P) - dot(up,    C)
+    // z = dot(fwd,   P) - dot(fwd,   C)
+    return float4x4{
+        right.x,
+        right.y,
+        right.z,
+        -dot(right, cameraPos),
+        up.x,
+        up.y,
+        up.z,
+        -dot(up, cameraPos),
+        fwd.x,
+        fwd.y,
+        fwd.z,
+        -dot(fwd, cameraPos),
+        0.f,
+        0.f,
+        0.f,
+        1.f};
+}
+float4x4 makeOrthoProjection(float halfSize)
+{
+    float inv = (halfSize != 0.f) ? (1.f / halfSize) : 0.f;
+
+    return float4x4{inv, 0.f, 0.f, 0.f, 0.f, inv, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f};
+}
 namespace
 {
 const char kShaderFile[] = "RenderPasses/PTTest/MinimalPathTracer.rt.slang";
@@ -229,10 +278,38 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     mFrameCount++;
 }
 
-
-
 void PTTest::handleOutput()
 {
+    if (mPluckerMode){
+        auto camera = mpScene->getCamera();
+        camera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
+        if (!camera->isNextStep())
+        {
+            return;
+        }
+        camera->setNextStep(false);
+        camera->setAccumulating(mIsOutputing);
+        camera->setOutputFrameCount(mOutputSPP);
+        mOutputIndx++;
+
+        mViewPhi += 0.166667f;
+
+        if (mViewPhi >= 0.999999f)
+        {
+             // finalize/stop outputing
+            mViewTheta = 0.0f;
+            mOutputStep = 0;
+            mOutputIndx = 0;
+            mpScene->getCamera()->setResetFlag(true);
+            mpScene->getCamera()->setNextStep(false);
+            mIsOutputing = false;
+            mpScene->getCamera()->setAccumulating(false);
+        }
+        return;
+    }
+
+
+
     auto camera = mpScene->getCamera();
     if (!mChangeLight)
     {
@@ -296,29 +373,29 @@ void PTTest::handleOutput()
 
         // else
         // {
-            mViewPhi += phiStep;
+        mViewPhi += phiStep;
 
-            // mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
-            // mViewTheta += thetaStep * phiStep;
-            if (mViewPhi >= 0.999999f)
-            {
-                // Reset theta to original small value and carry to phi
-                mViewPhi = 0.0f;
-                mSampleTheta += thetaStep;
-                float cosTheta = 1.0f - 2.0f * mSampleTheta;
-                mViewTheta = acosf(cosTheta) / M_PI;
-            }
-            if (mSampleTheta >= 0.999999f)
-            {
-                    // finalize/stop outputing
-                    mViewTheta = 0.0f;
-                    mOutputStep = 0;
-                    mOutputIndx = 0;
-                    mpScene->getCamera()->setResetFlag(true);
-                    mpScene->getCamera()->setNextStep(false);
-                    mIsOutputing = false;
-                    mpScene->getCamera()->setAccumulating(false);
-            }
+        // mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
+        // mViewTheta += thetaStep * phiStep;
+        if (mViewPhi >= 0.999999f)
+        {
+            // Reset theta to original small value and carry to phi
+            mViewPhi = 0.0f;
+            mSampleTheta += thetaStep;
+            float cosTheta = 1.0f - 2.0f * mSampleTheta;
+            mViewTheta = acosf(cosTheta) / M_PI;
+        }
+        if (mSampleTheta >= 0.999999f)
+        {
+            // finalize/stop outputing
+            mViewTheta = 0.0f;
+            mOutputStep = 0;
+            mOutputIndx = 0;
+            mpScene->getCamera()->setResetFlag(true);
+            mpScene->getCamera()->setNextStep(false);
+            mIsOutputing = false;
+            mpScene->getCamera()->setAccumulating(false);
+        }
         // }
     }
 
@@ -471,6 +548,37 @@ void PTTest::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Show offset", mShowOffset);
     dirty |= widget.checkbox("Change Light", mChangeLight);
 
+    if (widget.button("Print VP Matrix"))
+    {
+        float3 cameraPos = float3(5) * spherical_to_cartesian_radXZY(float2(mViewTheta * M_PI, mViewPhi * M_2PI));
+        float4x4 V = MakeViewFromCameraPos(cameraPos);
+        float4x4 P = makeOrthoProjection(1);
+        logInfo("V Matrix: \n{}", to_string(V));
+        logInfo(
+            "\n[[{}, {}, {}, {}], \n[{}, {}, {}, {}], \n[{}, {}, {}, {}], \n[{}, {}, {}, {}]],",
+            V[0][0],
+            V[0][1],
+            V[0][2],
+            V[0][3],
+            V[1][0],
+            V[1][1],
+            V[1][2],
+            V[1][3],
+            V[2][0],
+            V[2][1],
+            V[2][2],
+            V[2][3],
+            V[3][0],
+            V[3][1],
+            V[3][2],
+            V[3][3]
+        );
+        // logInfo("[{}, {}, {}, {}],", V[1][0], V[1][1], V[1][2],V[1][3]);
+        // logInfo("[{}, {}, {}, {}],", V[2][0], V[2][1], V[2][2],V[2][3]);
+        // logInfo("[{}, {}, {}, {}]]", V[3][0], V[3][1], V[3][2],V[3][3]);
+        logInfo("P Matrix: \n{}", to_string(P));
+    }
+
     if (!mChangeLight)
     {
         widget.textbox("Output Path", mOutputPath);
@@ -503,8 +611,10 @@ void PTTest::renderUI(Gui::Widgets& widget)
             // mViewTheta = 0.05f;
             // mSampleTheta = thetaStep * 0.1f;
             mSampleTheta = 0.01f;
+            // mSampleTheta = 0.2f;
             mViewPhi = 0.0f;
             mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
+            mViewTheta = 0.3f;
             pY = 0.0f;
             pV = 0.0f;
 
@@ -631,7 +741,7 @@ void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
         mTracer.pProgram = Program::create(mpDevice, desc, mpScene->getSceneDefines());
     }
 #ifdef NN_PRECOMPUTE
-    mpNNMatT   = std::make_shared<NNMat>(mpDevice, mNeuBTFName, 1, 0);
+    mpNNMatT = std::make_shared<NNMat>(mpDevice, mNeuBTFName, 1, 0);
     mpNNMatBTF = std::make_shared<NNMat>(mpDevice, mNeuBTFName, 0, 1);
 #endif
 }

@@ -29,7 +29,7 @@
 #include "Falcor.h"
 #include "Core/SampleApp.h"
 #include "Core/Pass/RasterPass.h"
-
+#include "Utils/Debug/PixelDebug.h"
 using namespace Falcor;
 
 class HelloDXR : public SampleApp
@@ -50,18 +50,47 @@ private:
     void setPerFrameVars(const Fbo* pTargetFbo);
     void renderRaster(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
     void renderRT(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
+    void postprocess(RenderContext* pRenderContext, const ref<Fbo>& pTargetFbo);
 
     ref<Scene> mpScene;
     ref<Camera> mpCamera;
 
     ref<RasterPass> mpRasterPass;
-
+    ref<ComputePass> mpSSRPass;
+    ref<ComputePass> mpPostProcessPass;
     ref<Program> mpRaytraceProgram;
     ref<RtProgramVars> mpRtVars;
     ref<Texture> mpRtOut;
+    ref<Texture> mpPostOut;
+    ref<Texture> mpBillboards;
+    ref<Texture> mpReference;
 
-    bool mRayTrace = true;
+    ref<Fbo> mpBillboardFbo;
+
+    ref<Buffer> mpViewProjBuffer;
+    ref<Buffer> mpViewProjInvBuffer;
+    ref<Buffer> mpBillboardNormalBuffer;
+
+    std::unique_ptr<PixelDebug> mpPixelDebug;
+
+    bool mRayTrace = false;
     bool mUseDOF = false;
+    bool mShowBillboard = false;
+    bool mCreateBillboards = true;
+    bool mShowDiff = false;
+    bool mDebugMode = false;
 
+    // normalized theta/phi view angles for billboard creation
+    float mViewTheta = 0.3f;
+    float mViewPhi = 0.0f;
+    float mInvalidThreshold = 0.001f;
+    float mMaxInvalidThreshold = 0.8f;
+    float mThickness = 10.1f;
+
+    bool3 mViewRenderMask = bool3(true, true, true);
+
+    uint mShowBillboardID = 0;
+    uint mBillboardRenderID = 0;
+    uint mFrameCount = 0;
     uint32_t mSampleIndex = 0xdeadbeef;
 };

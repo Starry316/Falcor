@@ -1,0 +1,98 @@
+// checkerboard pattern for background
+float3 checkerboard(const uint2 pixel)
+{
+    // Draw a checkerboard pattern.
+    return ((pixel.x ^ pixel.y) & 0x8) != 0 ? float3(0.5f) : float3(0.1f);
+}
+
+
+inline float calWeight3(float a1, float a2,float a3,float a4,float b1,float b2, float b3,float b4,float c1, float c2, float c3,float c4){
+    float k = (a1*c2-c1*a2)/(a1*b2-b1*a2);
+    float ret1 = c4-(c1*a4/a1)-k*(b4-(b1*a4/a1));
+    float ret2 = c3-(c1*a3/a1)-k*(b3-(b1*a3/a1));
+    return abs(ret1 / ret2);
+}
+
+inline float calWeight2(float a1, float a2,float a3,float a4, float c1, float c2, float c3,float c4, float w3){
+    float ret1 = ((a1*c4-c1*a4) -(a1*c3-c1*a3)*w3);
+    float ret2 = a1*c2-c1*a2;
+    return abs(ret1 / ret2);
+}
+inline float calWeight1(float a1, float a2,float a3, float a4, float w2, float w3){
+    return abs((a4-a2*w2-a3*w3) / a1);
+}
+// solve w1*n1 + w2*n2 + w3*n3 = n4 using Gaussian elimination
+float3 calViewWeight(float3 n1, float3 n2, float3 n3, float3 n4){
+    float w3 = calWeight3(n1.x, n2.x, n3.x, n4.x,
+                                        n1.y, n2.y, n3.y, n4.y,
+                                        n1.z, n2.z, n3.z, n4.z);
+    float w2 = calWeight2(n1.x, n2.x, n3.x, n4.x,
+                                        n1.z, n2.z, n3.z, n4.z, w3);
+    float w1 = calWeight1(n1.x, n2.x, n3.x, n4.x,
+                                        w2, w3);
+    float wSum = w1+w2+w3;
+    if (wSum <=0)
+    {
+        return 0;
+    }
+    return float3(1)/3;
+    // return float3(w1, w2, w3)/wSum;
+}
+
+/**
+ * Ray-sphere intersection.
+ * This function implements the standard analytic test with improvements to floating-point precision
+ * and returns the closest hit.
+ * @param[in] rayOrigin Ray origin.
+ * @param[in] rayDir Ray direction (does not have to be normalized).
+ * @param[in] center Sphere center.
+ * @param[in] radius Sphere radius.
+ * @param[out] t Distance to the closest intersection.
+ * @return True if the ray intersects the sphere.
+ */
+bool intersectRaySphere(
+    const float3 rayOrigin,
+    const float3 rayDir,
+    const float3 sphereCenter,
+    const float sphereRadius,
+    out float2 nearFar,
+    const float tMin = 0.f,
+    const float tMax = 1e36f,
+    const bool backfaceCull = false
+)
+{
+    float t;
+    t = {};
+
+    // Implementation is taken from Chapter 7 of Ray-Tracing Gems
+    float3 f = rayOrigin - sphereCenter;
+    float a = dot(rayDir, rayDir);
+    float b = dot(-f, rayDir);
+    float discriminant = sphereRadius * sphereRadius - dot(f + b / a * rayDir, f + b / a * rayDir);
+
+    // Negative discriminant means ray missed sphere.
+    if (discriminant < 0.f)
+        return false;
+
+    // If b and discriminant are both 0, then the ray's origin lies on the sphere
+    if (b == 0 && discriminant == 0 && tMin <= 0)
+    {
+        t = 0.f;
+        return (t <= tMax);
+    }
+
+    // There are two solutions t0 and t1, but one or both may be negative.
+    float c = dot(f, f) - sphereRadius * sphereRadius;
+    float signB = (b < 0) ? -1 : 1;
+    float q = b + signB * sqrt(a * discriminant);
+    float t0 = c / q;
+    float t1 = q / a;
+
+    float tc = (t0 < tMin && !backfaceCull) ? t1 : t0; // tc is the closest hit we care about
+    if (tc < tMin)
+        return false;
+
+    t = tc;
+    nearFar = float2(t0 < t1 ? t0 : t1, t0 < t1 ? t1 : t0);
+    return (t <= tMax);
+}

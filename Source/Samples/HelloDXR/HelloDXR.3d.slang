@@ -28,36 +28,99 @@
 import Scene.Raster;
 import Utils.Sampling.TinyUniformSampleGenerator;
 import Rendering.Lights.LightHelpers;
+import Utils.Math.MathHelpers;
+cbuffer PerFrameCB
+{
+    uint2 gFrameDim;
+    uint gBillboardRenderID;
+    float gViewTheta;
+    float gViewPhi;
+    float4x4 viewMat;
+    float4x4 projMat;
+    bool gCreateBillboards;
+};
+
+RasterizerOrderedTexture2DArray<float4> gBillboards;
+RasterizerOrderedTexture2D<float4> gReference;
+StructuredBuffer<float4x4> gViewProjBuffer;
+#define is_valid(name) (is_valid_##name != 0)
+
+
+VSOut orthogonalVS(VSIn vIn)
+{
+    VSOut vOut;
+    const GeometryInstanceID instanceID = { vIn.instanceID };
+
+    float4x4 worldMat = gScene.getWorldMatrix(instanceID);
+    float3 posW = mul(worldMat, float4(vIn.pos, 1.f)).xyz;
+    vOut.posW = posW;
+
+    vOut.posH = mul(gViewProjBuffer[gBillboardRenderID], float4(posW, 1.f));
+
+    vOut.instanceID = instanceID;
+    vOut.materialID = gScene.getMaterialID(instanceID);
+
+    vOut.texC = vIn.texC;
+    vOut.normalW = mul(gScene.getInverseTransposeWorldMatrix(instanceID), vIn.unpack().normal);
+    float4 tangent = vIn.unpack().tangent;
+    vOut.tangentW = float4(mul((float3x3)gScene.getWorldMatrix(instanceID), tangent.xyz), tangent.w);
+
+    // Compute the vertex position in the previous frame.
+    float3 prevPos = vIn.pos;
+    GeometryInstanceData instance = gScene.getGeometryInstance(instanceID);
+    if (instance.isDynamic())
+    {
+        uint prevVertexIndex = gScene.meshes[instance.geometryID].prevVbOffset + vIn.vertexID;
+        prevPos = gScene.prevVertices[prevVertexIndex].position;
+    }
+    float3 prevPosW = mul(gScene.getPrevWorldMatrix(instanceID), float4(prevPos, 1.f)).xyz;
+    vOut.prevPosH = mul(gScene.camera.data.prevViewProjMatNoJitter, float4(prevPosW, 1.f));
+
+    return vOut;
+}
 
 VSOut vsMain(VSIn vIn)
 {
+    if(gCreateBillboards)
+        return orthogonalVS(vIn);
     return defaultVS(vIn);
 }
-
+[earlydepthstencil]
 float4 psMain(VSOut vsOut, uint triangleIndex: SV_PrimitiveID) : SV_TARGET
 {
     let lod = ImplicitLodTextureSampler();
     if (alphaTest(vsOut, triangleIndex, lod))
         discard;
 
+    uint2 pixel = uint2(vsOut.posH.xy - 0.5);
+
     float3 viewDir = normalize(gScene.camera.getPosition() - vsOut.posW);
     ShadingData sd = prepareShadingData(vsOut, triangleIndex, viewDir);
 
-    // Create material instance.
-    let mi = gScene.materials.getMaterialInstance(sd, lod);
+    // // Create material instance.
+    // let mi = gScene.materials.getMaterialInstance(sd, lod);
 
-    float3 color = mi.getProperties(sd).emission;
+    // float3 color = mi.getProperties(sd).emission;
 
-    uint3 launchIndex = DispatchRaysIndex();
-    TinyUniformSampleGenerator sg = TinyUniformSampleGenerator(launchIndex.xy, 0);
+    // TinyUniformSampleGenerator sg = TinyUniformSampleGenerator(pixel, 0);
 
-    // Direct lighting from analytic light sources
-    for (int i = 0; i < gScene.getLightCount(); i++)
-    {
-        AnalyticLightSample ls;
-        evalLightApproximate(sd.posW, gScene.getLight(i), ls);
-        color += mi.eval(sd, ls.dir, sg) * ls.Li;
-    }
+    // // Direct lighting from analytic light sources
+    // for (int i = 0; i < gScene.getLightCount(); i++)
+    // {
+    //     AnalyticLightSample ls;
+    //     evalLightApproximate(sd.posW, gScene.getLight(i), ls);
+    //     color += mi.eval(sd, ls.dir, sg) * ls.Li;
+    // }
 
-    return float4(color, 1.f);
+    // gBillboards[uint3(pixel.x, pixel.y, gBillboardRenderID)] = float4(0.5f * vsOut.normalW + 0.5f, 1.0f);
+    if (gCreateBillboards)
+        gBillboards[uint3(pixel.x, pixel.y, gBillboardRenderID)] = vsOut.posH.z;
+        // gBillboards[uint3(pixel.x, pixel.y, 1)] = 0.5f * vsOut.tangentW + 0.5f;
+    // gBillboards[uint3(pixel.x, pixel.y, 2)] = float4(0.5f * vsOut.texC + 0.5f, 1.0f);
+    // gBillboards[uint3(pixel.x, pixel.y, 3)] = float4(0.5f * vsOut.posW + 0.5f, 1.0f);
+
+    // return float4(color, 1.f);
+    float4 ret = float4(0.5f * vsOut.posW + 0.5f, 1.0f);
+    gReference[pixel] = ret;
+    return ret;
 }

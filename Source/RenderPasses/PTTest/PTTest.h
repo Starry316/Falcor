@@ -58,6 +58,9 @@ private:
     void parseProperties(const Properties& props);
     void prepareVars();
 
+
+
+
     // Internal state
 
     /// Current scene.
@@ -93,7 +96,7 @@ private:
     float mLightTheta = 0;
     float mLightPhi = 0;
 
-    float mViewTheta = 0;
+    float mViewTheta = 0.3f;
     float mViewPhi = 0;
     float mViewSize = 1;
     float mViewHeight = 1;

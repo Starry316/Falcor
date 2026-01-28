@@ -231,7 +231,45 @@ float3 getPrimaryRayDir(uint2 launchIndex, uint2 launchDim, const Camera camera,
 
     // return camera.computeRayPinhole(launchIndex, launchDim).dir;
 }
+// Simple orthographic primary ray generator.
+// Assumptions:
+// - World up is +Y.
+// - Camera always looks at the origin (0,0,0).
+// - Camera position lies on a sphere centered at the origin.
+// - Ortho view half-size (radius) = 1 in world units.
+// - jitter is in *pixel units* (e.g., [-0.5,0.5]).
 
+void getPrimaryOrthogonalRayPos(
+    uint2 launchIndex,
+    uint2 launchDim,
+    float3 cameraPos,
+    float2 jitter,
+    inout float3 rayDir,
+    inout float3 rayPos )
+{
+    // Forward: from camera to origin
+    float3 fwd = normalize(-cameraPos);
+
+    // Stable Y-up basis
+    float3 worldUp = float3(0.0f, 1.0f, 0.0f);
+
+    // If looking almost straight up/down, switch to a different up to avoid degeneracy
+    if (abs(dot(fwd, worldUp)) > 0.99999999f) worldUp = float3(0.0f, 0.0f, 1.0f);
+
+    float3 right = normalize(cross(worldUp, fwd));
+    float3 up = cross(fwd, right); // already normalized if fwd/right are normalized
+
+    // Pixel -> NDC in [-1,1], origin top-left
+    float2 p = (float2(launchIndex) + jitter) / float2(launchDim); // [0,1]
+    float2 ndc = float2(p.x * 2.0f - 1.0f, 1.0f - p.y * 2.0f);
+
+    // Ortho half-size (view radius) = 1
+    const float halfSize = 1.0f;
+
+    // Ray: constant direction, origin slides on the image plane
+    rayDir = fwd;
+    rayPos = cameraPos + right * (ndc.x * halfSize) + up * (ndc.y * halfSize);
+}
 
 /**
  * Traces a shadow ray towards a light source.
@@ -405,7 +443,8 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         // rayData.radiance = distance(rayData.origin, sd.posW);
 
         //rayData.radiance = SnapToVoxelCenter(sd.posW).xzy;
-        rayData.radiance = sd.posW.xzy;
+        // rayData.radiance = sd.posW.xzy;
+        rayData.radiance = sd.posW;
 
         rayData.terminated = true;
         return;
@@ -467,11 +506,11 @@ ScatterRayData traceFullSpherePosPrimaryRay(const uint2 pixel, const uint2 frame
 
     // ndir_to_oct_equal_area_unorm
     float3 primaryRayOrigin;
-    primaryRayOrigin = spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI)).xzy;
-    float R = gViewHeight;
-    primaryRayOrigin = primaryRayOrigin * R;
     float3 primaryRayDir;
-    primaryRayDir = oct_to_ndir_equal_area_unorm(originUV).xzy;
+    float3 cameraPos = spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI)).xzy * 5;
+
+    // getPrimaryOrthogonalRayPos(pixel, frameDim, cameraPos, sampleNext2D(sg), primaryRayDir, primaryRayOrigin);
+    getPrimaryOrthogonalRayPos(pixel, frameDim, cameraPos, 0.5, primaryRayDir, primaryRayOrigin);
 
 
     // Prepare ray payload.
@@ -527,8 +566,8 @@ float3 fromLocal(const float3 v, const float3 T, const float3 B, const float3 N)
 
 
 ScatterRayData traceFullSpherePrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
-    // float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
-    float2 originUV = ((float2)pixel + 0.5f) / (float2)frameDim;
+    float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
+    // float2 originUV = ((float2)pixel + 0.5f) / (float2)frameDim;
 
     // ndir_to_oct_equal_area_unorm
     float3 primaryRayOrigin;
