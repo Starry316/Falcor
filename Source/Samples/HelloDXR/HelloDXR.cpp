@@ -28,15 +28,15 @@
 #include "HelloDXR.h"
 #include "Utils/Math/FalcorMath.h"
 #include "Utils/UI/TextRenderer.h"
+#include "SSRDefs.slangh"
 
 FALCOR_EXPORT_D3D12_AGILITY_SDK
-#define TOTAL_VIEWS 32
-#define BILLBOARD_RESOLUTION 500
+
 // static const float4 kClearColor(0.38f, 0.52f, 0.10f, 1);
-// static const float4 kClearColor(0.38f, 0.38f, 0.38f, 1);
 static const float4 kClearColor(0.38f, 0.38f, 0.38f, 1);
-// static const std::string kDefaultScene = "Arcade/Arcade.pyscene";
+// static const float4 kClearColor(0.0f, 0.0f, 0.0f, 1);
 static const std::string kDefaultScene = "neural_materials/scene/PTFullObjTest.pyscene";
+// static const std::string kDefaultScene = "neural_materials/scene/plane.pyscene";
 
 void createTex(ref<Texture>& tex, ref<Device> device, Falcor::uint2 targetDim, uint arraySize)
 {
@@ -67,8 +67,8 @@ float3 spherical_fibonacci_hemi(int i, int N)
 {
     constexpr float golden_ratio = 1.61803398875f;
     float phi = M_2PI * ((float)i / golden_ratio - std::floor((float)i / golden_ratio));
-    // float z = (1.0f - (float)(i + 1) / (float)N) * 2.0f - 1.0f;
-    float z = ( (float)i + 0.5f ) / (float)N;
+    float z = (1.0f - (float)(i + 1) / (float)N) * 2.0f - 1.0f;
+    // float z = ( (float)i + 0.5f ) / (float)N;
     return spherical_to_cartesian_radXZY(float2(std::acos(z), phi));
 }
 HelloDXR::HelloDXR(const SampleAppConfig& config) : SampleApp(config) {}
@@ -125,15 +125,12 @@ void HelloDXR::onLoad(RenderContext* pRenderContext)
 
     mpPixelDebug = std::make_unique<PixelDebug>(getDevice());
 
-
-    mpBillboardFbo = Fbo::create2D(
-        getDevice(),
-        BILLBOARD_RESOLUTION,
-        BILLBOARD_RESOLUTION,
-        ResourceFormat::RGBA32Float,
-        ResourceFormat::D32Float
-    );
-
+    mpBillboardFbo =
+        Fbo::create2D(getDevice(), BILLBOARD_RESOLUTION, BILLBOARD_RESOLUTION, ResourceFormat::RGBA32Float, ResourceFormat::D32Float);
+    Sampler::Desc samplerDesc = Sampler::Desc();
+    samplerDesc.setReductionMode(TextureReductionMode::Max);
+    samplerDesc.setFilterMode(TextureFilteringMode::Point, TextureFilteringMode::Point, TextureFilteringMode::Point);
+    mpMaxSampler = getDevice()->createSampler(samplerDesc);
 }
 
 void HelloDXR::onResize(uint32_t width, uint32_t height)
@@ -151,6 +148,9 @@ void HelloDXR::onResize(uint32_t width, uint32_t height)
         width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, ResourceBindFlags::UnorderedAccess | ResourceBindFlags::ShaderResource
     );
     createTex(mpBillboards, getDevice(), Falcor::uint2(BILLBOARD_RESOLUTION, BILLBOARD_RESOLUTION), TOTAL_VIEWS);
+    createTex(mpBillboardColors, getDevice(), Falcor::uint2(BILLBOARD_RESOLUTION, BILLBOARD_RESOLUTION), TOTAL_VIEWS);
+    createTex(mpBillboardPosWs, getDevice(), Falcor::uint2(BILLBOARD_RESOLUTION, BILLBOARD_RESOLUTION), TOTAL_VIEWS);
+    createTex(mpBillboardNormalWs, getDevice(), Falcor::uint2(BILLBOARD_RESOLUTION, BILLBOARD_RESOLUTION), TOTAL_VIEWS);
     createTex(mpReference, getDevice(), Falcor::uint2(width, height), 1);
     createTex(mpPostOut, getDevice(), Falcor::uint2(width, height), 1);
     mFrameCount = 0;
@@ -173,7 +173,13 @@ void HelloDXR::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTar
         {
             mCreateBillboards = true;
             if (mBillboardRenderID == 0)
+            {
                 pRenderContext->clearUAV(mpBillboards->getUAV().get(), float4(5.0f));
+                pRenderContext->clearUAV(mpBillboardColors->getUAV().get(), float4(0.0f));
+                pRenderContext->clearUAV(mpBillboardPosWs->getUAV().get(), float4(0.0f));
+                pRenderContext->clearUAV(mpBillboardNormalWs->getUAV().get(), float4(0.0f));
+            }
+
             logInfo("Rendering billboard {}", mBillboardRenderID);
             renderRaster(pRenderContext, pTargetFbo);
             if (++mBillboardRenderID == TOTAL_VIEWS)
@@ -188,7 +194,7 @@ void HelloDXR::onFrameRender(RenderContext* pRenderContext, const ref<Fbo>& pTar
             if (mRayTrace)
             {
                 renderRT(pRenderContext, pTargetFbo);
-                postprocess(pRenderContext, pTargetFbo);
+                // postprocess(pRenderContext, pTargetFbo);
             }
         }
     }
@@ -201,8 +207,12 @@ void HelloDXR::onGuiRender(Gui* pGui)
 {
     Gui::Window w(pGui, "Hello DXR Settings", {300, 400}, {10, 80});
 
-    w.checkbox("Ray Trace", mRayTrace);
-    w.checkbox("Use Depth of Field", mUseDOF);
+    w.checkbox("Billboard Trace", mRayTrace);
+    // w.checkbox("Use Depth of Field", mUseDOF);
+    if (w.checkbox("Show Color", mShowColor))
+    {
+        mFrameCount = 0;
+    };
     w.slider("Thickness", mThickness, 0.0f, 1.0f);
     if (w.button("Load Scene"))
     {
@@ -216,13 +226,65 @@ void HelloDXR::onGuiRender(Gui* pGui)
     w.checkbox("Debug Mode", mDebugMode);
     w.checkbox("Show Diff", mShowDiff);
     w.checkbox("View Render Mask", mViewRenderMask);
+    w.checkbox("Use Sorted Billboards", mUseSortedBillboards);
 
     w.slider("Billboard ID", mShowBillboardID, 0u, uint(TOTAL_VIEWS - 1));
+    w.slider("Trace Step Count", mTraceStepCount, 1u, 5000u);
+    w.var("Trace Step Count_", mTraceStepCount);
+
+    w.slider("Forward Billboard Count", mFwdBillboardCount,  1u, uint(TOTAL_VIEWS));
+    w.slider("Forward Billboard Radius", mFwdBillboardRadius, 0u, 20u);
+    // w.slider("Forward Screen Radius", mFwdScreenRadius, 0u, 20u);
+    w.slider("Forward Screen Radius", mFwdScreenRadius, 0.9f, 20.0f);
+
     w.slider("View Theta", mViewTheta, 0.0f, 1.0f);
     w.slider("View Phi", mViewPhi, 0.0f, 1.0f);
     w.slider("Invalid Threshold", mInvalidThreshold, 0.0f, 0.5f);
     w.slider("Invalid Max Threshold", mMaxInvalidThreshold, 0.0f, 1.5f);
 
+    w.slider("Billboard Trace Count", mBillboardTraceCount, 1u, uint(TOTAL_VIEWS));
+
+    w.separator();
+    if (w.button("Output world pos billboards"))
+    {
+        for (size_t i = 0; i < TOTAL_VIEWS; i++)
+        {
+            mpBillboardColors->captureToFile(
+                0,
+                i,
+                "D:/Data/Billboard/billboard_pos_" + std::to_string(i) + ".exr",
+                Bitmap::FileFormat::ExrFile,
+                Bitmap::ExportFlags::Uncompressed,
+                true
+            );
+        }
+    }
+    if (w.button("Print Camera proj mat"))
+    {
+        float4x4 V = mpScene->getCamera()->getViewProjMatrixNoJitter();
+        float3 cameraDir = normalize(mpScene->getCamera()->getData().target - mpScene->getCamera()->getData().posW);
+        logInfo("cameraDir: \n{}", to_string(cameraDir));
+        logInfo("V Matrix: \n{}", to_string(V));
+        logInfo(
+            "\n[[{}, {}, {}, {}], \n[{}, {}, {}, {}], \n[{}, {}, {}, {}], \n[{}, {}, {}, {}]],",
+            V[0][0],
+            V[0][1],
+            V[0][2],
+            V[0][3],
+            V[1][0],
+            V[1][1],
+            V[1][2],
+            V[1][3],
+            V[2][0],
+            V[2][1],
+            V[2][2],
+            V[2][3],
+            V[3][0],
+            V[3][1],
+            V[3][2],
+            V[3][3]
+        );
+    }
     mpPixelDebug->renderUI(w);
 
     // mpScene->renderUI(w);
@@ -321,9 +383,6 @@ void HelloDXR::loadScene(const std::filesystem::path& path, const Fbo* pTargetFb
     postProcessProgDesc.addTypeConformances(typeConformances);
     postProcessProgDesc.addShaderLibrary("Samples/HelloDXR/PostProcess.cs.slang").csEntry("csMain");
     mpPostProcessPass = ComputePass::create(getDevice(), postProcessProgDesc, defines);
-
-
-
 }
 
 void HelloDXR::setPerFrameVars(const Fbo* pTargetFbo)
@@ -348,6 +407,8 @@ void HelloDXR::renderRaster(RenderContext* pRenderContext, const ref<Fbo>& pTarg
     var["PerFrameCB"]["gViewTheta"] = mViewTheta * float(M_PI);
     var["PerFrameCB"]["gViewPhi"] = mViewPhi * float(M_2PI);
     var["PerFrameCB"]["gCreateBillboards"] = mCreateBillboards;
+    var["PerFrameCB"]["gCameraPos"] = spherical_fibonacci_hemi(mBillboardRenderID, TOTAL_VIEWS);
+    var["PerFrameCB"]["gShowColor"] = mShowColor;
 
     // float4x4 viewMat = math::matrixFromLookAt(
     //     spherical_to_cartesian_radXZY(float2(mViewTheta * float(M_PI), mViewPhi * float(M_2PI))),
@@ -361,10 +422,13 @@ void HelloDXR::renderRaster(RenderContext* pRenderContext, const ref<Fbo>& pTarg
     var["PerFrameCB"]["projMat"] = projMat;
 
     var["gBillboards"] = mpBillboards;
+    var["gBillboardColors"] = mpBillboardColors;
+    var["gBillboardPosWs"] = mpBillboardPosWs;
+    var["gBillboardNormalWs"] = mpBillboardNormalWs;
     var["gViewProjBuffer"] = mpViewProjBuffer;
     var["gReference"] = mpReference;
 
-    if(mCreateBillboards)
+    if (mCreateBillboards)
         mpRasterPass->getState()->setFbo(mpBillboardFbo);
     else
         mpRasterPass->getState()->setFbo(pTargetFbo);
@@ -373,7 +437,11 @@ void HelloDXR::renderRaster(RenderContext* pRenderContext, const ref<Fbo>& pTarg
 
     if (mShowBillboard)
     {
-        pRenderContext->blit(mpBillboards->getSRV(0, 1, mShowBillboardID, 1), pTargetFbo->getRenderTargetView(0));
+        if (mShowColor)
+            // pRenderContext->blit(mpBillboardColors->getSRV(0, 1, mShowBillboardID, 1), pTargetFbo->getRenderTargetView(0));
+            pRenderContext->blit(mpBillboardNormalWs->getSRV(0, 1, mShowBillboardID, 1), pTargetFbo->getRenderTargetView(0));
+        else
+            pRenderContext->blit(mpBillboards->getSRV(0, 1, mShowBillboardID, 1), pTargetFbo->getRenderTargetView(0));
     }
 }
 
@@ -391,15 +459,32 @@ void HelloDXR::renderRT(RenderContext* pRenderContext, const ref<Fbo>& pTargetFb
 
     pRenderContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
     auto var = mpSSRPass->getRootVar();
-    var["PerFrameCB"]["gFrameDim"] = uint2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
+    // mpSSRPass->getProgram()->addDefine("TOTAL_VIEWS", std::to_string(TOTAL_VIEWS));
+
+    var["PerFrameCB"]["gFrameDim"] = uint2(mpRtOut->getWidth(), mpRtOut->getHeight());
     var["PerFrameCB"]["gShowBillboardID"] = mShowBillboardID;
-    var["PerFrameCB"]["gBillboardCount"] = TOTAL_VIEWS;
+    var["PerFrameCB"]["gBillboardTraceCount"] = mBillboardTraceCount;
     var["PerFrameCB"]["gDebugMode"] = mDebugMode;
     var["PerFrameCB"]["gInvalidThreshold"] = mInvalidThreshold;
     var["PerFrameCB"]["gMaxInvalidThreshold"] = mMaxInvalidThreshold;
     var["PerFrameCB"]["gThickness"] = mThickness;
     var["PerFrameCB"]["gViewRenderMask"] = mViewRenderMask;
+    var["PerFrameCB"]["gTraceStepCount"] = mTraceStepCount;
+    var["PerFrameCB"]["gUseSortedBillboards"] = mUseSortedBillboards;
+    var["PerFrameCB"]["gShowColor"] = mShowColor;
+    var["PerFrameCB"]["gFwdBillboardCount"] = mFwdBillboardCount;
+    var["PerFrameCB"]["gFwdBillboardRadius"] = mFwdBillboardRadius;
+    var["PerFrameCB"]["gFwdScreenRadius"] = mFwdScreenRadius;
+    var["PerFrameCB"]["gViewTheta"] = mViewTheta;
+
+
+
+
+    var["gMaxSampler"] = mpMaxSampler;
     var["gBillboards"] = mpBillboards;
+    var["gBillboardColors"] = mpBillboardColors;
+    var["gBillboardPosWs"] = mpBillboardPosWs;
+    var["gBillboardNormalWs"] = mpBillboardNormalWs;
     var["gViewProjBuffer"] = mpViewProjBuffer;
     var["gViewProjInvBuffer"] = mpViewProjInvBuffer;
     var["gBillboardNormalBuffer"] = mpBillboardNormalBuffer;
@@ -407,10 +492,10 @@ void HelloDXR::renderRT(RenderContext* pRenderContext, const ref<Fbo>& pTargetFb
     var["gReference"] = mpReference;
     mpScene->bindShaderData(var["gScene"]);
 
-    mpPixelDebug->beginFrame(pRenderContext, uint2(pTargetFbo->getWidth(), pTargetFbo->getHeight()));
+    mpPixelDebug->beginFrame(pRenderContext, uint2(mpRtOut->getWidth(), mpRtOut->getHeight()));
     mpPixelDebug->prepareProgram(mpSSRPass->getProgram(), mpSSRPass->getRootVar());
-    mpSSRPass->execute(pRenderContext, pTargetFbo->getWidth(), pTargetFbo->getHeight());
-    // pRenderContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
+    mpSSRPass->execute(pRenderContext, mpRtOut->getWidth(), mpRtOut->getHeight());
+    pRenderContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
     mpPixelDebug->endFrame(pRenderContext);
 }
 
@@ -427,6 +512,7 @@ void HelloDXR::postprocess(RenderContext* pRenderContext, const ref<Fbo>& pTarge
     var["PerFrameCB"]["gInvalidThreshold"] = mInvalidThreshold;
     var["PerFrameCB"]["gShowDiff"] = mShowDiff;
     var["gBillboards"] = mpBillboards;
+    // var["gBillboardPosWs"] = mpBillboardPosWs;
     var["gViewProjBuffer"] = mpViewProjBuffer;
     var["gViewProjInvBuffer"] = mpViewProjInvBuffer;
     var["gBillboardNormalBuffer"] = mpBillboardNormalBuffer;

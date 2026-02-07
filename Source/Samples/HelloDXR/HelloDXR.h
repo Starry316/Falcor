@@ -30,6 +30,7 @@
 #include "Core/SampleApp.h"
 #include "Core/Pass/RasterPass.h"
 #include "Utils/Debug/PixelDebug.h"
+#include "SSRDefs.slangh"
 using namespace Falcor;
 
 class HelloDXR : public SampleApp
@@ -63,6 +64,9 @@ private:
     ref<Texture> mpRtOut;
     ref<Texture> mpPostOut;
     ref<Texture> mpBillboards;
+    ref<Texture> mpBillboardPosWs;
+    ref<Texture> mpBillboardNormalWs;
+    ref<Texture> mpBillboardColors;
     ref<Texture> mpReference;
 
     ref<Fbo> mpBillboardFbo;
@@ -79,18 +83,32 @@ private:
     bool mCreateBillboards = true;
     bool mShowDiff = false;
     bool mDebugMode = false;
+    bool mUseSortedBillboards = true;
+    bool mShowColor = false;
 
     // normalized theta/phi view angles for billboard creation
     float mViewTheta = 0.3f;
     float mViewPhi = 0.0f;
-    float mInvalidThreshold = 0.001f;
+    float mInvalidThreshold = 0.005f;
     float mMaxInvalidThreshold = 0.8f;
-    float mThickness = 10.1f;
+    // float mThickness = 0.01f;
+    float mThickness = 0.00001f;
+
 
     bool3 mViewRenderMask = bool3(true, true, true);
 
     uint mShowBillboardID = 0;
     uint mBillboardRenderID = 0;
     uint mFrameCount = 0;
+    uint mTraceStepCount = 1000;
+
+    uint mFwdBillboardCount = 3;
+    uint mFwdBillboardRadius = 2;
+    float mFwdScreenRadius = 2;
+
     uint32_t mSampleIndex = 0xdeadbeef;
+
+    ref<Sampler> mpMaxSampler;
+
+    uint mBillboardTraceCount = TOTAL_VIEWS;
 };

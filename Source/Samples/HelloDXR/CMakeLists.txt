@@ -8,6 +8,7 @@ target_sources(HelloDXR PRIVATE
     SSR.cs.slang
     utils.slangh
     PostProcess.cs.slang
+    SSRDefs.slangh
 )
 
 target_copy_shaders(HelloDXR Samples/HelloDXR)

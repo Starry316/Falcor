@@ -35,12 +35,18 @@ cbuffer PerFrameCB
     uint gBillboardRenderID;
     float gViewTheta;
     float gViewPhi;
+    float3 gCameraPos;
     float4x4 viewMat;
     float4x4 projMat;
     bool gCreateBillboards;
+    bool gShowColor;
 };
 
 RasterizerOrderedTexture2DArray<float4> gBillboards;
+RasterizerOrderedTexture2DArray<float4> gBillboardColors;
+RasterizerOrderedTexture2DArray<float4> gBillboardPosWs;
+RasterizerOrderedTexture2DArray<float4> gBillboardNormalWs;
+
 RasterizerOrderedTexture2D<float4> gReference;
 StructuredBuffer<float4x4> gViewProjBuffer;
 #define is_valid(name) (is_valid_##name != 0)
@@ -95,32 +101,43 @@ float4 psMain(VSOut vsOut, uint triangleIndex: SV_PrimitiveID) : SV_TARGET
     uint2 pixel = uint2(vsOut.posH.xy - 0.5);
 
     float3 viewDir = normalize(gScene.camera.getPosition() - vsOut.posW);
+    if (gCreateBillboards)
+        viewDir = normalize(gCameraPos);
     ShadingData sd = prepareShadingData(vsOut, triangleIndex, viewDir);
 
     // // Create material instance.
-    // let mi = gScene.materials.getMaterialInstance(sd, lod);
+    let mi = gScene.materials.getMaterialInstance(sd, lod);
 
-    // float3 color = mi.getProperties(sd).emission;
+    float3 color = mi.getProperties(sd).emission;
 
-    // TinyUniformSampleGenerator sg = TinyUniformSampleGenerator(pixel, 0);
+    TinyUniformSampleGenerator sg = TinyUniformSampleGenerator(pixel, 0);
 
     // // Direct lighting from analytic light sources
-    // for (int i = 0; i < gScene.getLightCount(); i++)
-    // {
-    //     AnalyticLightSample ls;
-    //     evalLightApproximate(sd.posW, gScene.getLight(i), ls);
-    //     color += mi.eval(sd, ls.dir, sg) * ls.Li;
-    // }
+    for (int i = 0; i < gScene.getLightCount(); i++)
+    {
+        AnalyticLightSample ls;
+        evalLightApproximate(sd.posW, gScene.getLight(i), ls);
+        color += mi.eval(sd, ls.dir, sg) * ls.Li;
+    }
 
+    color = mi.getProperties(sd).diffuseReflectionAlbedo;
+    // color = 0.5f * vsOut.normalW + 0.5f;
+
+    if (!gShowColor)
+        color = 0.5f * vsOut.posW + 0.5f;
+
+
+    // color = mi.eval(sd, sd.faceN, sg);
     // gBillboards[uint3(pixel.x, pixel.y, gBillboardRenderID)] = float4(0.5f * vsOut.normalW + 0.5f, 1.0f);
-    if (gCreateBillboards)
+    if (gCreateBillboards) {
         gBillboards[uint3(pixel.x, pixel.y, gBillboardRenderID)] = vsOut.posH.z;
-        // gBillboards[uint3(pixel.x, pixel.y, 1)] = 0.5f * vsOut.tangentW + 0.5f;
-    // gBillboards[uint3(pixel.x, pixel.y, 2)] = float4(0.5f * vsOut.texC + 0.5f, 1.0f);
-    // gBillboards[uint3(pixel.x, pixel.y, 3)] = float4(0.5f * vsOut.posW + 0.5f, 1.0f);
+        // gBillboardColors[uint3(pixel.x, pixel.y, gBillboardRenderID)] = float4(0.5f * vsOut.normalW + 0.5f, 1.0f);
+        gBillboardColors[uint3(pixel.x, pixel.y, gBillboardRenderID)] = float4(color, 1.0f);
+        gBillboardPosWs[uint3(pixel.x, pixel.y, gBillboardRenderID)] = float4(vsOut.posW, 1.0f);
+        gBillboardNormalWs[uint3(pixel.x, pixel.y, gBillboardRenderID)] = float4(vsOut.normalW, 1.0f);
 
-    // return float4(color, 1.f);
-    float4 ret = float4(0.5f * vsOut.posW + 0.5f, 1.0f);
-    gReference[pixel] = ret;
-    return ret;
+    }
+    gReference[pixel] = float4(color, 1.0f);
+
+    return float4(color, 1.0f);
 }
