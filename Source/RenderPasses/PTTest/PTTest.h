@@ -131,4 +131,5 @@ private:
     float phiStep   = 1.0f / phiCount;
     float thetaStep = 0.98f / (thetaCount - 1.0f);
 
+    float3 mProbePos = float3(0.0f, 0.1f, 0.0f);
 };

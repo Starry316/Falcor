@@ -194,22 +194,22 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
         mpScene->getLightCollection(pRenderContext);
     }
 
-    if (mpScene->getLightCount() > 0)
-    {
-        ref<Light> light = mpScene->getLight(0);
-        DirectionalLight* dirlight = (DirectionalLight*)light.get();
-        if (light->getType() == LightType::Directional)
-        {
-            ref<DirectionalLight> dl = static_ref_cast<DirectionalLight>(light);
-            float phi = M_2PI * mLightPhi;
-            float theta = M_PI_2 * mLightTheta;
-            float3 dir;
-            dir.x = -(cos(phi - M_PI)) * sin(theta);
-            dir.z = -(sin(phi - M_PI)) * sin(theta);
-            dir.y = cos(theta);
-            dl->setWorldDirection(-dir);
-        }
-    }
+    // if (mpScene->getLightCount() > 0)
+    // {
+    //     ref<Light> light = mpScene->getLight(0);
+    //     DirectionalLight* dirlight = (DirectionalLight*)light.get();
+    //     if (light->getType() == LightType::Directional)
+    //     {
+    //         ref<DirectionalLight> dl = static_ref_cast<DirectionalLight>(light);
+    //         float phi = M_2PI * mLightPhi;
+    //         float theta = M_PI_2 * mLightTheta;
+    //         float3 dir;
+    //         dir.x = -(cos(phi - M_PI)) * sin(theta);
+    //         dir.z = -(sin(phi - M_PI)) * sin(theta);
+    //         dir.y = cos(theta);
+    //         dl->setWorldDirection(-dir);
+    //     }
+    // }
 
     // Configure depth-of-field.
     const bool useDOF = mpScene->getCamera()->getApertureRadius() > 0.f;
@@ -253,6 +253,7 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     var["CB"]["gXYUV"] = mXYUV;
     var["CB"]["gPluckerMode"] = mPluckerMode;
     var["CB"]["gShowOffset"] = mShowOffset;
+    var["CB"]["gProbePos"] = mProbePos;
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["gEnvMapSampler"]);
     // Bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
@@ -538,10 +539,11 @@ void PTTest::renderUI(Gui::Widgets& widget)
     dirty |= widget.var("view height_", mViewHeight);
     dirty |= widget.slider("view height bot", mViewHeightBot, 0.0f, mViewHeight);
 
-    dirty |= widget.slider("x", pX, 0.0f, 1.0f);
-    dirty |= widget.slider("y", pY, 0.0f, 1.0f);
-    dirty |= widget.slider("u", pU, 0.0f, 1.0f);
-    dirty |= widget.slider("v", pV, 0.0f, 1.0f);
+    dirty |= widget.slider("probe pos", mProbePos, 0.0f, 1.0f);
+    // dirty |= widget.slider("x", pX, 0.0f, 1.0f);
+    // dirty |= widget.slider("y", pY, 0.0f, 1.0f);
+    // dirty |= widget.slider("u", pU, 0.0f, 1.0f);
+    // dirty |= widget.slider("v", pV, 0.0f, 1.0f);
 
     dirty |= widget.checkbox("btf mode", mBTFViewMode);
     dirty |= widget.checkbox("Plucker mode", mPluckerMode);

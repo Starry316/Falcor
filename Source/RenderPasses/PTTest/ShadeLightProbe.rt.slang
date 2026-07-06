@@ -79,8 +79,6 @@ cbuffer CB
     bool gPluckerMode;
     bool gShowOffset;
     uint gMaxBounces;
-    float3 gProbePos;
-    float3 gSurfaceNormal;
     float4 gXYUV;
 
 }
@@ -273,10 +271,6 @@ void getPrimaryOrthogonalRayPos(
     rayPos = cameraPos + right * (ndc.x * halfSize) + up * (ndc.y * halfSize);
 }
 
-
-
-
-
 /**
  * Traces a shadow ray towards a light source.
  * @param[in] origin Ray origin for the shadow ray.
@@ -323,14 +317,7 @@ void traceScatterRay(inout ScatterRayData rayData)
     uint rayFlags = 0; // TODO: Set cull mode from the app
     TraceRay(gScene.rtAccel, rayFlags, 0xff /* instanceInclusionMask */, 0 /* hitIdx */, rayTypeCount, 0 /* missIdx */, ray, rayData);
 }
-float3 shiftBackFacingShadingNormal(float3 N, float3 V) {
 
-    // Fix back-facing
-    float NdotV = dot(N, V);
-    N += V * max(0.0, -NdotV + 1e-5);
-    N = normalize(N);
-    return N;
-}
 /**
  * Evaluates the direct illumination from analytic lights.
  * This function samples Falcor's light list uniformly with one shadow ray.
@@ -359,9 +346,6 @@ float3 evalDirectAnalytic(const ShadingData sd, const IMaterialInstance mi, inou
     const bool hasReflection = lobeTypes & uint(LobeType::Reflection);
     const bool hasTransmission = lobeTypes & uint(LobeType::Transmission);
     float NdotL = dot(sd.getOrientedFaceNormal(), ls.dir);
-    // float NdotL = dot(sd.frame.N, ls.dir);
-    // NdotL = max(NdotL, 1e-4);
-
     if ((NdotL <= kMinCosTheta && !hasTransmission) || (NdotL >= -kMinCosTheta && !hasReflection))
         return float3(0.f);
 
@@ -373,13 +357,8 @@ float3 evalDirectAnalytic(const ShadingData sd, const IMaterialInstance mi, inou
     if (!V)
         return float3(0.f);
 
-
-
-    // sd.frame.N = shiftBackFacingShadingNormal(sd.frame.N, sd.V);
-
     // Evaluate contribution.
     return mi.eval(sd, ls.dir, sg) * ls.Li * invPdf;
-    // return 0.8 / 3.1415926 * ls.Li * invPdf;
 }
 
 /**
@@ -456,14 +435,25 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
     // Load shading data.
     ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
-    // sd.frame.N = shiftBackFacingShadingNormal(sd.frame.N, sd.V);
-    // if (dot(sd.frame.N, sd.V) < 1e-6f) {
-    //     sd.frame.N = sd.faceN;
-    // }
+
+
+
+    if (gShowOffset) {
+        // rayData.radiance = sd.frame.N;
+        // rayData.radiance = distance(rayData.origin, sd.posW);
+
+        //rayData.radiance = SnapToVoxelCenter(sd.posW).xzy;
+        // rayData.radiance = sd.posW.xzy;
+        rayData.radiance = sd.posW;
+
+        rayData.terminated = true;
+        return;
+    }
+
 
     // Create material instance.
     let lod = ExplicitLodTextureSampler(0.f);
-    let mi = gScene.materials.getMaterialInstance(sd, lod, MaterialInstanceHints::AdjustShadingNormal);
+    let mi = gScene.materials.getMaterialInstance(sd, lod);
 
     // Add emitted light.
     if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
@@ -471,11 +461,16 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
     }
 
+    // Check whether to terminate based on max depth.
+    // if (rayData.pathLength >= kMaxBounces)
+    // {
+    //     rayData.terminated = true;
+    //     return;
+    // }
 
     // Compute ray origin for new rays spawned from the hit.
     float3 rayOrigin;
-    // rayOrigin = sd.computeRayOrigin();
-    rayOrigin = sd.posW + sd.faceN * 0.0001f;
+    rayOrigin = sd.computeRayOrigin();
 
     // Add contribution of direct light from analytic lights.
     if (kUseAnalyticLights)
@@ -483,16 +478,16 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
         rayData.radiance += rayData.thp * Lr;
     }
-    // if (kUseEnvLight )
-    // {
-    //     float3 envLi;
-    //     float3 envDir;
-    //     float envPdf;
-    //     if (generateEnvMapSample(rayOrigin, rayData.sg, envLi, envDir, envPdf)) {
-    //         if (dot(sd.getOrientedFaceNormal(), envDir) > kMinCosTheta)
-    //             rayData.radiance += mi.eval(sd, envDir, rayData.sg) * rayData.thp * envLi;
-    //     }
-    // }
+    if (kUseEnvLight )
+    {
+        float3 envLi;
+        float3 envDir;
+        float envPdf;
+        if (generateEnvMapSample(rayOrigin, rayData.sg, envLi, envDir, envPdf)) {
+            if (dot(sd.getOrientedFaceNormal(), envDir) > kMinCosTheta)
+                rayData.radiance += mi.eval(sd, envDir, rayData.sg) * rayData.thp * envLi;
+        }
+    }
 
     // Generate scatter ray for the next path segment.
     // The raygen shader will continue the path based on the returned payload.
@@ -526,29 +521,6 @@ ScatterRayData traceFullSpherePosPrimaryRay(const uint2 pixel, const uint2 frame
     traceScatterRay(rayData);
     return rayData;
 }
-
-ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
-    float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
-
-    // ndir_to_oct_equal_area_unorm
-    float3 primaryRayOrigin = gProbePos;
-    float3 primaryRayDir;
-    // float3 cameraPos = gProbePos;
-    // spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI)).xzy * 5;
-    primaryRayDir = oct_to_ndir_equal_area_unorm(originUV).xzy;
-    // getPrimaryOrthogonalRayPos(pixel, frameDim, cameraPos, sampleNext2D(sg), primaryRayDir, primaryRayOrigin);
-    // getPrimaryOrthogonalRayPos(pixel, frameDim, cameraPos, 0.5, primaryRayDir, primaryRayOrigin);
-
-    // Prepare ray payload.
-    ScatterRayData rayData = ScatterRayData(sg);
-    rayData.origin = primaryRayOrigin;
-    rayData.direction = primaryRayDir;
-    rayData.pathLength = 1;
-    traceScatterRay(rayData);
-    return rayData;
-}
-
-
 float3 tracePath(const uint2 pixel, const uint2 frameDim)
 {
 
@@ -563,13 +535,12 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
     // Prepare ray payload.
     ScatterRayData rayData;
     // ScatterRayData rayData = tracePrimaryRay(pixel, frameDim, sg);
-    if (!gBTFViewMode)
-        rayData = traceLightProbePrimaryRay(pixel, frameDim, sg);
+    if (gBTFViewMode)
         // rayData = traceBTFPrimaryRay(pixel, frameDim, sg);
-        // if (gPluckerMode)
-        //     rayData = traceFullSpherePosPrimaryRay(pixel, frameDim, sg);
-        // else
-        //     rayData = traceFullSpherePrimaryRay(pixel, frameDim, sg);
+        if (gPluckerMode)
+            rayData = traceFullSpherePosPrimaryRay(pixel, frameDim, sg);
+        else
+            rayData = traceFullSpherePrimaryRay(pixel, frameDim, sg);
 
 
     else
@@ -724,16 +695,16 @@ void scatterMiss(inout ScatterRayData rayData)
 {
     // Ray missed the scene. Mark the ray as terminated.
     rayData.terminated = true;
-    // if (rayData.pathLength == 1) {
-    //     rayData.radiance = 0;
-    //     if (gShowOffset) {
+    if (rayData.pathLength == 1) {
+        rayData.radiance = 0;
+        if (gShowOffset) {
 
-    //         // float t;
-    //         // intersectRaySphere(rayData.origin, rayData.direction, float3(0), 1.1, t, 0.f, kRayTMax, false);
-    //         rayData.radiance = 0;
-    //     }
-    //     return;
-    // }
+            // float t;
+            // intersectRaySphere(rayData.origin, rayData.direction, float3(0), 1.1, t, 0.f, kRayTMax, false);
+            rayData.radiance = 0;
+        }
+        return;
+    }
 
     // Add contribution from distant light (env map) in this direction.
     if (kUseEnvLight) {
@@ -746,10 +717,6 @@ void scatterMiss(inout ScatterRayData rayData)
     //     float3 Le = gScene.envMap.eval(WorldRayDirection());
     //     rayData.radiance += rayData.thp * Le;
     // }
-
-
-
-
 }
 
 [shader("miss")]
