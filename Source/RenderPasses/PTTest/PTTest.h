@@ -57,6 +57,8 @@ public:
 private:
     void parseProperties(const Properties& props);
     void prepareVars();
+    /// Reads back the selected instance/triangle vertices and computes their world-space positions.
+    void computeSelectedTriangleWorldPositions();
 
 
 
@@ -103,7 +105,7 @@ private:
     float mViewHeightBot = 0;
     bool mBTFViewMode = true;
     bool mPluckerMode = true;
-    bool mShowOffset = false;
+    bool mShowSelectedTri = false;
     bool mChangeLight = false;
 
     float4 mXYUV = float4(0.0);
@@ -115,7 +117,7 @@ private:
     uint mOutputIndx = 0;
     uint mOutputOffsetIndx = 0;
     uint mOutputSPP = 32;
-    std::string mOutputPath = "D:/Data/LF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
+    std::string mOutputPath = "C:/Data/Probe/test/{:06}_{:.6f}_{:.6f}.exr";
     std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
 
     float mSampleTheta = 0;
@@ -132,4 +134,18 @@ private:
     float thetaStep = 0.98f / (thetaCount - 1.0f);
 
     float3 mProbePos = float3(0.0f, 0.1f, 0.0f);
+
+    // Scene stats (populated in setScene).
+    uint32_t mMeshCount = 0;
+    uint32_t mInstanceCount = 0;
+
+    // Triangle picking: select a triangle by instance + triangle ID and store its world-space vertices.
+    uint32_t mSelectedInstanceID = 0;
+    uint32_t mSelectedTriangleID = 0;
+    bool mSelectedTriangleValid = false;
+    float3 mSelectedTrianglePosW[3] = {float3(0.f), float3(0.f), float3(0.f)};
+    uint32_t mSelectedTriVertexIDs[3] = {0, 0, 0};
+    // Barycentric sample coordinates for uniform triangle sampling of the primary ray origin.
+    float mTriSampleU = 0.5f;
+    float mTriSampleV = 0.5f;
 };

@@ -77,7 +77,10 @@ cbuffer CB
     float gViewHeightBot;
     bool gBTFViewMode;
     bool gPluckerMode;
-    bool gShowOffset;
+    bool gShowSelectedTri;
+    uint gSelectedInstanceID;
+    uint gSelectedTriangleID;
+    float2 gTriSampleUV;
     uint gMaxBounces;
     float3 gProbePos;
     float3 gSurfaceNormal;
@@ -452,6 +455,18 @@ float3 SnapToVoxelCenter(float3 p)
  */
 void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
+    // Debug: highlight the user-selected triangle on the primary hit.
+    if (gShowSelectedTri && rayData.pathLength == 1 && hit.getType() == HitType::Triangle)
+    {
+        const TriangleHit th = hit.getTriangleHit();
+        if (th.instanceID.index == gSelectedInstanceID && th.primitiveIndex == gSelectedTriangleID)
+        {
+            rayData.radiance = float3(1.f, 0.f, 0.f);
+            rayData.terminated = true;
+            return;
+        }
+    }
+
     const bool isCurveHit = hit.getType() == HitType::Curve;
 
     // Load shading data.
@@ -531,11 +546,22 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
 
     // ndir_to_oct_equal_area_unorm
-    float3 primaryRayOrigin = gProbePos;
+    // Look up the selected triangle's geometry directly from the scene.
+    GeometryInstanceID selectedInstance;
+    selectedInstance.index = gSelectedInstanceID;
+    float3 selectedTriPos[3];
+    gScene.getVertexPositionsW(selectedInstance, gSelectedTriangleID, selectedTriPos);
+    float3 selectedTriNormal = gScene.getFaceNormalW(selectedInstance, gSelectedTriangleID);
+    // Uniformly sample a position on the selected triangle using the UI-provided sample coordinates.
+    float3 bary = sample_triangle(gTriSampleUV);
+    float3 sampledPos = bary.x * selectedTriPos[0] + bary.y * selectedTriPos[1] + bary.z * selectedTriPos[2];
+    float3 primaryRayOrigin = computeRayOrigin(sampledPos, selectedTriNormal);
+    // float3 primaryRayOrigin = sampledPos;
     float3 primaryRayDir;
     // float3 cameraPos = gProbePos;
     // spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI)).xzy * 5;
     primaryRayDir = oct_to_ndir_equal_area_unorm(originUV).xzy;
+
     // getPrimaryOrthogonalRayPos(pixel, frameDim, cameraPos, sampleNext2D(sg), primaryRayDir, primaryRayOrigin);
     // getPrimaryOrthogonalRayPos(pixel, frameDim, cameraPos, 0.5, primaryRayDir, primaryRayOrigin);
 
@@ -544,6 +570,14 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     rayData.origin = primaryRayOrigin;
     rayData.direction = primaryRayDir;
     rayData.pathLength = 1;
+
+    // // Lower hemisphere
+    // if (dot(selectedTriNormal, primaryRayDir) <= kMinCosTheta) {
+    //     rayData.terminated = true;
+    //     rayData.radiance = float3(0.0, 0.0, 0.0);
+    //     return rayData;
+    // }
+
     traceScatterRay(rayData);
     return rayData;
 }
@@ -575,11 +609,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
     else
         rayData = tracePrimaryRay(pixel, frameDim, sg);
 
-    // if (gShowOffset) {
-    //     float3 ret = abs(rayData.origin);
-    //     if (rayData.terminated) ret = -5.0f;
-    //     return ret;
-    // }
+
 
     for (uint bounce = 0; bounce < gMaxBounces; bounce++) {
         if (rayData.terminated) break;

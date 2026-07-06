@@ -252,7 +252,10 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     var["CB"]["gMaxBounces"] = mMaxBounces;
     var["CB"]["gXYUV"] = mXYUV;
     var["CB"]["gPluckerMode"] = mPluckerMode;
-    var["CB"]["gShowOffset"] = mShowOffset;
+    var["CB"]["gShowSelectedTri"] = mShowSelectedTri;
+    var["CB"]["gSelectedInstanceID"] = mSelectedInstanceID;
+    var["CB"]["gSelectedTriangleID"] = mSelectedTriangleID;
+    var["CB"]["gTriSampleUV"] = float2(mTriSampleU, mTriSampleV);
     var["CB"]["gProbePos"] = mProbePos;
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["gEnvMapSampler"]);
@@ -281,9 +284,8 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
 
 void PTTest::handleOutput()
 {
-    if (mPluckerMode){
         auto camera = mpScene->getCamera();
-        camera->setOutputPath(fmt::format(mOutputPath, mOutputIndx));
+        camera->setOutputPath(fmt::format(mOutputPath, mOutputIndx, mTriSampleU, mTriSampleV));
         if (!camera->isNextStep())
         {
             return;
@@ -293,232 +295,74 @@ void PTTest::handleOutput()
         camera->setOutputFrameCount(mOutputSPP);
         mOutputIndx++;
 
-        mViewPhi += 0.166667f;
+        mTriSampleU += 0.18f;
 
-        if (mViewPhi >= 0.999999f)
+        if (mTriSampleU >= 0.94f)
         {
-             // finalize/stop outputing
-            mViewTheta = 0.0f;
+            mTriSampleU = 0.05f;
+            mTriSampleV+= 0.18f;
+        }
+
+        if (mTriSampleV >= 0.94f)
+        {
             mOutputStep = 0;
             mOutputIndx = 0;
             mpScene->getCamera()->setResetFlag(true);
             mpScene->getCamera()->setNextStep(false);
             mIsOutputing = false;
             mpScene->getCamera()->setAccumulating(false);
+
+            mTriSampleU = 0.05f;
+            mTriSampleV = 0.05f;
         }
         return;
-    }
-
-
-
-    auto camera = mpScene->getCamera();
-    if (!mChangeLight)
-    {
-        camera->setOutputPath(fmt::format(mOutputPath, mOutputIndx, pV, pY, mViewTheta, mViewPhi));
-    }
-    else
-    {
-        camera->setOutputPath(fmt::format(mOutputBTFPath, mOutputIndx, mLightTheta, mLightPhi, mViewTheta, mViewPhi));
-    }
-
-    if (!camera->isNextStep())
-    {
-        return;
-    }
-    camera->setNextStep(false);
-    camera->setAccumulating(mIsOutputing);
-    camera->setOutputFrameCount(mOutputSPP);
-    mOutputIndx++;
-
-    // Steps (match original increments)
-    const float phiLightStep = 1.0f / 1.0f;
-    const float thetaLightStep = 1.0f / 1.0f;
-
-    // const float phiStep = 1.0f / 100.0f;
-    // const float thetaStep = 1.0f / 200.0f;
-
-    // const float phiStep = 1.0f / 15.0f;
-    // const float thetaStep = 1.0f / 20.0f;
-
-    // const float phiStep   = 1.0f / phiCount;
-    // const float thetaStep = 1.0f / thetaCount;
-
-    // const float yStep = 1.0f / 100.0f;
-    // const float vStep = 1.0f / 100.0f;
-
-    if (!mChangeLight)
-    {
-        // if (mPluckerMode)
-        // {
-        //     mViewPhi += phiStep;
-
-        //     if (mViewPhi >= 1.0f)
-        //     {
-        //         // Reset theta to original small value and carry to phi
-        //         mViewPhi = 0.0f;
-        //         mViewTheta += thetaStep;
-        //         // If phi wrapped past end, we've finished the full nested iteration
-        //         if (mViewTheta >= 1.0f)
-        //         {
-        //             // finalize/stop outputing
-        //             mViewTheta = 0.0f;
-        //             mOutputStep = 0;
-        //             mOutputIndx = 0;
-        //             mpScene->getCamera()->setResetFlag(true);
-        //             mpScene->getCamera()->setNextStep(false);
-        //             mIsOutputing = false;
-        //             mpScene->getCamera()->setAccumulating(false);
-        //         }
-        //     }
-        // }
-
-        // else
-        // {
-        mViewPhi += phiStep;
-
-        // mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
-        // mViewTheta += thetaStep * phiStep;
-        if (mViewPhi >= 0.999999f)
-        {
-            // Reset theta to original small value and carry to phi
-            mViewPhi = 0.0f;
-            mSampleTheta += thetaStep;
-            float cosTheta = 1.0f - 2.0f * mSampleTheta;
-            mViewTheta = acosf(cosTheta) / M_PI;
-        }
-        if (mSampleTheta >= 0.999999f)
-        {
-            // finalize/stop outputing
-            mViewTheta = 0.0f;
-            mOutputStep = 0;
-            mOutputIndx = 0;
-            mpScene->getCamera()->setResetFlag(true);
-            mpScene->getCamera()->setNextStep(false);
-            mIsOutputing = false;
-            mpScene->getCamera()->setAccumulating(false);
-        }
-        // }
-    }
-
-    // if (!mChangeLight)
-    // {
-    //     mViewPhi += phiStep;
-    //     if (mViewPhi >= 1.0f)
-    //     {
-    //         // Reset theta to original small value and carry to phi
-    //         mViewPhi = 0.0f;
-    //         mViewTheta += thetaStep;
-    //         // If phi wrapped past end, we've finished the full nested iteration
-    //         if (mViewTheta >= 0.6f)
-    //         {
-    //             // finalize/stop outputing
-    //             mViewTheta = 0.0f;
-    //             mOutputStep = 0;
-    //             mOutputIndx = 0;
-    //             mpScene->getCamera()->setResetFlag(true);
-    //             mpScene->getCamera()->setNextStep(false);
-    //             mIsOutputing = false;
-    //             mpScene->getCamera()->setAccumulating(false);
-    //         }
-    //     }
-    // }
-    else
-    {
-        mLightPhi += phiLightStep;
-        mSampleLightTheta += thetaLightStep * phiLightStep;
-        mLightTheta = 2 * acos(1 - mSampleLightTheta) / M_PI;
-
-        if (mLightPhi >= 1.0f)
-        {
-            mLightPhi = 0.0f;
-            if (mLightTheta >= 0.6f)
-            {
-                mLightTheta = 0.01f;
-                mOutputOffsetIndx++;
-
-                mViewPhi += phiStep;
-                mSampleTheta += thetaStep * phiStep;
-                mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
-                if (mViewPhi >= 1.0f)
-                {
-                    // Reset theta to original small value and carry to phi
-                    mViewPhi = 0.0f;
-                    // mViewTheta += thetaStep;
-                    // If phi wrapped past end, we've finished the full nested iteration
-                    if (mViewTheta >= 0.8f)
-                    {
-                        // finalize/stop outputing
-                        mViewTheta = 0.0f;
-                        mOutputStep = 0;
-                        mOutputIndx = 0;
-                        mpScene->getCamera()->setResetFlag(true);
-                        mpScene->getCamera()->setNextStep(false);
-                        mIsOutputing = false;
-                        mpScene->getCamera()->setAccumulating(false);
-                    }
-                }
-            }
-        }
-    }
-
-    // else
-    // {
-    //     mLightPhi += phiLightStep;
-    //     if (mLightPhi >= 1.0f)
-    //     {
-    //         mLightPhi = 0.0f;
-    //         mLightTheta += thetaLightStep;
-    //         if (mLightTheta >= 0.4f)
-    //         {
-    //             mLightTheta = 0.05f;
-    //             mOutputOffsetIndx++;
-
-    //             mViewPhi += phiStep;
-    //             if (mViewPhi >= 1.0f)
-    //             {
-    //                 // Reset theta to original small value and carry to phi
-    //                 mViewPhi = 0.0f;
-    //                 mViewTheta += thetaStep;
-    //                 // If phi wrapped past end, we've finished the full nested iteration
-    //                 if (mViewTheta >= 0.3f)
-    //                 {
-    //                     // finalize/stop outputing
-    //                     mViewTheta = 0.0f;
-    //                     mOutputStep = 0;
-    //                     mOutputIndx = 0;
-    //                     mpScene->getCamera()->setResetFlag(true);
-    //                     mpScene->getCamera()->setNextStep(false);
-    //                     mIsOutputing = false;
-    //                     mpScene->getCamera()->setAccumulating(false);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
-    // pY += yStep;
-    // if (pY >= 1.0f)
-    // {
-    //     // Reset theta to original small value and carry to phi
-    //     pY = 0.0f;
-    //     pV += vStep;
-    //     // If phi wrapped past end, we've finished the full nested iteration
-    //     if (pV >= 1.0f)
-    //     {
-    //         // finalize/stop outputing
-    //         pV = 0.0f;
-    //         mOutputStep = 0;
-    //         mOutputIndx = 0;
-    //         mpScene->getCamera()->setResetFlag(true);
-    //         mpScene->getCamera()->setNextStep(false);
-    //         mIsOutputing = false;
-    //         mpScene->getCamera()->setAccumulating(false);
-    //     }
-    // }
 }
 void PTTest::renderUI(Gui::Widgets& widget)
 {
     bool dirty = false;
+
+    widget.text(fmt::format("Meshes: {}", mMeshCount));
+    widget.text(fmt::format("Instances: {}", mInstanceCount));
+    widget.separator();
+
+    // Triangle picking. An instance maps to exactly one mesh (gi.geometryID), so instance ID alone
+    // determines the geometry; we resolve and show the mesh ID and its triangle count below.
+    dirty |= widget.var("Pick instance ID", mSelectedInstanceID, 0u, mInstanceCount > 0 ? mInstanceCount - 1 : 0u);
+
+    uint32_t selectedTriangleCount = 0;
+    if (mpScene && mSelectedInstanceID < mpScene->getGeometryInstanceCount())
+    {
+        const auto& gi = mpScene->getGeometryInstance(mSelectedInstanceID);
+        if (gi.getType() == GeometryType::TriangleMesh)
+        {
+            selectedTriangleCount = mpScene->getMesh(MeshID{gi.geometryID}).getTriangleCount();
+            widget.text(fmt::format("  -> mesh ID: {}, triangles: {}", gi.geometryID, selectedTriangleCount));
+        }
+        else
+        {
+            widget.text("  -> instance is not a triangle mesh");
+        }
+    }
+
+    dirty |= widget.var("Pick triangle ID", mSelectedTriangleID, 0u, selectedTriangleCount > 0 ? selectedTriangleCount - 1 : 0u);
+    if (widget.button("Compute triangle world positions"))
+        computeSelectedTriangleWorldPositions();
+    if (mSelectedTriangleValid)
+    {
+        widget.text(fmt::format("Vertex IDs: {}, {}, {}", mSelectedTriVertexIDs[0], mSelectedTriVertexIDs[1], mSelectedTriVertexIDs[2]));
+        for (int i = 0; i < 3; ++i)
+        {
+            const float3& p = mSelectedTrianglePosW[i];
+            widget.text(fmt::format("v{} (id {}): ({:.4f}, {:.4f}, {:.4f})", i, mSelectedTriVertexIDs[i], p.x, p.y, p.z));
+        }
+    }
+    dirty |= widget.checkbox("Show select Tri", mShowSelectedTri);
+
+    // Uniform triangle sampling coordinates for the primary ray origin.
+    dirty |= widget.var("Tri sample u", mTriSampleU, 0.f, 1.f);
+    dirty |= widget.var("Tri sample v", mTriSampleV, 0.f, 1.f);
+
+    widget.separator();
 
     dirty |= widget.var("Max bounces", mMaxBounces, 0u, 1u << 16);
     widget.tooltip("Maximum path length for indirect illumination.\n0 = direct only\n1 = one indirect bounce etc.", true);
@@ -547,7 +391,7 @@ void PTTest::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.checkbox("btf mode", mBTFViewMode);
     dirty |= widget.checkbox("Plucker mode", mPluckerMode);
-    dirty |= widget.checkbox("Show offset", mShowOffset);
+
     dirty |= widget.checkbox("Change Light", mChangeLight);
 
     if (widget.button("Print VP Matrix"))
@@ -609,16 +453,9 @@ void PTTest::renderUI(Gui::Widgets& widget)
         {
             mIsOutputing = true;
             dirty = true;
-            mLightTheta = 0.01f;
-            // mViewTheta = 0.05f;
-            // mSampleTheta = thetaStep * 0.1f;
-            mSampleTheta = 0.01f;
-            // mSampleTheta = 0.2f;
-            mViewPhi = 0.0f;
-            mViewTheta = 2 * acos(1 - mSampleTheta) / M_PI;
-            mViewTheta = 0.3f;
-            pY = 0.0f;
-            pV = 0.0f;
+
+            mTriSampleU = 0.05f;
+            mTriSampleV = 0.05f;
 
             auto camera = mpScene->getCamera();
             camera->setOutputFrameCount(mOutputSPP);
@@ -655,6 +492,88 @@ void PTTest::renderUI(Gui::Widgets& widget)
     }
 }
 
+void PTTest::computeSelectedTriangleWorldPositions()
+{
+    mSelectedTriangleValid = false;
+
+    if (!mpScene)
+    {
+        logWarning("PTTest: no scene loaded.");
+        return;
+    }
+    if (mSelectedInstanceID >= mpScene->getGeometryInstanceCount())
+    {
+        logWarning("PTTest: instance ID {} out of range ({} instances).", mSelectedInstanceID, mpScene->getGeometryInstanceCount());
+        return;
+    }
+
+    const GeometryInstanceData& gi = mpScene->getGeometryInstance(mSelectedInstanceID);
+    if (gi.getType() != GeometryType::TriangleMesh)
+    {
+        logWarning("PTTest: instance {} is not a triangle mesh.", mSelectedInstanceID);
+        return;
+    }
+
+    const MeshID meshID{gi.geometryID};
+    const MeshDesc& desc = mpScene->getMesh(meshID);
+    const uint32_t vertexCount = desc.vertexCount;
+    const uint32_t triangleCount = desc.getTriangleCount();
+    if (mSelectedTriangleID >= triangleCount)
+    {
+        logWarning("PTTest: triangle ID {} out of range ({} triangles in mesh {}).", mSelectedTriangleID, triangleCount, meshID.get());
+        return;
+    }
+
+    // GPU output buffers filled by getMeshVerticesAndIndices (positions/texcrds are float3, indices are uint3).
+    // Positions are in object/local space; indices are local vertex indices for the mesh.
+    const ResourceBindFlags uavFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
+    auto pPositions = mpDevice->createStructuredBuffer(sizeof(float3), vertexCount, uavFlags, MemoryType::DeviceLocal, nullptr, false);
+    auto pTexcrds = mpDevice->createStructuredBuffer(sizeof(float3), vertexCount, uavFlags, MemoryType::DeviceLocal, nullptr, false);
+    auto pIndices = mpDevice->createStructuredBuffer(sizeof(uint3), triangleCount, uavFlags, MemoryType::DeviceLocal, nullptr, false);
+
+    mpScene->getMeshVerticesAndIndices(
+        meshID, {{"positions", pPositions}, {"texcrds", pTexcrds}, {"triangleIndices", pIndices}}
+    );
+
+    // Copy the data we need to CPU-readable staging buffers.
+    auto pIdxStaging = mpDevice->createStructuredBuffer(sizeof(uint3), triangleCount, ResourceBindFlags::None, MemoryType::ReadBack, nullptr, false);
+    auto pPosStaging = mpDevice->createStructuredBuffer(sizeof(float3), vertexCount, ResourceBindFlags::None, MemoryType::ReadBack, nullptr, false);
+
+    RenderContext* pRenderContext = mpDevice->getRenderContext();
+    pRenderContext->copyBufferRegion(pIdxStaging.get(), 0, pIndices.get(), 0, sizeof(uint3) * triangleCount);
+    pRenderContext->copyBufferRegion(pPosStaging.get(), 0, pPositions.get(), 0, sizeof(float3) * vertexCount);
+    pRenderContext->submit(true); // Wait for GPU work to complete.
+
+    const uint3* pIdxData = reinterpret_cast<const uint3*>(pIdxStaging->map());
+    const float3* pPosData = reinterpret_cast<const float3*>(pPosStaging->map());
+
+    const uint3 tri = pIdxData[mSelectedTriangleID];
+
+    // Object-to-world transform for this instance.
+    const float4x4 objectToWorld = mpScene->getAnimationController()->getGlobalMatrices()[gi.globalMatrixID];
+
+    for (int i = 0; i < 3; ++i)
+    {
+        mSelectedTriVertexIDs[i] = tri[i];
+        const float3 posO = pPosData[tri[i]];
+        const float4 posW = mul(objectToWorld, float4(posO, 1.f));
+        mSelectedTrianglePosW[i] = float3(posW.x, posW.y, posW.z) / posW.w;
+    }
+
+    pIdxStaging->unmap();
+    pPosStaging->unmap();
+
+    mSelectedTriangleValid = true;
+
+    logInfo(
+        "PTTest: instance {} (mesh {}) triangle {} world positions: v0=({}, {}, {}), v1=({}, {}, {}), v2=({}, {}, {})",
+        mSelectedInstanceID, meshID.get(), mSelectedTriangleID,
+        mSelectedTrianglePosW[0].x, mSelectedTrianglePosW[0].y, mSelectedTrianglePosW[0].z,
+        mSelectedTrianglePosW[1].x, mSelectedTrianglePosW[1].y, mSelectedTrianglePosW[1].z,
+        mSelectedTrianglePosW[2].x, mSelectedTrianglePosW[2].y, mSelectedTrianglePosW[2].z
+    );
+}
+
 void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
 {
     // Clear data for previous scene.
@@ -667,8 +586,17 @@ void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
     // Set new scene.
     mpScene = pScene;
 
+    // Reset scene stats; repopulated below if we have a scene.
+    mMeshCount = 0;
+    mInstanceCount = 0;
+    mSelectedTriangleValid = false;
+
     if (mpScene)
     {
+        mMeshCount = mpScene->getMeshCount();
+        mInstanceCount = mpScene->getGeometryInstanceCount();
+        logInfo("PTTest: scene has {} meshes and {} geometry instances.", mMeshCount, mInstanceCount);
+
         if (pScene->hasGeometryType(Scene::GeometryType::Custom))
         {
             logWarning("PTTest: This render pass does not support custom primitives.");
@@ -742,10 +670,10 @@ void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
 
         mTracer.pProgram = Program::create(mpDevice, desc, mpScene->getSceneDefines());
     }
-#ifdef NN_PRECOMPUTE
-    mpNNMatT = std::make_shared<NNMat>(mpDevice, mNeuBTFName, 1, 0);
-    mpNNMatBTF = std::make_shared<NNMat>(mpDevice, mNeuBTFName, 0, 1);
-#endif
+
+
+
+
 }
 
 void PTTest::prepareVars()
