@@ -295,15 +295,28 @@ void PTTest::handleOutput()
         camera->setOutputFrameCount(mOutputSPP);
         mOutputIndx++;
 
-        mTriSampleU += 0.18f;
 
-        if (mTriSampleU >= 0.94f)
-        {
-            mTriSampleU = 0.05f;
-            mTriSampleV+= 0.18f;
+        if (mOutputIndx < 3){
+            mTriSampleU = vertexUV[mOutputIndx].x;
+            mTriSampleV = vertexUV[mOutputIndx].y;
+            return;
         }
 
-        if (mTriSampleV >= 0.94f)
+        if(mOutputIndx == 3){
+            mTriSampleU = startingUV;
+            mTriSampleV = startingUV;
+        }
+
+
+        mTriSampleU += intervalUV;
+
+        if (mTriSampleU >= startingUV + numberOfInterals * intervalUV - 0.01f)
+        {
+            mTriSampleU = startingUV;
+            mTriSampleV+= intervalUV;
+        }
+
+        if (mTriSampleV >= startingUV + numberOfInterals * intervalUV - 0.01f)
         {
             mOutputStep = 0;
             mOutputIndx = 0;
@@ -312,8 +325,8 @@ void PTTest::handleOutput()
             mIsOutputing = false;
             mpScene->getCamera()->setAccumulating(false);
 
-            mTriSampleU = 0.05f;
-            mTriSampleV = 0.05f;
+            mTriSampleU = startingUV;
+            mTriSampleV = startingUV;
         }
         return;
 }
@@ -454,8 +467,11 @@ void PTTest::renderUI(Gui::Widgets& widget)
             mIsOutputing = true;
             dirty = true;
 
-            mTriSampleU = 0.05f;
-            mTriSampleV = 0.05f;
+            mTriSampleU = vertexUV[0].x;
+            mTriSampleV = vertexUV[0].y;
+
+            // mTriSampleU = 0.05f;
+            // mTriSampleV = 0.05f;
 
             auto camera = mpScene->getCamera();
             camera->setOutputFrameCount(mOutputSPP);
