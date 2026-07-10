@@ -28,6 +28,7 @@
 #include "PTTest.h"
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
+#include "Tools/Utils.h"
 #define pX mXYUV.x
 #define pY mXYUV.y
 #define pU mXYUV.z
@@ -193,23 +194,13 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     {
         mpScene->getLightCollection(pRenderContext);
     }
+    // Get dimensions of ray dispatch.
+    const uint2 targetDim = renderData.getDefaultTextureDims();
+    FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
 
-    // if (mpScene->getLightCount() > 0)
-    // {
-    //     ref<Light> light = mpScene->getLight(0);
-    //     DirectionalLight* dirlight = (DirectionalLight*)light.get();
-    //     if (light->getType() == LightType::Directional)
-    //     {
-    //         ref<DirectionalLight> dl = static_ref_cast<DirectionalLight>(light);
-    //         float phi = M_2PI * mLightPhi;
-    //         float theta = M_PI_2 * mLightTheta;
-    //         float3 dir;
-    //         dir.x = -(cos(phi - M_PI)) * sin(theta);
-    //         dir.z = -(sin(phi - M_PI)) * sin(theta);
-    //         dir.y = cos(theta);
-    //         dl->setWorldDirection(-dir);
-    //     }
-    // }
+    createTex(mpBarycentric, mpDevice, targetDim);
+    createTex(mpWi, mpDevice, targetDim);
+    createTex(mpRadiance, mpDevice, targetDim);
 
     // Configure depth-of-field.
     const bool useDOF = mpScene->getCamera()->getApertureRadius() > 0.f;
@@ -257,6 +248,11 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     var["CB"]["gSelectedTriangleID"] = mSelectedTriangleID;
     var["CB"]["gTriSampleUV"] = float2(mTriSampleU, mTriSampleV);
     var["CB"]["gProbePos"] = mProbePos;
+
+    var["gBarycentric"] = mpBarycentric;
+    var["gWi"] = mpWi;
+    var["gRadiance"] = mpRadiance;
+
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["gEnvMapSampler"]);
     // Bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
@@ -272,9 +268,7 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     for (auto channel : kOutputChannels)
         bind(channel);
 
-    // Get dimensions of ray dispatch.
-    const uint2 targetDim = renderData.getDefaultTextureDims();
-    FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
+
 
     // Spawn the rays.
     mpScene->raytrace(pRenderContext, mTracer.pProgram.get(), mTracer.pVars, uint3(targetDim, 1));
@@ -407,35 +401,18 @@ void PTTest::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.checkbox("Change Light", mChangeLight);
 
-    if (widget.button("Print VP Matrix"))
+    if (widget.button("output frame"))
     {
-        float3 cameraPos = float3(5) * spherical_to_cartesian_radXZY(float2(mViewTheta * M_PI, mViewPhi * M_2PI));
-        float4x4 V = MakeViewFromCameraPos(cameraPos);
-        float4x4 P = makeOrthoProjection(1);
-        logInfo("V Matrix: \n{}", to_string(V));
-        logInfo(
-            "\n[[{}, {}, {}, {}], \n[{}, {}, {}, {}], \n[{}, {}, {}, {}], \n[{}, {}, {}, {}]],",
-            V[0][0],
-            V[0][1],
-            V[0][2],
-            V[0][3],
-            V[1][0],
-            V[1][1],
-            V[1][2],
-            V[1][3],
-            V[2][0],
-            V[2][1],
-            V[2][2],
-            V[2][3],
-            V[3][0],
-            V[3][1],
-            V[3][2],
-            V[3][3]
-        );
-        // logInfo("[{}, {}, {}, {}],", V[1][0], V[1][1], V[1][2],V[1][3]);
-        // logInfo("[{}, {}, {}, {}],", V[2][0], V[2][1], V[2][2],V[2][3]);
-        // logInfo("[{}, {}, {}, {}]]", V[3][0], V[3][1], V[3][2],V[3][3]);
-        logInfo("P Matrix: \n{}", to_string(P));
+        mpBarycentric->captureToFile(
+                    0, 0, "C:/Data/Render/bary.exr", Bitmap::FileFormat::ExrFile, Bitmap::ExportFlags::Lossy
+                );
+        mpWi->captureToFile(
+                    0, 0, "C:/Data/Render/wi.exr", Bitmap::FileFormat::ExrFile, Bitmap::ExportFlags::Lossy
+                );
+        mpRadiance->captureToFile(
+                    0, 0, "C:/Data/Render/rad.exr", Bitmap::FileFormat::ExrFile, Bitmap::ExportFlags::Lossy
+                );
+
     }
 
     if (!mChangeLight)

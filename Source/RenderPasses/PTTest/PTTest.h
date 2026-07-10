@@ -61,7 +61,9 @@ private:
     void computeSelectedTriangleWorldPositions();
 
 
-
+    ref<Texture> mpBarycentric;
+    ref<Texture> mpWi;
+    ref<Texture> mpRadiance;
 
     // Internal state
 
@@ -149,8 +151,8 @@ private:
     float mTriSampleU = 0.5f;
     float mTriSampleV = 0.5f;
     const float2 vertexUV[3] = {float2(0.0f, 0.0f), float2(0.999f, 0.0f), float2(0.999f, 0.999f)};
+    // const float startingUV = 0.05f;
     const float startingUV = 0.05f;
-    // const float startingUV = 0.02f;
-    float numberOfInterals = 5;
+    float numberOfInterals = 10;
     float intervalUV = (1.0f - 2 * startingUV) / numberOfInterals;
 };

@@ -94,6 +94,9 @@ Texture2D<float4> gViewW; // Optional
 
 // Outputs
 RWTexture2D<float4> gOutputColor;
+RWTexture2D<float4> gBarycentric;
+RWTexture2D<float4> gWi;
+RWTexture2D<float4> gRadiance;
 
 // Static configuration based on defines set from the host.
 #define is_valid(name) (is_valid_##name != 0)
@@ -431,20 +434,7 @@ bool generateEnvMapSample(float3 origin, inout SampleGenerator sg, inout float3 
 
     return any(Li > 0.f);
 }
-float3 SnapToVoxelCenter(float3 p)
-{
-    const int N = 100;
-    const float h = 2.0 / N;
-    const float3 firstCenter = float3(-1.0 + 0.5 * h);
 
-    // clamp p into the voxelable region for centers
-    float3 p2 = clamp(p, float3(-1.0), float3(1.0));
-
-    int3 i = int3(round((p2 - firstCenter) / h));
-    i = clamp(i, int3(0), int3(N - 1));
-
-    return firstCenter + i * h;
-}
 /**
  * Process a hit.
  * Loads the shading data, samples analytic lights and samples a new scatter ray.
@@ -455,30 +445,34 @@ float3 SnapToVoxelCenter(float3 p)
  */
 void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
+    const bool isCurveHit = hit.getType() == HitType::Curve;
+
+    // Load shading data.
+    ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
+
+    // Create material instance.
+    let lod = ExplicitLodTextureSampler(0.f);
+    let mi = gScene.materials.getMaterialInstance(sd, lod, MaterialInstanceHints::AdjustShadingNormal);
+
     // Debug: highlight the user-selected triangle on the primary hit.
     if (gShowSelectedTri && rayData.pathLength == 1 && hit.getType() == HitType::Triangle)
     {
         const TriangleHit th = hit.getTriangleHit();
         if (th.instanceID.index == gSelectedInstanceID && th.primitiveIndex == gSelectedTriangleID)
         {
-            rayData.radiance = float3(1.f, 0.f, 0.f);
+            uint2 pixel = DispatchRaysIndex().xy;
+            gBarycentric[pixel] = float4(1 - th.barycentrics.x- th.barycentrics.y, th.barycentrics.x, th.barycentrics.y, 0.f);
+            float3 wi = reflect(-sd.V, sd.frame.N);
+            gWi[pixel] = float4(wi.xzy, 0.f);
+            gRadiance[pixel] = float4(mi.eval(sd, wi, rayData.sg), 1.f);
+
+            rayData.radiance = float3(th.barycentrics.x, th.barycentrics.y, 0.f);
             rayData.terminated = true;
             return;
         }
     }
 
-    const bool isCurveHit = hit.getType() == HitType::Curve;
 
-    // Load shading data.
-    ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
-    // sd.frame.N = shiftBackFacingShadingNormal(sd.frame.N, sd.V);
-    // if (dot(sd.frame.N, sd.V) < 1e-6f) {
-    //     sd.frame.N = sd.faceN;
-    // }
-
-    // Create material instance.
-    let lod = ExplicitLodTextureSampler(0.f);
-    let mi = gScene.materials.getMaterialInstance(sd, lod, MaterialInstanceHints::AdjustShadingNormal);
 
     // Add emitted light.
     if (kUseEmissiveLights && (kComputeDirect || rayData.pathLength > 0))
@@ -489,8 +483,8 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
     // Compute ray origin for new rays spawned from the hit.
     float3 rayOrigin;
-    // rayOrigin = sd.computeRayOrigin();
-    rayOrigin = sd.posW + sd.faceN * 0.0001f;
+    rayOrigin = sd.computeRayOrigin();
+    // rayOrigin = sd.posW + sd.faceN * 0.0001f;
 
     // Add contribution of direct light from analytic lights.
     if (kUseAnalyticLights)
@@ -561,9 +555,6 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     // float3 cameraPos = gProbePos;
     // spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI)).xzy * 5;
     primaryRayDir = oct_to_ndir_equal_area_unorm(originUV).xzy;
-
-    // getPrimaryOrthogonalRayPos(pixel, frameDim, cameraPos, sampleNext2D(sg), primaryRayDir, primaryRayOrigin);
-    // getPrimaryOrthogonalRayPos(pixel, frameDim, cameraPos, 0.5, primaryRayDir, primaryRayOrigin);
 
     // Prepare ray payload.
     ScatterRayData rayData = ScatterRayData(sg);
