@@ -29,6 +29,9 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "Tools/Utils.h"
+#include "Utils/Math/Matrix.h"
+#include <nlohmann/json.hpp>
+#include <fstream>
 #define pX mXYUV.x
 #define pY mXYUV.y
 #define pU mXYUV.z
@@ -114,6 +117,26 @@ const ChannelList kOutputChannels = {
 const char kMaxBounces[] = "maxBounces";
 const char kComputeDirect[] = "computeDirect";
 const char kUseImportanceSampling[] = "useImportanceSampling";
+
+/// Reads a little-endian float32 binary file into a vector (empty on failure).
+std::vector<float> readFloatBinary(const std::filesystem::path& path)
+{
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file)
+    {
+        logWarning("[NeuLobes] Unable to open file {}", path.string());
+        return {};
+    }
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<float> buffer(size / sizeof(float));
+    if (size > 0 && !file.read(reinterpret_cast<char*>(buffer.data()), size))
+    {
+        logWarning("[NeuLobes] Error reading file {}", path.string());
+        return {};
+    }
+    return buffer;
+}
 } // namespace
 
 PTTest::PTTest(ref<Device> pDevice, const Properties& props) : RenderPass(pDevice)
@@ -123,6 +146,9 @@ PTTest::PTTest(ref<Device> pDevice, const Properties& props) : RenderPass(pDevic
     // Create a sample generator.
     mpSampleGenerator = SampleGenerator::create(mpDevice, SAMPLE_GENERATOR_UNIFORM);
     FALCOR_ASSERT(mpSampleGenerator);
+
+    // Load the NeuLobes neural light-probe model (files are optional; a warning is logged if missing).
+    loadNeuLobesModel(mNeuLobesDir);
 }
 
 void PTTest::parseProperties(const Properties& props)
@@ -255,6 +281,10 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
 
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["gEnvMapSampler"]);
+
+    // Bind NeuLobes neural light-probe model. The runtime flag gates evaluation in the shader,
+    // so the resources are always referenced (present in reflection) even when disabled.
+    bindNeuLobesData(var);
     // Bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
     auto bind = [&](const ChannelDesc& desc)
     {
@@ -400,6 +430,14 @@ void PTTest::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Plucker mode", mPluckerMode);
 
     dirty |= widget.checkbox("Change Light", mChangeLight);
+
+    dirty |= widget.checkbox("Use NeuLobes probe", mUseNeuLobes);
+    widget.tooltip("Evaluate the NeuLobes neural light probe and write it to the output color.", true);
+    if (mUseNeuLobes)
+    {
+        widget.text(mNeuLobes.loaded ? "NeuLobes: model loaded" : "NeuLobes: model NOT loaded");
+        dirty |= widget.var("NeuLobes bary", mNeuBary, 0.0f, 1.0f);
+    }
 
     if (widget.button("output frame"))
     {
@@ -565,6 +603,123 @@ void PTTest::computeSelectedTriangleWorldPositions()
         mSelectedTrianglePosW[1].x, mSelectedTrianglePosW[1].y, mSelectedTrianglePosW[1].z,
         mSelectedTrianglePosW[2].x, mSelectedTrianglePosW[2].y, mSelectedTrianglePosW[2].z
     );
+}
+
+void PTTest::loadNeuLobesModel(const std::string& dir)
+{
+    const std::filesystem::path root(dir);
+
+    // Read manifest.json for hyperparameters; fall back to the reference config on any missing key or failure.
+    std::ifstream ifs(root / "manifest.json");
+    if (ifs)
+    {
+        try
+        {
+            nlohmann::json j = nlohmann::json::parse(ifs, nullptr, true /*allow exceptions*/, true /*ignore comments*/);
+            mNeuLobes.peBands = j.value("peBands", mNeuLobes.peBands);
+            mNeuLobes.rank = j.value("rank", mNeuLobes.rank);
+            mNeuLobes.planeDim = j.value("planeDim", mNeuLobes.planeDim);
+            mNeuLobes.hiddenDim = j.value("hiddenDim", mNeuLobes.hiddenDim);
+            mNeuLobes.numBasis = j.value("numBasis", mNeuLobes.numBasis);
+            mNeuLobes.inputDim = j.value("inputDim", mNeuLobes.inputDim);
+            // Feature-plane resolution is called "res" (also accept "planeRes").
+            if (j.contains("res"))
+                mNeuLobes.res = j["res"].get<uint32_t>();
+            else
+                mNeuLobes.res = j.value("planeRes", mNeuLobes.res);
+        }
+        catch (const std::exception& e)
+        {
+            logWarning("[NeuLobes] Failed to parse manifest.json ({}). Using reference config.", e.what());
+        }
+    }
+    else
+    {
+        logWarning("[NeuLobes] manifest.json not found in {}. Using reference config.", dir);
+    }
+
+    // Derive per-layer 4x4 block counts. MLP layer dims: inputDim -> hiddenDim -> hiddenDim -> outputDim.
+    const uint32_t dims[4] = {mNeuLobes.inputDim, mNeuLobes.hiddenDim, mNeuLobes.hiddenDim, mNeuLobes.outputDim};
+    auto blk = [](uint32_t n) { return (n + 3u) / 4u; };
+    for (int l = 0; l < 3; ++l)
+    {
+        mNeuLobes.inBlk[l] = blk(dims[l]);
+        mNeuLobes.outBlk[l] = blk(dims[l + 1]);
+    }
+
+    auto readTensor = [&](const std::string& name)
+    { return readFloatBinary(root / name); };
+
+    // Feature tensors (raw float lists uploaded as-is; indexed manually in the shader).
+    std::vector<float> vecx = readTensor("fp_vecx.bin");
+    std::vector<float> matyz = readTensor("fp_matyz.bin");
+    if (vecx.empty() || matyz.empty())
+    {
+        logWarning("[NeuLobes] Missing feature tensors in {}. Model not loaded.", dir);
+        return;
+    }
+
+    const ResourceBindFlags flags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
+
+    // CPU -> GPU: upload feature tensors to device-local structured buffers.
+    mNeuLobes.pVecX = mpDevice->createBuffer(vecx.size() * sizeof(float), flags, MemoryType::DeviceLocal, vecx.data());
+    mNeuLobes.pMatYZ = mpDevice->createBuffer(matyz.size() * sizeof(float), flags, MemoryType::DeviceLocal, matyz.data());
+
+    // Weights/biases: repack each layer's raw floats into mul-ready float4x4 / float4 blocks, then upload.
+    for (int l = 0; l < 3; ++l)
+    {
+        std::vector<float> w = readTensor(fmt::format("w{}.bin", l));
+        std::vector<float> b = readTensor(fmt::format("b{}.bin", l));
+        if (w.empty() || b.empty())
+        {
+            logWarning("[NeuLobes] Missing weights/bias for layer {} in {}. Model not loaded.", l, dir);
+            return;
+        }
+
+        const size_t numMat = w.size() / 16;
+        std::vector<float4x4> mats(numMat);
+        for (size_t i = 0; i < numMat; ++i)
+            mats[i] = math::matrixFromCoefficients<float, 4, 4>(w.data() + i * 16);
+
+        mNeuLobes.pW[l] = mpDevice->createBuffer(numMat * sizeof(float4x4), flags, MemoryType::DeviceLocal, mats.data());
+        mNeuLobes.pB[l] = mpDevice->createBuffer(b.size() * sizeof(float), flags, MemoryType::DeviceLocal, b.data());
+    }
+
+    mNeuLobes.loaded = true;
+    logInfo(
+        "[NeuLobes] Loaded model from {} (peBands={}, res={}, rank={}, planeDim={}, hiddenDim={}, inputDim={}).",
+        dir, mNeuLobes.peBands, mNeuLobes.res, mNeuLobes.rank, mNeuLobes.planeDim, mNeuLobes.hiddenDim, mNeuLobes.inputDim
+    );
+}
+
+void PTTest::bindNeuLobesData(const ShaderVar& var)
+{
+    // Runtime toggle gating evaluation in the shader. Only enabled when the model is actually loaded.
+    const bool enable = mUseNeuLobes && mNeuLobes.loaded;
+    var["CB"]["gUseNeuLobes"] = enable;
+    var["CB"]["gNeuBary"] = mNeuBary;
+
+    if (!mNeuLobes.loaded)
+        return;
+
+    auto cfg = var["CB"]["gNeuLobes"];
+    cfg["peBands"] = mNeuLobes.peBands;
+    cfg["res"] = mNeuLobes.res;
+    cfg["rank"] = mNeuLobes.rank;
+    cfg["planeDim"] = mNeuLobes.planeDim;
+    cfg["numBasis"] = mNeuLobes.numBasis;
+    cfg["inputDim"] = mNeuLobes.inputDim;
+    cfg["inBlk"] = uint4(mNeuLobes.inBlk[0], mNeuLobes.inBlk[1], mNeuLobes.inBlk[2], 0);
+    cfg["outBlk"] = uint4(mNeuLobes.outBlk[0], mNeuLobes.outBlk[1], mNeuLobes.outBlk[2], 0);
+
+    var["gNeuVecX"] = mNeuLobes.pVecX;
+    var["gNeuMatYZ"] = mNeuLobes.pMatYZ;
+    var["gNeuW0"] = mNeuLobes.pW[0];
+    var["gNeuW1"] = mNeuLobes.pW[1];
+    var["gNeuW2"] = mNeuLobes.pW[2];
+    var["gNeuB0"] = mNeuLobes.pB[0];
+    var["gNeuB1"] = mNeuLobes.pB[1];
+    var["gNeuB2"] = mNeuLobes.pB[2];
 }
 
 void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)

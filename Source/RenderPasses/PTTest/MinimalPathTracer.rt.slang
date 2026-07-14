@@ -65,6 +65,20 @@ import Utils.Geometry.IntersectionHelpers;
 import Utils.Sampling.SampleGenerator;
 import Rendering.Lights.LightHelpers;
 import Rendering.Lights.EnvMapSampler;
+
+/// NeuLobes model hyperparameters and per-layer 4x4 block counts (mirrors the host struct).
+struct NeuLobesConfig
+{
+    uint peBands;
+    uint res;
+    uint rank;
+    uint planeDim;
+    uint numBasis;
+    uint inputDim;
+    uint4 inBlk;  ///< Input 4x4-block count per layer (x,y,z = layers 0,1,2).
+    uint4 outBlk; ///< Output 4x4-block count per layer.
+};
+
 cbuffer CB
 {
     uint gFrameCount;    // Frame count since scene was loaded.
@@ -86,6 +100,9 @@ cbuffer CB
     float3 gSurfaceNormal;
     float4 gXYUV;
 
+    NeuLobesConfig gNeuLobes; ///< NeuLobes model hyperparameters / block counts.
+    float3 gNeuBary;          ///< Barycentric probe-blend weights for the demo query.
+    bool gUseNeuLobes;        ///< Runtime toggle: evaluate the neural probe in rayGen.
 }
 
 // Inputs
@@ -97,6 +114,157 @@ RWTexture2D<float4> gOutputColor;
 RWTexture2D<float4> gBarycentric;
 RWTexture2D<float4> gWi;
 RWTexture2D<float4> gRadiance;
+
+// NeuLobes weight tensors (uploaded from the host, see PTTest::loadNeuLobesModel).
+StructuredBuffer<float> gNeuVecX;      ///< [numBasis][rank][res].
+StructuredBuffer<float> gNeuMatYZ;     ///< [numBasis][rank][res][planeDim].
+StructuredBuffer<float4x4> gNeuW0;     ///< Layer 0 weights, [numBasis][outBlk][inBlk] 4x4 blocks.
+StructuredBuffer<float4x4> gNeuW1;     ///< Layer 1 weights.
+StructuredBuffer<float4x4> gNeuW2;     ///< Layer 2 weights.
+StructuredBuffer<float4> gNeuB0;       ///< Layer 0 biases, [numBasis][outBlk] float4 blocks.
+StructuredBuffer<float4> gNeuB1;       ///< Layer 1 biases.
+StructuredBuffer<float4> gNeuB2;       ///< Layer 2 biases.
+
+static const uint kNeuMaxBlk = 8;      ///< Max 4x4 blocks per activation (inputDim <= 32).
+static const uint kNeuMaxIn = 32;      ///< kNeuMaxBlk * 4.
+static const uint kNeuMaxFeat = 8;     ///< Max feature channels (planeDim <= 8).
+
+float4 neuLeakyRelu(float4 v)
+{
+    return max(v, 0.0f) + 0.01f * min(v, 0.0f);
+}
+
+// Direction -> equal-area octahedral UV in [0,1]^2 (inverse map, matches the export spec).
+float2 neuDirToOctUV(float3 dir)
+{
+    float3 d = normalize(dir);
+    float r = sqrt(max(1.0f - abs(d.z), 0.0f));
+    float phi = atan2(abs(d.y), abs(d.x)); // [0, pi/2]
+    float rt = r * (4.0f * phi / M_PI - 1.0f);
+    float s = (d.z >= 0.0f) ? r : (2.0f - r);
+    float apx = max((s - rt) * 0.5f, 0.0f);
+    float apy = max((s + rt) * 0.5f, 0.0f);
+    float px = (d.x >= 0.0f) ? apx : -apx; // copysign(apx, d.x)
+    float py = (d.y >= 0.0f) ? apy : -apy; // copysign(apy, d.y)
+    return 0.5f * (float2(px, py) + 1.0f);
+}
+
+// One MLP layer: per-basis blended (bary) mul-style matvec followed by leaky ReLU.
+void neuLayer(
+    StructuredBuffer<float4x4> W,
+    StructuredBuffer<float4> B,
+    uint inBlk,
+    uint outBlk,
+    float3 bary,
+    float4 hin[kNeuMaxBlk],
+    out float4 hout[kNeuMaxBlk])
+{
+    [unroll]
+    for (uint k = 0; k < kNeuMaxBlk; ++k)
+        hout[k] = float4(0.0f);
+
+    for (uint oi = 0; oi < outBlk; ++oi)
+    {
+        float4 acc = bary.x * B[0 * outBlk + oi] + bary.y * B[1 * outBlk + oi] + bary.z * B[2 * outBlk + oi];
+        for (uint ii = 0; ii < inBlk; ++ii)
+        {
+            float4x4 Wm = bary.x * W[(0 * outBlk + oi) * inBlk + ii]
+                        + bary.y * W[(1 * outBlk + oi) * inBlk + ii]
+                        + bary.z * W[(2 * outBlk + oi) * inBlk + ii];
+            acc += mul(Wm, hin[ii]);
+        }
+        hout[oi] = neuLeakyRelu(acc);
+    }
+}
+
+/// Evaluates the NeuLobes light probe: predicts linear incident radiance for a unit
+/// direction `dir` blended across the 3 bases by barycentric weights `bary` (sum to 1).
+float3 neuLobesInference(float3 dir, float3 bary)
+{
+    const uint res = gNeuLobes.res;
+    const uint rank = gNeuLobes.rank;
+    const uint planeDim = gNeuLobes.planeDim;
+    const uint peBands = gNeuLobes.peBands;
+    const uint numBasis = gNeuLobes.numBasis;
+
+    // 1. Direction -> octahedral UV.
+    float2 uv = neuDirToOctUV(dir);
+
+    // 2. Bilinear sample setup (align-corners, border clamp).
+    float tu = uv.x * (res - 1);
+    float tv = uv.y * (res - 1);
+    int i0 = (int)clamp(floor(tu), 0.0f, (float)(res - 1));
+    int i1 = min(i0 + 1, (int)res - 1);
+    float fu = clamp(tu - i0, 0.0f, 1.0f);
+    int j0 = (int)clamp(floor(tv), 0.0f, (float)(res - 1));
+    int j1 = min(j0 + 1, (int)res - 1);
+    float fv = clamp(tv - j0, 0.0f, 1.0f);
+
+    // Low-rank feature vector, blended by bary.
+    float feat[kNeuMaxFeat];
+    [unroll]
+    for (uint c = 0; c < kNeuMaxFeat; ++c)
+        feat[c] = 0.0f;
+
+    for (uint b = 0; b < numBasis; ++b)
+    {
+        float baryW = (b == 0) ? bary.x : ((b == 1) ? bary.y : bary.z);
+        for (uint c = 0; c < planeDim; ++c)
+        {
+            float acc = 0.0f;
+            for (uint r = 0; r < rank; ++r)
+            {
+                uint vBase = (b * rank + r) * res;
+                float vx = lerp(gNeuVecX[vBase + i0], gNeuVecX[vBase + i1], fu);
+                uint mBase = (b * rank + r) * res;
+                float my = lerp(
+                    gNeuMatYZ[(mBase + j0) * planeDim + c],
+                    gNeuMatYZ[(mBase + j1) * planeDim + c],
+                    fv);
+                acc += vx * my;
+            }
+            feat[c] += baryW * acc;
+        }
+    }
+
+    // 3. Positional encoding of dir (axis-major: all x, then y, then z; sin bands then cos bands).
+    float3 d = normalize(dir);
+    float axis[3] = {d.x, d.y, d.z};
+    float inp[kNeuMaxIn];
+    [unroll]
+    for (uint k = 0; k < kNeuMaxIn; ++k)
+        inp[k] = 0.0f;
+
+    uint idx = 0;
+    for (uint a = 0; a < 3; ++a)
+    {
+        for (uint kb = 0; kb < peBands; ++kb)
+            inp[idx++] = sin(M_PI * axis[a] * exp2((float)kb));
+        for (uint kb = 0; kb < peBands; ++kb)
+            inp[idx++] = cos(M_PI * axis[a] * exp2((float)kb));
+    }
+
+    // 4. MLP input = concat(positional encoding, feature).
+    for (uint c = 0; c < planeDim; ++c)
+        inp[idx++] = feat[c];
+
+    // Split (zero-padded) input into float4 blocks.
+    float4 hb[kNeuMaxBlk];
+    [unroll]
+    for (uint k = 0; k < kNeuMaxBlk; ++k)
+        hb[k] = float4(inp[4 * k + 0], inp[4 * k + 1], inp[4 * k + 2], inp[4 * k + 3]);
+
+    // 5. Three MLP layers (leaky ReLU on every layer, including the last).
+    float4 h1[kNeuMaxBlk];
+    float4 h2[kNeuMaxBlk];
+    float4 h3[kNeuMaxBlk];
+    neuLayer(gNeuW0, gNeuB0, gNeuLobes.inBlk.x, gNeuLobes.outBlk.x, bary, hb, h1);
+    neuLayer(gNeuW1, gNeuB1, gNeuLobes.inBlk.y, gNeuLobes.outBlk.y, bary, h1, h2);
+    neuLayer(gNeuW2, gNeuB2, gNeuLobes.inBlk.z, gNeuLobes.outBlk.z, bary, h2, h3);
+
+    // 6. Output lanes are log(1 + radiance).
+    return exp(h3[0].xyz) - 1.0f;
+}
 
 // Static configuration based on defines set from the host.
 #define is_valid(name) (is_valid_##name != 0)
@@ -453,11 +621,29 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // Create material instance.
     let lod = ExplicitLodTextureSampler(0.f);
     let mi = gScene.materials.getMaterialInstance(sd, lod, MaterialInstanceHints::AdjustShadingNormal);
+    // Compute ray origin for new rays spawned from the hit.
+    float3 rayOrigin;
+    rayOrigin = sd.computeRayOrigin();
+
+    const TriangleHit th = hit.getTriangleHit();
+    if (gUseNeuLobes && (th.instanceID.index == gSelectedInstanceID && th.primitiveIndex == gSelectedTriangleID))
+    {
+
+        float3 barys = float3(1 - th.barycentrics.x - th.barycentrics.y, th.barycentrics.x, th.barycentrics.y);
+        // Sample material.
+        BSDFSample bsdfSample;
+        if (mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
+        {
+            rayData.radiance = rayData.thp * neuLobesInference(bsdfSample.wo.xzy, barys) * bsdfSample.weight;
+            rayData.terminated = true;
+        }
+        return;
+    }
+
 
     // Debug: highlight the user-selected triangle on the primary hit.
     if (gShowSelectedTri && rayData.pathLength == 1 && hit.getType() == HitType::Triangle)
     {
-        const TriangleHit th = hit.getTriangleHit();
         if (th.instanceID.index == gSelectedInstanceID && th.primitiveIndex == gSelectedTriangleID)
         {
             uint2 pixel = DispatchRaysIndex().xy;
@@ -481,9 +667,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 
 
-    // Compute ray origin for new rays spawned from the hit.
-    float3 rayOrigin;
-    rayOrigin = sd.computeRayOrigin();
+
     // rayOrigin = sd.posW + sd.faceN * 0.0001f;
 
     // Add contribution of direct light from analytic lights.
@@ -903,6 +1087,14 @@ void rayGen()
 {
     uint2 pixel = DispatchRaysIndex().xy;
     uint2 frameDim = DispatchRaysDimensions().xy;
+
+    // if (gUseNeuLobes)
+    // {
+    //     // Evaluate the neural light probe along the primary camera ray and output linear radiance.
+    //     float3 dir = normalize(oct_to_ndir_equal_area_unorm(pixel / (float2)frameDim));
+    //     gOutputColor[pixel] = float4(neuLobesInference(dir, gNeuBary), 1.f);
+    //     return;
+    // }
 
     float3 color = tracePath(pixel, frameDim);
 

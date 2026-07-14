@@ -54,6 +54,39 @@ public:
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return false; }
     virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override { return false; }
     void handleOutput();
+
+    /// NeuLobes light-probe neural model (PETwoLVTensorFMLPInterp).
+    /// Holds hyperparameters read from manifest.json plus the raw weight tensors uploaded to the GPU.
+    struct NeuLobesModel
+    {
+        // Hyperparameters (read from manifest.json, fall back to the reference config on missing keys).
+        uint32_t peBands = 2;   ///< Positional-encoding bands.
+        uint32_t res = 6;       ///< Feature-plane resolution (planeRes).
+        uint32_t rank = 2;      ///< Low-rank factor count.
+        uint32_t planeDim = 4;  ///< Feature channels per basis (== MLP feature tail length).
+        uint32_t hiddenDim = 4; ///< MLP hidden width.
+        uint32_t numBasis = 3;  ///< Number of blended weight/feature sets (== length of bary).
+        uint32_t inputDim = 16; ///< MLP input width (6*peBands + planeDim).
+        uint32_t outputDim = 3; ///< MLP output width (RGB).
+
+        // Per-layer 4x4 block counts, one entry per MLP layer (3 layers).
+        uint32_t inBlk[3] = {};
+        uint32_t outBlk[3] = {};
+
+        // GPU buffers (CPU tensors uploaded to device-local memory).
+        ref<Buffer> pVecX;  ///< StructuredBuffer<float>    [numBasis*rank*res].
+        ref<Buffer> pMatYZ; ///< StructuredBuffer<float>    [numBasis*rank*res*planeDim].
+        ref<Buffer> pW[3];  ///< StructuredBuffer<float4x4> per layer, mul-ready 4x4 blocks.
+        ref<Buffer> pB[3];  ///< StructuredBuffer<float4>   per layer, bias blocks.
+
+        bool loaded = false;
+    };
+
+    /// Reads manifest.json + the float32 weight binaries from `dir` and uploads them to GPU buffers.
+    void loadNeuLobesModel(const std::string& dir);
+    /// Binds the loaded NeuLobes buffers and config constants to the ray tracing program.
+    void bindNeuLobesData(const ShaderVar& var);
+
 private:
     void parseProperties(const Properties& props);
     void prepareVars();
@@ -128,6 +161,13 @@ private:
     std::shared_ptr<NNMat> mpNNMatT;
     std::shared_ptr<NNMat> mpNNMatBTF;
     std::string mNeuBTFName = "NeuBTF_P5Dir_carpet02_U400-8_H100-8_D100-8_h32_bt1_L1_Filter";
+
+    // NeuLobes neural light-probe model.
+    NeuLobesModel mNeuLobes;
+    std::string mNeuLobesDir = "C:/projects/neulobes/outputs/neulobes_bin";
+    bool mUseNeuLobes = false;
+    /// Barycentric probe-blend weights used for the demo inference query (should sum to 1).
+    float3 mNeuBary = float3(1.0f, 0.0f, 0.0f);
 
     float phiCount = 60.0f;
     float thetaCount = 30.0f;
