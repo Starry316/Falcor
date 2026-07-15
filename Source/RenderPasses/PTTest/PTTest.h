@@ -277,6 +277,6 @@ private:
     const float2 vertexUV[3] = {float2(0.0f, 0.0f), float2(0.999f, 0.0f), float2(0.999f, 0.999f)};
     // const float startingUV = 0.05f;
     const float startingUV = 0.05f;
-    float numberOfInterals = 3;
+    float numberOfInterals = 8;
     float intervalUV = (1.0f - 2 * startingUV) / numberOfInterals;
 };

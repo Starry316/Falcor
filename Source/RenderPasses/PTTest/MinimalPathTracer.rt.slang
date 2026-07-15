@@ -801,10 +801,10 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
     const TriangleHit th = hit.getTriangleHit();
 
-    if (!gBTFViewMode && (th.instanceID.index == gSelectedInstanceID)) {
-        rayData.radiance = float3(0.0f);
-        rayData.terminated = true;
-    }
+    // if (!gBTFViewMode && (th.instanceID.index == gSelectedInstanceID)) {
+    //     rayData.radiance = float3(0.0f);
+    //     rayData.terminated = true;
+    // }
 
     if (gUseNeuLobes && (th.instanceID.index == gSelectedInstanceID))
     {
