@@ -786,20 +786,24 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
     // Load shading data.
     ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
-    // sd.frame.N = shiftBackFacingShadingNormal(sd.frame.N, sd.V);
-    // float NdotV = dot(sd.frame.N, sd.V);
-    // if (NdotV <= 0) {
-    //     sd.frame.N = sd.faceN;
-    // }
-
     // Create material instance.
     let lod = ExplicitLodTextureSampler(0.f);
     let mi = gScene.materials.getMaterialInstance(sd, lod, MaterialInstanceHints::AdjustShadingNormal);
     // Compute ray origin for new rays spawned from the hit.
-    float3 rayOrigin;
-    rayOrigin = sd.computeRayOrigin();
+
 
     const TriangleHit th = hit.getTriangleHit();
+    if (!gBTFViewMode && (th.instanceID.index == gSelectedInstanceID)) {
+        rayData.radiance = float3(0.0f);
+        rayData.terminated = true;
+        return;
+    }
+
+    rayData.radiance = sd.frame.N * 0.5 + 0.5;
+    rayData.terminated = true;
+
+    float3 rayOrigin;
+    rayOrigin = sd.computeRayOrigin();
 
     if (!gBTFViewMode && (th.instanceID.index == gSelectedInstanceID)) {
         rayData.radiance = float3(0.0f);
@@ -923,7 +927,7 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     // Uniformly sample a position on the selected triangle using the UI-provided sample coordinates.
     float3 bary = sample_triangle(gTriSampleUV);
     float3 sampledPos = bary.x * selectedTriPos[0] + bary.y * selectedTriPos[1] + bary.z * selectedTriPos[2];
-    float3 primaryRayOrigin = computeRayOrigin(sampledPos, selectedTriNormal);
+    float3 primaryRayOrigin = computeRayOrigin(sampledPos, -selectedTriNormal);
     // float3 primaryRayOrigin = sampledPos;
     float3 primaryRayDir;
     // float3 cameraPos = gProbePos;

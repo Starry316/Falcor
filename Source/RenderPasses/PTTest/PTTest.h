@@ -189,9 +189,9 @@ private:
     uint mOutputOffsetIndx = 0;
     uint mOutputSPP = 32;
     // Separate output paths for the two phases (all include the instance ID as the first field).
-    std::string mVertexOutputPath = "C:/Data/Probe/train_dense/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
+    std::string mVertexOutputPath = "C:/Data/LF/train/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
     std::string mOutputPath =
-        "C:/Data/Probe/train_dense/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
+        "C:/Data/LF/train/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
     std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
 
     float mSampleTheta = 0;
@@ -277,6 +277,6 @@ private:
     const float2 vertexUV[3] = {float2(0.0f, 0.0f), float2(0.999f, 0.0f), float2(0.999f, 0.999f)};
     // const float startingUV = 0.05f;
     const float startingUV = 0.05f;
-    float numberOfInterals = 3;
+    float numberOfInterals = 1;
     float intervalUV = (1.0f - 2 * startingUV) / numberOfInterals;
 };
