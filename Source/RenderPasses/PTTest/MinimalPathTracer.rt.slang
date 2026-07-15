@@ -73,7 +73,7 @@ struct NeuLobesConfig
     uint res;
     uint rank;
     uint planeDim;
-    uint numBasis;
+    uint numMLPs;
     uint inputDim;
     uint4 inBlk;  ///< Input 4x4-block count per layer (x,y,z = layers 0,1,2).
     uint4 outBlk; ///< Output 4x4-block count per layer.
@@ -102,7 +102,13 @@ cbuffer CB
 
     NeuLobesConfig gNeuLobes; ///< NeuLobes model hyperparameters / block counts.
     float3 gNeuBary;          ///< Barycentric probe-blend weights for the demo query.
-    bool gUseNeuLobes;        ///< Runtime toggle: evaluate the neural probe in rayGen.
+    int3 gNeuVertexID;        ///< The 3 probe vertex IDs (pool indices) for the demo query.
+    bool gUseNeuLobes;        ///< Runtime toggle: evaluate the probe in the hit shader.
+    bool gHasVertexRemap;     ///< True if gVertexRemap is bound (position-weld canonical IDs available).
+    uint gProbeRepr;          ///< 0 = neural, 1 = SH, 2 = SG.
+    uint gSHDegree;           ///< SH degree.
+    uint gSHNumCoeffs;        ///< (degree+1)^2.
+    uint gSGCount;            ///< SG lobes per vertex.
 }
 
 // Inputs
@@ -115,13 +121,31 @@ RWTexture2D<float4> gBarycentric;
 RWTexture2D<float4> gWi;
 RWTexture2D<float4> gRadiance;
 
+// Position-weld remap: gVertexRemap[localVertexIndex] -> canonical vertex ID (mesh-local space),
+// matching PTTest::buildVertexWeldRemap on the host.
+StructuredBuffer<uint> gVertexRemap;
+
+/// Returns the canonical (position-welded) vertex IDs for a triangle, matching the CPU-side IDs.
+/// Uses mesh-local vertex indices (getLocalIndices), the same space the remap was built in.
+/// Falls back to raw local indices when the remap buffer is not bound.
+uint3 getCanonicalVertexIDs(GeometryInstanceID instanceID, uint triangleIndex)
+{
+    GeometryInstanceData inst = gScene.getGeometryInstance(instanceID);
+    uint3 localIdx = gScene.getLocalIndices(
+        inst.ibOffset, triangleIndex, (inst.flags & uint(GeometryInstanceFlags::Use16BitIndices)) != 0
+    );
+    if (!gHasVertexRemap)
+        return localIdx;
+    return uint3(gVertexRemap[localIdx.x], gVertexRemap[localIdx.y], gVertexRemap[localIdx.z]);
+}
+
 // NeuLobes weight tensors (uploaded from the host, see PTTest::loadNeuLobesModel).
-StructuredBuffer<float> gNeuVecX;      ///< [numBasis][rank][res].
-StructuredBuffer<float> gNeuMatYZ;     ///< [numBasis][rank][res][planeDim].
-StructuredBuffer<float4x4> gNeuW0;     ///< Layer 0 weights, [numBasis][outBlk][inBlk] 4x4 blocks.
+StructuredBuffer<float> gNeuVecX;      ///< [numMLPs][rank][res].
+StructuredBuffer<float> gNeuMatYZ;     ///< [numMLPs][rank][res][planeDim].
+StructuredBuffer<float4x4> gNeuW0;     ///< Layer 0 weights, [numMLPs][outBlk][inBlk] 4x4 blocks.
 StructuredBuffer<float4x4> gNeuW1;     ///< Layer 1 weights.
 StructuredBuffer<float4x4> gNeuW2;     ///< Layer 2 weights.
-StructuredBuffer<float4> gNeuB0;       ///< Layer 0 biases, [numBasis][outBlk] float4 blocks.
+StructuredBuffer<float4> gNeuB0;       ///< Layer 0 biases, [numMLPs][outBlk] float4 blocks.
 StructuredBuffer<float4> gNeuB1;       ///< Layer 1 biases.
 StructuredBuffer<float4> gNeuB2;       ///< Layer 2 biases.
 
@@ -149,43 +173,49 @@ float2 neuDirToOctUV(float3 dir)
     return 0.5f * (float2(px, py) + 1.0f);
 }
 
-// One MLP layer: per-basis blended (bary) mul-style matvec followed by leaky ReLU.
+// One MLP layer. The 3 weight/bias sets gathered from the pool by vid = (v0,v1,v2) are blended by
+// bary, then a mul-style matvec and leaky ReLU are applied.
 void neuLayer(
     StructuredBuffer<float4x4> W,
     StructuredBuffer<float4> B,
     uint inBlk,
     uint outBlk,
     float3 bary,
+    int3 vid,
     float4 hin[kNeuMaxBlk],
     out float4 hout[kNeuMaxBlk])
 {
+    const uint p0 = (uint)vid.x;
+    const uint p1 = (uint)vid.y;
+    const uint p2 = (uint)vid.z;
+
     [unroll]
     for (uint k = 0; k < kNeuMaxBlk; ++k)
         hout[k] = float4(0.0f);
 
     for (uint oi = 0; oi < outBlk; ++oi)
     {
-        float4 acc = bary.x * B[0 * outBlk + oi] + bary.y * B[1 * outBlk + oi] + bary.z * B[2 * outBlk + oi];
+        float4 acc = bary.x * B[p0 * outBlk + oi] + bary.y * B[p1 * outBlk + oi] + bary.z * B[p2 * outBlk + oi];
         for (uint ii = 0; ii < inBlk; ++ii)
         {
-            float4x4 Wm = bary.x * W[(0 * outBlk + oi) * inBlk + ii]
-                        + bary.y * W[(1 * outBlk + oi) * inBlk + ii]
-                        + bary.z * W[(2 * outBlk + oi) * inBlk + ii];
+            float4x4 Wm = bary.x * W[(p0 * outBlk + oi) * inBlk + ii]
+                        + bary.y * W[(p1 * outBlk + oi) * inBlk + ii]
+                        + bary.z * W[(p2 * outBlk + oi) * inBlk + ii];
             acc += mul(Wm, hin[ii]);
         }
         hout[oi] = neuLeakyRelu(acc);
     }
 }
 
-/// Evaluates the NeuLobes light probe: predicts linear incident radiance for a unit
-/// direction `dir` blended across the 3 bases by barycentric weights `bary` (sum to 1).
-float3 neuLobesInference(float3 dir, float3 bary)
+/// Evaluates the multi-probe NeuLobes model (PETensorFMLPInterpMulti): predicts linear incident
+/// radiance for a unit direction `dir` at a triangle whose 3 probe vertices are `vertexID`, blended
+/// by barycentric weights `bary` (sum to 1). Each of the 3 vertices indexes the pooled planes/weights.
+float3 neuLobesInference(float3 dir, float3 bary, int3 vertexID)
 {
     const uint res = gNeuLobes.res;
     const uint rank = gNeuLobes.rank;
     const uint planeDim = gNeuLobes.planeDim;
     const uint peBands = gNeuLobes.peBands;
-    const uint numBasis = gNeuLobes.numBasis;
 
     // 1. Direction -> octahedral UV.
     float2 uv = neuDirToOctUV(dir);
@@ -200,26 +230,26 @@ float3 neuLobesInference(float3 dir, float3 bary)
     int j1 = min(j0 + 1, (int)res - 1);
     float fv = clamp(tv - j0, 0.0f, 1.0f);
 
-    // Low-rank feature vector, blended by bary.
+    // Low-rank feature vector: gather the 3 probe planes by vertexID, then blend by bary.
     float feat[kNeuMaxFeat];
     [unroll]
     for (uint c = 0; c < kNeuMaxFeat; ++c)
         feat[c] = 0.0f;
 
-    for (uint b = 0; b < numBasis; ++b)
+    for (uint jj = 0; jj < 3; ++jj)
     {
-        float baryW = (b == 0) ? bary.x : ((b == 1) ? bary.y : bary.z);
+        const uint p = (jj == 0) ? (uint)vertexID.x : ((jj == 1) ? (uint)vertexID.y : (uint)vertexID.z);
+        const float baryW = (jj == 0) ? bary.x : ((jj == 1) ? bary.y : bary.z);
         for (uint c = 0; c < planeDim; ++c)
         {
             float acc = 0.0f;
             for (uint r = 0; r < rank; ++r)
             {
-                uint vBase = (b * rank + r) * res;
-                float vx = lerp(gNeuVecX[vBase + i0], gNeuVecX[vBase + i1], fu);
-                uint mBase = (b * rank + r) * res;
+                uint base = (p * rank + r) * res;
+                float vx = lerp(gNeuVecX[base + i0], gNeuVecX[base + i1], fu);
                 float my = lerp(
-                    gNeuMatYZ[(mBase + j0) * planeDim + c],
-                    gNeuMatYZ[(mBase + j1) * planeDim + c],
+                    gNeuMatYZ[(base + j0) * planeDim + c],
+                    gNeuMatYZ[(base + j1) * planeDim + c],
                     fv);
                 acc += vx * my;
             }
@@ -254,16 +284,155 @@ float3 neuLobesInference(float3 dir, float3 bary)
     for (uint k = 0; k < kNeuMaxBlk; ++k)
         hb[k] = float4(inp[4 * k + 0], inp[4 * k + 1], inp[4 * k + 2], inp[4 * k + 3]);
 
-    // 5. Three MLP layers (leaky ReLU on every layer, including the last).
+    // 5. Three MLP layers (leaky ReLU on every layer, including the last). Weights/biases for the 3
+    // probe vertices are gathered from the pool and blended by bary inside neuLayer.
     float4 h1[kNeuMaxBlk];
     float4 h2[kNeuMaxBlk];
     float4 h3[kNeuMaxBlk];
-    neuLayer(gNeuW0, gNeuB0, gNeuLobes.inBlk.x, gNeuLobes.outBlk.x, bary, hb, h1);
-    neuLayer(gNeuW1, gNeuB1, gNeuLobes.inBlk.y, gNeuLobes.outBlk.y, bary, h1, h2);
-    neuLayer(gNeuW2, gNeuB2, gNeuLobes.inBlk.z, gNeuLobes.outBlk.z, bary, h2, h3);
+    neuLayer(gNeuW0, gNeuB0, gNeuLobes.inBlk.x, gNeuLobes.outBlk.x, bary, vertexID, hb, h1);
+    neuLayer(gNeuW1, gNeuB1, gNeuLobes.inBlk.y, gNeuLobes.outBlk.y, bary, vertexID, h1, h2);
+    neuLayer(gNeuW2, gNeuB2, gNeuLobes.inBlk.z, gNeuLobes.outBlk.z, bary, vertexID, h2, h3);
 
-    // 6. Output lanes are log(1 + radiance).
-    return exp(h3[0].xyz) - 1.0f;
+    // 6. Output lanes are mu-law compressed radiance; decompress with mu = 5000.
+    const float mu = 5000.0f;
+    float3 pred = h3[0].xyz;
+    return (pow(float3(1.0f + mu), pred) - 1.0f) / mu;
+}
+
+// ---------------------------------------------------------------------------
+// SH / SG per-vertex analytic light probes (pool indexed by canonical vertexID).
+// Both are fit in log space: the stored value is log(1 + radiance), so decode with exp(y) - 1
+// (NOT the mu-law decode used by the neural model).
+// ---------------------------------------------------------------------------
+StructuredBuffer<float> gSHCoeffs;   ///< [pool][numCoeffs][3].
+StructuredBuffer<float> gSGAxes;     ///< [pool][numSGs][3].
+StructuredBuffer<float> gSGLambdas;  ///< [pool][numSGs].
+StructuredBuffer<float> gSGAmps;     ///< [pool][numSGs][3].
+
+// Associated Legendre polynomial P_l^m(x) (matches fit_SH.associatedLegendre).
+float shAssocLegendre(int l, int m, float x)
+{
+    float pmm = 1.0f;
+    if (m > 0)
+    {
+        float somx2 = sqrt(max(1.0f - x * x, 0.0f));
+        float fact = 1.0f;
+        for (int i = 1; i <= m; ++i)
+        {
+            pmm = -pmm * fact * somx2;
+            fact += 2.0f;
+        }
+    }
+    if (l == m)
+        return pmm;
+    float pmmp1 = x * (2.0f * m + 1.0f) * pmm;
+    if (l == m + 1)
+        return pmmp1;
+    float pprev = pmm;
+    float pcurr = pmmp1;
+    for (int ll = m + 2; ll <= l; ++ll)
+    {
+        float pll = ((2.0f * ll - 1.0f) * x * pcurr - (ll + m - 1.0f) * pprev) / (ll - m);
+        pprev = pcurr;
+        pcurr = pll;
+    }
+    return pcurr;
+}
+
+// SH normalization constant sqrt((2l+1)/(4pi) * (l-m)!/(l+m)!), computed as a reciprocal product to
+// avoid large factorials (matches fit_SH.shNormalization).
+float shNormalization(int l, int m)
+{
+    float ratio = 1.0f; // (l-m)!/(l+m)!
+    for (int i = l - m + 1; i <= l + m; ++i)
+        ratio /= (float)i;
+    return sqrt((2.0f * l + 1.0f) / (4.0f * M_PI) * ratio);
+}
+
+float3 shReadCoeff(uint v, uint k)
+{
+    uint base = (v * gSHNumCoeffs + k) * 3;
+    return float3(gSHCoeffs[base + 0], gSHCoeffs[base + 1], gSHCoeffs[base + 2]);
+}
+
+/// Evaluates the per-vertex SH pool: y = sum_j bary[j] * sum_k Y_k(dir) * coeffs[vid[j]][k], then
+/// decodes radiance = exp(y) - 1. dir is in the equal-area-oct xyz frame.
+float3 shInference(float3 dir, float3 bary, int3 vertexID)
+{
+    float3 d = normalize(dir);
+    float theta = acos(clamp(d.y, -1.0f, 1.0f));
+    float phi = atan2(d.x, -d.z);
+    float cosTheta = cos(theta);
+
+    float3 outLog = float3(0.0f);
+    uint k = 0;
+    for (int l = 0; l <= (int)gSHDegree; ++l)
+    {
+        for (int m = -l; m <= l; ++m)
+        {
+            int absM = abs(m);
+            float p = shAssocLegendre(l, absM, cosTheta);
+            float nrm = shNormalization(l, absM);
+            float basis;
+            if (m < 0)
+                basis = sqrt(2.0f) * nrm * sin(absM * phi) * p;
+            else if (m == 0)
+                basis = nrm * p;
+            else
+                basis = sqrt(2.0f) * nrm * cos(m * phi) * p;
+
+            float3 c = bary.x * shReadCoeff((uint)vertexID.x, k)
+                     + bary.y * shReadCoeff((uint)vertexID.y, k)
+                     + bary.z * shReadCoeff((uint)vertexID.z, k);
+            outLog += basis * c;
+            ++k;
+        }
+    }
+    return exp(outLog) - 1.0f;
+}
+
+float3 sgReadAxis(uint v, uint k)
+{
+    uint base = (v * gSGCount + k) * 3;
+    return float3(gSGAxes[base + 0], gSGAxes[base + 1], gSGAxes[base + 2]);
+}
+float3 sgReadAmp(uint v, uint k)
+{
+    uint base = (v * gSGCount + k) * 3;
+    return float3(gSGAmps[base + 0], gSGAmps[base + 1], gSGAmps[base + 2]);
+}
+float sgReadLambda(uint v, uint k)
+{
+    return gSGLambdas[v * gSGCount + k];
+}
+
+/// Evaluates the per-vertex SG pool. Parameters are blended by bary (axis renormalized), then
+/// y = sum_k amp * exp(lambda * (dot(dir, axis) - 1)); radiance = exp(y) - 1.
+float3 sgInference(float3 dir, float3 bary, int3 vertexID)
+{
+    float3 d = normalize(dir);
+    const uint v0 = (uint)vertexID.x, v1 = (uint)vertexID.y, v2 = (uint)vertexID.z;
+
+    float3 outLog = float3(0.0f);
+    for (uint k = 0; k < gSGCount; ++k)
+    {
+        float3 axis = bary.x * sgReadAxis(v0, k) + bary.y * sgReadAxis(v1, k) + bary.z * sgReadAxis(v2, k);
+        axis = normalize(axis);
+        float lambda = bary.x * sgReadLambda(v0, k) + bary.y * sgReadLambda(v1, k) + bary.z * sgReadLambda(v2, k);
+        float3 amp = bary.x * sgReadAmp(v0, k) + bary.y * sgReadAmp(v1, k) + bary.z * sgReadAmp(v2, k);
+        outLog += amp * exp(lambda * (dot(d, axis) - 1.0f));
+    }
+    return exp(outLog) - 1.0f;
+}
+
+/// Dispatches to the selected probe representation.
+float3 evalProbe(float3 dir, float3 bary, int3 vertexID)
+{
+    if (gProbeRepr == 1)
+        return shInference(dir, bary, vertexID);
+    if (gProbeRepr == 2)
+        return sgInference(dir, bary, vertexID);
+    return neuLobesInference(dir, bary, vertexID);
 }
 
 // Static configuration based on defines set from the host.
@@ -617,6 +786,11 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
     // Load shading data.
     ShadingData sd = loadShadingData(hit, rayData.origin, rayData.direction);
+    // sd.frame.N = shiftBackFacingShadingNormal(sd.frame.N, sd.V);
+    // float NdotV = dot(sd.frame.N, sd.V);
+    // if (NdotV <= 0) {
+    //     sd.frame.N = sd.faceN;
+    // }
 
     // Create material instance.
     let lod = ExplicitLodTextureSampler(0.f);
@@ -626,15 +800,25 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
     rayOrigin = sd.computeRayOrigin();
 
     const TriangleHit th = hit.getTriangleHit();
-    if (gUseNeuLobes && (th.instanceID.index == gSelectedInstanceID && th.primitiveIndex == gSelectedTriangleID))
+
+    if (!gBTFViewMode && (th.instanceID.index == gSelectedInstanceID)) {
+        rayData.radiance = float3(0.0f);
+        rayData.terminated = true;
+    }
+
+    if (gUseNeuLobes && (th.instanceID.index == gSelectedInstanceID))
     {
+        // float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
+        // rayData.radiance += rayData.thp * Lr;
 
         float3 barys = float3(1 - th.barycentrics.x - th.barycentrics.y, th.barycentrics.x, th.barycentrics.y);
+        // The 3 probe vertices of this triangle (pool indices), matching barys order (tri[0],tri[1],tri[2]).
+        int3 vids = (int3)getCanonicalVertexIDs(th.instanceID, th.primitiveIndex);
         // Sample material.
         BSDFSample bsdfSample;
         if (mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
         {
-            rayData.radiance = rayData.thp * neuLobesInference(bsdfSample.wo.xzy, barys) * bsdfSample.weight;
+            rayData.radiance += rayData.thp * evalProbe(bsdfSample.wo.xzy, barys, vids) * bsdfSample.weight;
             rayData.terminated = true;
         }
         return;
@@ -652,6 +836,13 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
             gWi[pixel] = float4(wi.xzy, 0.f);
             gRadiance[pixel] = float4(mi.eval(sd, wi, rayData.sg), 1.f);
 
+            // Canonical (position-welded) vertex IDs of this triangle, matching the CPU output IDs.
+            if (gHasVertexRemap)
+            {
+                uint3 cvid = getCanonicalVertexIDs(th.instanceID, th.primitiveIndex);
+                gWi[pixel].w = (float)cvid.x; // demonstration: expose one canonical ID (move where needed)
+            }
+
             rayData.radiance = float3(th.barycentrics.x, th.barycentrics.y, 0.f);
             rayData.terminated = true;
             return;
@@ -666,15 +857,14 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.radiance += rayData.thp * mi.getProperties(sd).emission;
     }
 
-
-
-    // rayOrigin = sd.posW + sd.faceN * 0.0001f;
-
     // Add contribution of direct light from analytic lights.
     if (kUseAnalyticLights)
     {
-        float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
-        rayData.radiance += rayData.thp * Lr;
+        if (th.instanceID.index != gSelectedInstanceID || rayData.pathLength != 1) {
+            float3 Lr = evalDirectAnalytic(sd, mi, rayData.sg);
+            rayData.radiance += rayData.thp * Lr;
+        }
+
     }
     // if (kUseEnvLight )
     // {
@@ -1092,7 +1282,7 @@ void rayGen()
     // {
     //     // Evaluate the neural light probe along the primary camera ray and output linear radiance.
     //     float3 dir = normalize(oct_to_ndir_equal_area_unorm(pixel / (float2)frameDim));
-    //     gOutputColor[pixel] = float4(neuLobesInference(dir, gNeuBary), 1.f);
+    //     gOutputColor[pixel] = float4(neuLobesInference(dir, gNeuBary, gSelectedTriangleID), 1.f);
     //     return;
     // }
 

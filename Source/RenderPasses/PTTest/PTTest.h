@@ -55,8 +55,8 @@ public:
     virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override { return false; }
     void handleOutput();
 
-    /// NeuLobes light-probe neural model (PETwoLVTensorFMLPInterp).
-    /// Holds hyperparameters read from manifest.json plus the raw weight tensors uploaded to the GPU.
+    /// NeuLobes multi-probe neural model (PETensorFMLPInterpMulti).
+    /// Holds hyperparameters read from manifest.json plus the pooled weight tensors uploaded to the GPU.
     struct NeuLobesModel
     {
         // Hyperparameters (read from manifest.json, fall back to the reference config on missing keys).
@@ -65,7 +65,7 @@ public:
         uint32_t rank = 2;      ///< Low-rank factor count.
         uint32_t planeDim = 4;  ///< Feature channels per basis (== MLP feature tail length).
         uint32_t hiddenDim = 4; ///< MLP hidden width.
-        uint32_t numBasis = 3;  ///< Number of blended weight/feature sets (== length of bary).
+        uint32_t numMLPs = 1;   ///< Pool size = number of probe vertices (leading dim of all tensors).
         uint32_t inputDim = 16; ///< MLP input width (6*peBands + planeDim).
         uint32_t outputDim = 3; ///< MLP output width (RGB).
 
@@ -74,8 +74,8 @@ public:
         uint32_t outBlk[3] = {};
 
         // GPU buffers (CPU tensors uploaded to device-local memory).
-        ref<Buffer> pVecX;  ///< StructuredBuffer<float>    [numBasis*rank*res].
-        ref<Buffer> pMatYZ; ///< StructuredBuffer<float>    [numBasis*rank*res*planeDim].
+        ref<Buffer> pVecX;  ///< StructuredBuffer<float>    [numMLPs*rank*res].
+        ref<Buffer> pMatYZ; ///< StructuredBuffer<float>    [numMLPs*rank*res*planeDim].
         ref<Buffer> pW[3];  ///< StructuredBuffer<float4x4> per layer, mul-ready 4x4 blocks.
         ref<Buffer> pB[3];  ///< StructuredBuffer<float4>   per layer, bias blocks.
 
@@ -87,11 +87,47 @@ public:
     /// Binds the loaded NeuLobes buffers and config constants to the ray tracing program.
     void bindNeuLobesData(const ShaderVar& var);
 
+    /// Per-vertex Spherical Harmonics coefficient pool (log-space fit).
+    struct SHModel
+    {
+        uint32_t degree = 0;  ///< SH degree.
+        uint32_t numCoeffs = 0; ///< (degree+1)^2 basis functions.
+        uint32_t poolSize = 0;  ///< Number of probe vertices (rows).
+        ref<Buffer> pCoeffs;    ///< StructuredBuffer<float> [pool][numCoeffs][3].
+        bool loaded = false;
+    };
+
+    /// Per-vertex Spherical Gaussian pool (log-space fit).
+    struct SGModel
+    {
+        uint32_t numSGs = 0;   ///< Lobes per vertex.
+        uint32_t poolSize = 0; ///< Number of probe vertices (rows).
+        ref<Buffer> pAxes;     ///< StructuredBuffer<float> [pool][numSGs][3].
+        ref<Buffer> pLambdas;  ///< StructuredBuffer<float> [pool][numSGs].
+        ref<Buffer> pAmps;     ///< StructuredBuffer<float> [pool][numSGs][3].
+        bool loaded = false;
+    };
+
+    /// Loads the SH coefficient pool + manifest from `dir` and uploads it to the GPU.
+    void loadSHModel(const std::string& dir);
+    /// Loads the SG axes/lambdas/amplitudes pool + manifest from `dir` and uploads it to the GPU.
+    void loadSGModel(const std::string& dir);
+    /// Binds the SH/SG buffers and config to the ray tracing program.
+    void bindProbeReprData(const ShaderVar& var);
+
 private:
     void parseProperties(const Properties& props);
     void prepareVars();
     /// Reads back the selected instance/triangle vertices and computes their world-space positions.
     void computeSelectedTriangleWorldPositions();
+    /// Reads back and caches the triangle vertex indices for the whole selected instance (single GPU readback).
+    void cacheInstanceTriangles();
+    /// Sets (mTriSampleU, mTriSampleV) to a jittered position inside the current stratum.
+    void updateStratifiedSample();
+    /// Sets (mTriSampleU, mTriSampleV) to a jittered position along the current triangle edge.
+    void updateEdgeSample();
+    /// Stops the output loop and resets the traversal state.
+    void stopOutput();
 
 
     ref<Texture> mpBarycentric;
@@ -152,7 +188,10 @@ private:
     uint mOutputIndx = 0;
     uint mOutputOffsetIndx = 0;
     uint mOutputSPP = 32;
-    std::string mOutputPath = "C:/Data/Probe/test/{:06}_{:.6f}_{:.6f}.exr";
+    // Separate output paths for the two phases (all include the instance ID as the first field).
+    std::string mVertexOutputPath = "C:/Data/Probe/train_dense/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
+    std::string mOutputPath =
+        "C:/Data/Probe/train_dense/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
     std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
 
     float mSampleTheta = 0;
@@ -164,10 +203,20 @@ private:
 
     // NeuLobes neural light-probe model.
     NeuLobesModel mNeuLobes;
-    std::string mNeuLobesDir = "C:/projects/neulobes/outputs/neulobes_bin";
+    std::string mNeuLobesDir = "C:/projects/neulobes/outputs/neulobes_multi_bin";
     bool mUseNeuLobes = false;
+
+    // SH / SG per-vertex analytic light-probe pools (alternatives to the neural model).
+    SHModel mSH;
+    SGModel mSG;
+    std::string mSHDir = "C:/projects/neulobes/outputs/vertex_coeffs/SH";
+    std::string mSGDir = "C:/projects/neulobes/outputs/vertex_coeffs/SG";
+    /// Which representation to evaluate when the probe is enabled: 0 = neural, 1 = SH, 2 = SG.
+    uint32_t mProbeRepr = 0;
     /// Barycentric probe-blend weights used for the demo inference query (should sum to 1).
     float3 mNeuBary = float3(1.0f, 0.0f, 0.0f);
+    /// The 3 probe vertex IDs (pool indices) used for the demo inference query.
+    int3 mNeuVertexID = int3(0, 0, 0);
 
     float phiCount = 60.0f;
     float thetaCount = 30.0f;
@@ -187,12 +236,47 @@ private:
     bool mSelectedTriangleValid = false;
     float3 mSelectedTrianglePosW[3] = {float3(0.f), float3(0.f), float3(0.f)};
     uint32_t mSelectedTriVertexIDs[3] = {0, 0, 0};
+    // Cached triangle vertex indices for the selected instance (populated when output starts).
+    std::vector<uint3> mInstanceTriIndices;
+    uint32_t mInstanceTriangleCount = 0;
+    /// GPU copy of the position-weld remap: remap[localVertexIndex] -> canonical vertex ID (mesh-local space).
+    ref<Buffer> mpVertexRemap;
+    /// Instance the vertex remap was last built for (to avoid rebuilding every frame).
+    uint32_t mVertexRemapInstanceID = 0xFFFFFFFFu;
+
+    // Unique vertices of the selected instance, each paired with a representative triangle + corner
+    // so the probe origin can be placed exactly at that vertex during the vertex precompute phase.
+    struct VertexProbe
+    {
+        uint32_t vertexID;   ///< Scene vertex index (used in the output filename).
+        uint32_t triangleID; ///< A triangle that contains this vertex.
+        uint32_t uvIndex;    ///< Index into vertexUV[] whose barycentric selects this vertex.
+    };
+    std::vector<VertexProbe> mInstanceVertices;
+    uint32_t mVertexIndex = 0;
+    /// Output phase: 0 = per-vertex precompute, 1 = per-triangle interior sampling.
+    uint32_t mOutputPhase = 0;
+    /// User-selected phases to run: 0 = vertices only, 1 = triangles only, 2 = both.
+    uint32_t mPhaseSelection = 2;
     // Barycentric sample coordinates for uniform triangle sampling of the primary ray origin.
     float mTriSampleU = 0.5f;
     float mTriSampleV = 0.5f;
+    // Stratified sampling state for the triangle-interior phase: current stratum (cell) indices
+    // over the NxN grid, plus an RNG for the in-cell jitter.
+    uint32_t mStrataI = 0;
+    uint32_t mStrataJ = 0;
+    std::mt19937 mSampleRng{12345u};
+    // Edge-sampling augmentation state: which of the 3 edges and which stratum along it.
+    bool mSampleTriangleEdges = true;
+    uint32_t mEdgeIndex = 0;
+    uint32_t mEdgeStratum = 0;
+    /// Global running index across all triangle output files (unique per emitted triangle sample).
+    uint32_t mGlobalOutputID = 0;
+    /// Global running index across all vertex output files (unique per emitted vertex sample).
+    uint32_t mVertexGlobalID = 0;
     const float2 vertexUV[3] = {float2(0.0f, 0.0f), float2(0.999f, 0.0f), float2(0.999f, 0.999f)};
     // const float startingUV = 0.05f;
     const float startingUV = 0.05f;
-    float numberOfInterals = 10;
+    float numberOfInterals = 3;
     float intervalUV = (1.0f - 2 * startingUV) / numberOfInterals;
 };

@@ -32,6 +32,10 @@
 #include "Utils/Math/Matrix.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <unordered_set>
+#include <map>
+#include <tuple>
+#include <cmath>
 #define pX mXYUV.x
 #define pY mXYUV.y
 #define pU mXYUV.z
@@ -118,6 +122,48 @@ const char kMaxBounces[] = "maxBounces";
 const char kComputeDirect[] = "computeDirect";
 const char kUseImportanceSampling[] = "useImportanceSampling";
 
+// Output phase selection.
+const uint32_t kPhaseVerticesOnly = 0;
+const uint32_t kPhaseTrianglesOnly = 1;
+const uint32_t kPhaseBoth = 2;
+
+// Positions within this distance are treated as the same vertex.
+const float kWeldEpsilon = 1e-5f;
+
+/// Maps each mesh vertex to a canonical ID by welding positionally-coincident vertices. Unique
+/// positions are assigned contiguous IDs in [0, uniqueCount) in order of first appearance, so the
+/// output IDs are dense and regular. Returns remap[origIndex] -> canonicalID.
+std::vector<uint32_t> buildVertexWeldRemap(const float3* positions, uint32_t vertexCount)
+{
+    const double q = 1.0 / kWeldEpsilon;
+    auto keyOf = [&](const float3& p)
+    {
+        return std::make_tuple(
+            (int64_t)std::llround(p.x * q), (int64_t)std::llround(p.y * q), (int64_t)std::llround(p.z * q)
+        );
+    };
+
+    std::map<std::tuple<int64_t, int64_t, int64_t>, uint32_t> posToId;
+    std::vector<uint32_t> remap(vertexCount);
+    uint32_t nextId = 0;
+    for (uint32_t i = 0; i < vertexCount; ++i)
+    {
+        const auto key = keyOf(positions[i]);
+        auto it = posToId.find(key);
+        if (it == posToId.end())
+        {
+            posToId.emplace(key, nextId);
+            remap[i] = nextId;
+            ++nextId;
+        }
+        else
+        {
+            remap[i] = it->second;
+        }
+    }
+    return remap;
+}
+
 /// Reads a little-endian float32 binary file into a vector (empty on failure).
 std::vector<float> readFloatBinary(const std::filesystem::path& path)
 {
@@ -149,6 +195,8 @@ PTTest::PTTest(ref<Device> pDevice, const Properties& props) : RenderPass(pDevic
 
     // Load the NeuLobes neural light-probe model (files are optional; a warning is logged if missing).
     loadNeuLobesModel(mNeuLobesDir);
+    loadSHModel(mSHDir);
+    loadSGModel(mSGDir);
 }
 
 void PTTest::parseProperties(const Properties& props)
@@ -284,7 +332,16 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
 
     // Bind NeuLobes neural light-probe model. The runtime flag gates evaluation in the shader,
     // so the resources are always referenced (present in reflection) even when disabled.
+    // Ensure the vertex-weld remap exists for the current instance (needed for the pool gather).
+    if (mUseNeuLobes && (!mpVertexRemap || mVertexRemapInstanceID != mSelectedInstanceID))
+        cacheInstanceTriangles();
     bindNeuLobesData(var);
+    bindProbeReprData(var);
+
+    // Bind the position-weld remap (maps a triangle's local vertex indices to canonical vertex IDs).
+    var["CB"]["gHasVertexRemap"] = (mpVertexRemap != nullptr);
+    if (mpVertexRemap)
+        var["gVertexRemap"] = mpVertexRemap;
     // Bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
     auto bind = [&](const ChannelDesc& desc)
     {
@@ -306,53 +363,225 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     mFrameCount++;
 }
 
+void PTTest::updateStratifiedSample()
+{
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    mTriSampleU = startingUV + (mStrataI + dist(mSampleRng)) * intervalUV;
+    mTriSampleV = startingUV + (mStrataJ + dist(mSampleRng)) * intervalUV;
+}
+
+void PTTest::updateEdgeSample()
+{
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    // Parameter along the edge, inset by startingUV to avoid the vertices (already sampled in phase 0).
+    const float t = startingUV + (mEdgeStratum + dist(mSampleRng)) * intervalUV;
+    // Pick (u, v) so sample_triangle(u, v) lands on the chosen edge (one barycentric == 0):
+    //   edge 0 (v0-v1): bary = (1-t, t, 0)  -> u = (1-t)^2, v = 0
+    //   edge 1 (v1-v2): bary = (0, 1-t, t)  -> u = t^2,     v = 1
+    //   edge 2 (v2-v0): bary = (1-t, 0, t)  -> u = 1,       v = t
+    if (mEdgeIndex == 0)
+    {
+        mTriSampleU = (1.0f - t) * (1.0f - t);
+        mTriSampleV = 0.0f;
+    }
+    else if (mEdgeIndex == 1)
+    {
+        mTriSampleU = t * t;
+        mTriSampleV = 1.0f;
+    }
+    else
+    {
+        mTriSampleU = 1.0f;
+        mTriSampleV = t;
+    }
+}
+
+void PTTest::stopOutput()
+{
+    mOutputStep = 0;
+    mOutputIndx = 0;
+    mVertexIndex = 0;
+    mOutputPhase = 0;
+    mSelectedTriangleID = 0;
+    mStrataI = 0;
+    mStrataJ = 0;
+    mEdgeIndex = 0;
+    mEdgeStratum = 0;
+    mIsOutputing = false;
+    if (mpScene)
+    {
+        auto camera = mpScene->getCamera();
+        camera->setResetFlag(true);
+        camera->setNextStep(false);
+        camera->setAccumulating(false);
+    }
+    mTriSampleU = startingUV;
+    mTriSampleV = startingUV;
+}
+
 void PTTest::handleOutput()
 {
         auto camera = mpScene->getCamera();
-        camera->setOutputPath(fmt::format(mOutputPath, mOutputIndx, mTriSampleU, mTriSampleV));
-        if (!camera->isNextStep())
+
+        const uint32_t strataN = (uint32_t)numberOfInterals;
+        const bool doTriangles = (mPhaseSelection != kPhaseVerticesOnly);
+
+        // Phase 0: per-vertex precompute. Each unique vertex is rendered once (probe origin placed at
+        // the vertex via a representative triangle + corner), named by its scene vertex ID.
+        if (mOutputPhase == 0)
         {
+            if (mVertexIndex >= mInstanceVertices.size())
+            {
+                // No (more) vertices; either move on to triangles or stop.
+                if (doTriangles)
+                {
+                    mOutputPhase = 1;
+                    mSelectedTriangleID = 0;
+                    mStrataI = 0;
+                    mStrataJ = 0;
+                    updateStratifiedSample();
+                    return;
+                }
+                stopOutput();
+                return;
+            }
+
+            const VertexProbe& vp = mInstanceVertices[mVertexIndex];
+            mSelectedTriangleID = vp.triangleID;
+            mTriSampleU = vertexUV[vp.uvIndex].x;
+            mTriSampleV = vertexUV[vp.uvIndex].y;
+
+            camera->setOutputPath(fmt::format(mVertexOutputPath, mSelectedInstanceID, mVertexGlobalID, vp.vertexID));
+            if (!camera->isNextStep())
+            {
+                return;
+            }
+            camera->setNextStep(false);
+            camera->setAccumulating(mIsOutputing);
+            camera->setOutputFrameCount(mOutputSPP);
+
+            // This vertex file has been committed; advance the vertex global running index.
+            mVertexGlobalID++;
+            mVertexIndex++;
+            if (mVertexIndex >= mInstanceVertices.size())
+            {
+                if (doTriangles)
+                {
+                    // All vertices done; switch to stratified triangle interior sampling.
+                    mOutputPhase = 1;
+                    mSelectedTriangleID = 0;
+                    mStrataI = 0;
+                    mStrataJ = 0;
+                    updateStratifiedSample();
+                }
+                else
+                {
+                    stopOutput();
+                }
+            }
             return;
         }
-        camera->setNextStep(false);
-        camera->setAccumulating(mIsOutputing);
-        camera->setOutputFrameCount(mOutputSPP);
-        mOutputIndx++;
 
+        // Phase 1: per-triangle interior sampling. Stratified over an NxN grid: one jittered sample
+        // per stratum (corners are skipped, they were done in phase 0).
+        if (mOutputPhase == 1)
+        {
+            const uint3 vids = (mSelectedTriangleID < mInstanceTriIndices.size())
+                ? mInstanceTriIndices[mSelectedTriangleID]
+                : uint3(0);
+            camera->setOutputPath(
+                fmt::format(mOutputPath, mSelectedInstanceID, mGlobalOutputID, mSelectedTriangleID, vids.x, vids.y, vids.z, mTriSampleU, mTriSampleV)
+            );
+            if (!camera->isNextStep())
+            {
+                return;
+            }
+            camera->setNextStep(false);
+            camera->setAccumulating(mIsOutputing);
+            camera->setOutputFrameCount(mOutputSPP);
 
-        if (mOutputIndx < 3){
-            mTriSampleU = vertexUV[mOutputIndx].x;
-            mTriSampleV = vertexUV[mOutputIndx].y;
+            // This triangle sample file has been committed; advance the global running index.
+            mGlobalOutputID++;
+
+            // Advance to the next stratum.
+            mStrataI++;
+            if (mStrataI >= strataN)
+            {
+                mStrataI = 0;
+                mStrataJ++;
+            }
+
+            if (mStrataJ >= strataN)
+            {
+                // Finished this triangle's interior; advance to the next triangle in the instance.
+                mSelectedTriangleID++;
+                if (mSelectedTriangleID < mInstanceTriangleCount)
+                {
+                    mStrataI = 0;
+                    mStrataJ = 0;
+                    updateStratifiedSample();
+                    return;
+                }
+
+                // All interiors done; move to edge sampling (if enabled) or stop.
+                if (mSampleTriangleEdges)
+                {
+                    mOutputPhase = 2;
+                    mSelectedTriangleID = 0;
+                    mEdgeIndex = 0;
+                    mEdgeStratum = 0;
+                    updateEdgeSample();
+                    return;
+                }
+                stopOutput();
+                return;
+            }
+
+            // Compute the jittered sample for the new stratum.
+            updateStratifiedSample();
             return;
         }
 
-        if(mOutputIndx == 3){
-            mTriSampleU = startingUV;
-            mTriSampleV = startingUV;
-        }
-
-
-        mTriSampleU += intervalUV;
-
-        if (mTriSampleU >= startingUV + numberOfInterals * intervalUV - 0.01f)
+        // Phase 2: per-triangle EDGE sampling (data augmentation). Extra jittered samples along each
+        // of the 3 edges (one barycentric coordinate == 0), emitted via the same triangle output path.
         {
-            mTriSampleU = startingUV;
-            mTriSampleV+= intervalUV;
-        }
+            const uint3 vids = (mSelectedTriangleID < mInstanceTriIndices.size())
+                ? mInstanceTriIndices[mSelectedTriangleID]
+                : uint3(0);
+            camera->setOutputPath(
+                fmt::format(mOutputPath, mSelectedInstanceID, mGlobalOutputID, mSelectedTriangleID, vids.x, vids.y, vids.z, mTriSampleU, mTriSampleV)
+            );
+            if (!camera->isNextStep())
+            {
+                return;
+            }
+            camera->setNextStep(false);
+            camera->setAccumulating(mIsOutputing);
+            camera->setOutputFrameCount(mOutputSPP);
 
-        if (mTriSampleV >= startingUV + numberOfInterals * intervalUV - 0.01f)
-        {
-            mOutputStep = 0;
-            mOutputIndx = 0;
-            mpScene->getCamera()->setResetFlag(true);
-            mpScene->getCamera()->setNextStep(false);
-            mIsOutputing = false;
-            mpScene->getCamera()->setAccumulating(false);
+            mGlobalOutputID++;
 
-            mTriSampleU = startingUV;
-            mTriSampleV = startingUV;
+            // Advance along the current edge, then to the next edge, then the next triangle.
+            mEdgeStratum++;
+            if (mEdgeStratum >= strataN)
+            {
+                mEdgeStratum = 0;
+                mEdgeIndex++;
+                if (mEdgeIndex >= 3)
+                {
+                    mEdgeIndex = 0;
+                    mSelectedTriangleID++;
+                    if (mSelectedTriangleID >= mInstanceTriangleCount)
+                    {
+                        stopOutput();
+                        return;
+                    }
+                }
+            }
+
+            updateEdgeSample();
+            return;
         }
-        return;
 }
 void PTTest::renderUI(Gui::Widgets& widget)
 {
@@ -432,11 +661,24 @@ void PTTest::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Change Light", mChangeLight);
 
     dirty |= widget.checkbox("Use NeuLobes probe", mUseNeuLobes);
-    widget.tooltip("Evaluate the NeuLobes neural light probe and write it to the output color.", true);
+    widget.tooltip("Evaluate a per-vertex light probe (neural / SH / SG) and write it to the output color.", true);
     if (mUseNeuLobes)
     {
-        widget.text(mNeuLobes.loaded ? "NeuLobes: model loaded" : "NeuLobes: model NOT loaded");
+        Gui::DropdownList reprList = {
+            {0u, "Neural (mu-law)"},
+            {1u, "Spherical Harmonics"},
+            {2u, "Spherical Gaussians"},
+        };
+        dirty |= widget.dropdown("Probe representation", reprList, mProbeRepr);
+        if (mProbeRepr == 0)
+            widget.text(mNeuLobes.loaded ? "Neural: loaded" : "Neural: NOT loaded");
+        else if (mProbeRepr == 1)
+            widget.text(mSH.loaded ? fmt::format("SH: loaded (deg {}, pool {})", mSH.degree, mSH.poolSize) : "SH: NOT loaded");
+        else
+            widget.text(mSG.loaded ? fmt::format("SG: loaded ({} lobes, pool {})", mSG.numSGs, mSG.poolSize) : "SG: NOT loaded");
+
         dirty |= widget.var("NeuLobes bary", mNeuBary, 0.0f, 1.0f);
+        dirty |= widget.var("NeuLobes vertexID (demo)", mNeuVertexID);
     }
 
     if (widget.button("output frame"))
@@ -455,16 +697,33 @@ void PTTest::renderUI(Gui::Widgets& widget)
 
     if (!mChangeLight)
     {
-        widget.textbox("Output Path", mOutputPath);
+        widget.textbox("Vertex Output Path", mVertexOutputPath);
+        widget.textbox("Triangle Output Path", mOutputPath);
     }
     else
     {
         widget.textbox("Output Path", mOutputBTFPath);
     }
 
+    Gui::DropdownList phaseList = {
+        {kPhaseVerticesOnly, "Vertices only"},
+        {kPhaseTrianglesOnly, "Triangles only"},
+        {kPhaseBoth, "Vertices + Triangles"},
+    };
+    dirty |= widget.dropdown("Output phase", phaseList, mPhaseSelection);
+    dirty |= widget.checkbox("Sample triangle edges", mSampleTriangleEdges);
+    widget.tooltip("Adds extra stratified samples along the 3 triangle edges as data augmentation.", true);
+
     widget.var("OutputSPP", mOutputSPP);
     if (mIsOutputing)
     {
+        const char* phaseName = (mOutputPhase == 0) ? "vertices" : ((mOutputPhase == 1) ? "triangle interior" : "triangle edges");
+        widget.text(fmt::format(
+            "Phase: {} | vertex {}/{} | triangle {}/{} | edge {}",
+            phaseName,
+            mVertexIndex, (uint32_t)mInstanceVertices.size(),
+            mSelectedTriangleID, mInstanceTriangleCount, mEdgeIndex
+        ));
         handleOutput();
         if (widget.button("Stop", true))
         {
@@ -479,14 +738,34 @@ void PTTest::renderUI(Gui::Widgets& widget)
     {
         if (widget.button("Start Output"))
         {
+            // Cache the whole instance's triangles + unique vertices, then start at the selected phase.
+            cacheInstanceTriangles();
+            mVertexIndex = 0;
+            mSelectedTriangleID = 0;
+            mStrataI = 0;
+            mStrataJ = 0;
+            mEdgeIndex = 0;
+            mEdgeStratum = 0;
+            mGlobalOutputID = 0;
+            mVertexGlobalID = 0;
+            mOutputIndx = 0;
+
             mIsOutputing = true;
             dirty = true;
 
-            mTriSampleU = vertexUV[0].x;
-            mTriSampleV = vertexUV[0].y;
-
-            // mTriSampleU = 0.05f;
-            // mTriSampleV = 0.05f;
+            if (mPhaseSelection == kPhaseTrianglesOnly)
+            {
+                // Triangles only: skip the vertex phase and seed the first stratified sample.
+                mOutputPhase = 1;
+                updateStratifiedSample();
+            }
+            else
+            {
+                // Vertices only or both: start with the vertex phase.
+                mOutputPhase = 0;
+                mTriSampleU = vertexUV[0].x;
+                mTriSampleV = vertexUV[0].y;
+            }
 
             auto camera = mpScene->getCamera();
             camera->setOutputFrameCount(mOutputSPP);
@@ -506,6 +785,14 @@ void PTTest::renderUI(Gui::Widgets& widget)
             mOutputStep = 0;
             mOutputOffsetIndx = 0;
             mOutputIndx = 0;
+            mVertexIndex = 0;
+            mOutputPhase = 0;
+            mSelectedTriangleID = 0;
+            mStrataI = 0;
+            mStrataJ = 0;
+            mEdgeIndex = 0;
+            mEdgeStratum = 0;
+            mGlobalOutputID = 0;
             mViewTheta = 0;
             mViewPhi = 0;
             mLightTheta = 0;
@@ -580,12 +867,15 @@ void PTTest::computeSelectedTriangleWorldPositions()
 
     const uint3 tri = pIdxData[mSelectedTriangleID];
 
+    // Weld coincident positions so the displayed vertex IDs match the (welded) output filenames.
+    const std::vector<uint32_t> remap = buildVertexWeldRemap(pPosData, vertexCount);
+
     // Object-to-world transform for this instance.
     const float4x4 objectToWorld = mpScene->getAnimationController()->getGlobalMatrices()[gi.globalMatrixID];
 
     for (int i = 0; i < 3; ++i)
     {
-        mSelectedTriVertexIDs[i] = tri[i];
+        mSelectedTriVertexIDs[i] = remap[tri[i]];
         const float3 posO = pPosData[tri[i]];
         const float4 posW = mul(objectToWorld, float4(posO, 1.f));
         mSelectedTrianglePosW[i] = float3(posW.x, posW.y, posW.z) / posW.w;
@@ -605,28 +895,170 @@ void PTTest::computeSelectedTriangleWorldPositions()
     );
 }
 
+void PTTest::cacheInstanceTriangles()
+{
+    mInstanceTriIndices.clear();
+    mInstanceVertices.clear();
+    mInstanceTriangleCount = 0;
+
+    if (!mpScene)
+    {
+        logWarning("PTTest: no scene loaded.");
+        return;
+    }
+    if (mSelectedInstanceID >= mpScene->getGeometryInstanceCount())
+    {
+        logWarning("PTTest: instance ID {} out of range ({} instances).", mSelectedInstanceID, mpScene->getGeometryInstanceCount());
+        return;
+    }
+
+    const GeometryInstanceData& gi = mpScene->getGeometryInstance(mSelectedInstanceID);
+    if (gi.getType() != GeometryType::TriangleMesh)
+    {
+        logWarning("PTTest: instance {} is not a triangle mesh.", mSelectedInstanceID);
+        return;
+    }
+
+    const MeshID meshID{gi.geometryID};
+    const MeshDesc& desc = mpScene->getMesh(meshID);
+    const uint32_t vertexCount = desc.vertexCount;
+    const uint32_t triangleCount = desc.getTriangleCount();
+    if (triangleCount == 0)
+    {
+        logWarning("PTTest: instance {} (mesh {}) has no triangles.", mSelectedInstanceID, meshID.get());
+        return;
+    }
+
+    // Fetch the mesh index/position data and read the triangle indices back to the CPU once.
+    const ResourceBindFlags uavFlags = ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess;
+    auto pPositions = mpDevice->createStructuredBuffer(sizeof(float3), vertexCount, uavFlags, MemoryType::DeviceLocal, nullptr, false);
+    auto pTexcrds = mpDevice->createStructuredBuffer(sizeof(float3), vertexCount, uavFlags, MemoryType::DeviceLocal, nullptr, false);
+    auto pIndices = mpDevice->createStructuredBuffer(sizeof(uint3), triangleCount, uavFlags, MemoryType::DeviceLocal, nullptr, false);
+
+    mpScene->getMeshVerticesAndIndices(
+        meshID, {{"positions", pPositions}, {"texcrds", pTexcrds}, {"triangleIndices", pIndices}}
+    );
+
+    auto pIdxStaging =
+        mpDevice->createStructuredBuffer(sizeof(uint3), triangleCount, ResourceBindFlags::None, MemoryType::ReadBack, nullptr, false);
+    auto pPosStaging =
+        mpDevice->createStructuredBuffer(sizeof(float3), vertexCount, ResourceBindFlags::None, MemoryType::ReadBack, nullptr, false);
+
+    RenderContext* pRenderContext = mpDevice->getRenderContext();
+    pRenderContext->copyBufferRegion(pIdxStaging.get(), 0, pIndices.get(), 0, sizeof(uint3) * triangleCount);
+    pRenderContext->copyBufferRegion(pPosStaging.get(), 0, pPositions.get(), 0, sizeof(float3) * vertexCount);
+    pRenderContext->submit(true); // Wait for GPU work to complete.
+
+    const uint3* pIdxData = reinterpret_cast<const uint3*>(pIdxStaging->map());
+    mInstanceTriIndices.assign(pIdxData, pIdxData + triangleCount);
+    pIdxStaging->unmap();
+
+    mInstanceTriangleCount = triangleCount;
+
+    // Weld positionally-coincident vertices to a single canonical ID. Mesh formats split a vertex
+    // whenever adjacent faces need different normals (flat shading) or UVs (seams), so the same
+    // position can appear under several indices. We map each position to the smallest original index
+    // sharing it, then remap all triangle corners to those canonical IDs.
+    const float3* pPosData = reinterpret_cast<const float3*>(pPosStaging->map());
+    std::vector<uint32_t> remap = buildVertexWeldRemap(pPosData, vertexCount);
+
+    // Count unique welded positions for logging.
+    std::unordered_set<uint32_t> uniquePositions(remap.begin(), remap.end());
+    const size_t uniquePositionCount = uniquePositions.size();
+    pPosStaging->unmap();
+
+    // Upload the remap so the shader can map a triangle's (mesh-local) vertex indices to canonical IDs.
+    mpVertexRemap = mpDevice->createStructuredBuffer(
+        sizeof(uint32_t), vertexCount, ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, remap.data(), false
+    );
+    mVertexRemapInstanceID = mSelectedInstanceID;
+
+    // Remap triangle corners to canonical vertex IDs (used for the triangle output filenames).
+    for (auto& tri : mInstanceTriIndices)
+    {
+        tri.x = remap[tri.x];
+        tri.y = remap[tri.y];
+        tri.z = remap[tri.z];
+    }
+
+    // Build the unique-vertex list from the canonical IDs. Each triangle corner k selects triangle
+    // vertex tri[k]; the barycentric produced by sample_triangle(vertexUV[uv]) picks a specific
+    // corner, so we map corner k -> vertexUV index via kCornerToUV (derived from sample_triangle).
+    const uint32_t kCornerToUV[3] = {1, 0, 2};
+    std::unordered_set<uint32_t> seen;
+    for (uint32_t t = 0; t < triangleCount; ++t)
+    {
+        const uint3 tri = mInstanceTriIndices[t];
+        for (uint32_t k = 0; k < 3; ++k)
+        {
+            const uint32_t vid = tri[k];
+            if (seen.insert(vid).second)
+                mInstanceVertices.push_back({vid, t, kCornerToUV[k]});
+        }
+    }
+
+    logInfo(
+        "PTTest: cached {} triangles, {} raw vertices welded to {} unique positions for instance {} (mesh {}).",
+        triangleCount, vertexCount, uniquePositionCount, mSelectedInstanceID, meshID.get()
+    );
+
+    // Validate against the loaded model's pool: canonical IDs must index within [0, numMLPs).
+    if (mNeuLobes.loaded)
+    {
+        uint32_t maxCanonical = 0;
+        for (uint32_t v : remap)
+            maxCanonical = std::max(maxCanonical, v);
+        if (uniquePositionCount != mNeuLobes.numMLPs || maxCanonical >= mNeuLobes.numMLPs)
+        {
+            logWarning(
+                "[NeuLobes] Mesh/pool mismatch: instance {} has {} unique vertices (max canonical ID {}), "
+                "but the model pool is numMLPs={}. The vertexID gather will be out of range - the model was "
+                "likely trained on a different mesh or with different welding.",
+                mSelectedInstanceID, uniquePositionCount, maxCanonical, mNeuLobes.numMLPs
+            );
+        }
+    }
+}
+
 void PTTest::loadNeuLobesModel(const std::string& dir)
 {
     const std::filesystem::path root(dir);
 
     // Read manifest.json for hyperparameters; fall back to the reference config on any missing key or failure.
+    bool haveLayerBlocks = false;
     std::ifstream ifs(root / "manifest.json");
     if (ifs)
     {
         try
         {
             nlohmann::json j = nlohmann::json::parse(ifs, nullptr, true /*allow exceptions*/, true /*ignore comments*/);
-            mNeuLobes.peBands = j.value("peBands", mNeuLobes.peBands);
-            mNeuLobes.rank = j.value("rank", mNeuLobes.rank);
-            mNeuLobes.planeDim = j.value("planeDim", mNeuLobes.planeDim);
-            mNeuLobes.hiddenDim = j.value("hiddenDim", mNeuLobes.hiddenDim);
-            mNeuLobes.numBasis = j.value("numBasis", mNeuLobes.numBasis);
-            mNeuLobes.inputDim = j.value("inputDim", mNeuLobes.inputDim);
-            // Feature-plane resolution is called "res" (also accept "planeRes").
-            if (j.contains("res"))
-                mNeuLobes.res = j["res"].get<uint32_t>();
+
+            // Pool size is top-level.
+            mNeuLobes.numMLPs = j.value("numMLPs", mNeuLobes.numMLPs);
+
+            // Hyperparameters are nested under "hyperparams".
+            const nlohmann::json& hp = j.contains("hyperparams") ? j["hyperparams"] : j;
+            mNeuLobes.peBands = hp.value("peBands", mNeuLobes.peBands);
+            mNeuLobes.rank = hp.value("rank", mNeuLobes.rank);
+            mNeuLobes.planeDim = hp.value("planeDim", mNeuLobes.planeDim);
+            mNeuLobes.hiddenDim = hp.value("hiddenDim", mNeuLobes.hiddenDim);
+            mNeuLobes.inputDim = hp.value("inputDim", mNeuLobes.inputDim);
+            // Feature-plane resolution is called "planeRes" (also accept "res").
+            if (hp.contains("res"))
+                mNeuLobes.res = hp["res"].get<uint32_t>();
             else
-                mNeuLobes.res = j.value("planeRes", mNeuLobes.res);
+                mNeuLobes.res = hp.value("planeRes", mNeuLobes.res);
+
+            // Per-layer 4x4 block counts, read directly from manifest.layers when available.
+            if (j.contains("layers") && j["layers"].is_array() && j["layers"].size() == 3)
+            {
+                for (int l = 0; l < 3; ++l)
+                {
+                    mNeuLobes.inBlk[l] = j["layers"][l].value("nin_blocks", 0u);
+                    mNeuLobes.outBlk[l] = j["layers"][l].value("nout_blocks", 0u);
+                }
+                haveLayerBlocks = true;
+            }
         }
         catch (const std::exception& e)
         {
@@ -638,13 +1070,17 @@ void PTTest::loadNeuLobesModel(const std::string& dir)
         logWarning("[NeuLobes] manifest.json not found in {}. Using reference config.", dir);
     }
 
-    // Derive per-layer 4x4 block counts. MLP layer dims: inputDim -> hiddenDim -> hiddenDim -> outputDim.
-    const uint32_t dims[4] = {mNeuLobes.inputDim, mNeuLobes.hiddenDim, mNeuLobes.hiddenDim, mNeuLobes.outputDim};
-    auto blk = [](uint32_t n) { return (n + 3u) / 4u; };
-    for (int l = 0; l < 3; ++l)
+    // Fall back to deriving per-layer block counts if the manifest didn't provide them.
+    // MLP layer dims: inputDim -> hiddenDim -> hiddenDim -> outputDim.
+    if (!haveLayerBlocks)
     {
-        mNeuLobes.inBlk[l] = blk(dims[l]);
-        mNeuLobes.outBlk[l] = blk(dims[l + 1]);
+        const uint32_t dims[4] = {mNeuLobes.inputDim, mNeuLobes.hiddenDim, mNeuLobes.hiddenDim, mNeuLobes.outputDim};
+        auto blk = [](uint32_t n) { return (n + 3u) / 4u; };
+        for (int l = 0; l < 3; ++l)
+        {
+            mNeuLobes.inBlk[l] = blk(dims[l]);
+            mNeuLobes.outBlk[l] = blk(dims[l + 1]);
+        }
     }
 
     auto readTensor = [&](const std::string& name)
@@ -687,8 +1123,8 @@ void PTTest::loadNeuLobesModel(const std::string& dir)
 
     mNeuLobes.loaded = true;
     logInfo(
-        "[NeuLobes] Loaded model from {} (peBands={}, res={}, rank={}, planeDim={}, hiddenDim={}, inputDim={}).",
-        dir, mNeuLobes.peBands, mNeuLobes.res, mNeuLobes.rank, mNeuLobes.planeDim, mNeuLobes.hiddenDim, mNeuLobes.inputDim
+        "[NeuLobes] Loaded model from {} (peBands={}, res={}, rank={}, planeDim={}, hiddenDim={}, inputDim={}, numMLPs={}).",
+        dir, mNeuLobes.peBands, mNeuLobes.res, mNeuLobes.rank, mNeuLobes.planeDim, mNeuLobes.hiddenDim, mNeuLobes.inputDim, mNeuLobes.numMLPs
     );
 }
 
@@ -698,6 +1134,7 @@ void PTTest::bindNeuLobesData(const ShaderVar& var)
     const bool enable = mUseNeuLobes && mNeuLobes.loaded;
     var["CB"]["gUseNeuLobes"] = enable;
     var["CB"]["gNeuBary"] = mNeuBary;
+    var["CB"]["gNeuVertexID"] = mNeuVertexID;
 
     if (!mNeuLobes.loaded)
         return;
@@ -707,7 +1144,7 @@ void PTTest::bindNeuLobesData(const ShaderVar& var)
     cfg["res"] = mNeuLobes.res;
     cfg["rank"] = mNeuLobes.rank;
     cfg["planeDim"] = mNeuLobes.planeDim;
-    cfg["numBasis"] = mNeuLobes.numBasis;
+    cfg["numMLPs"] = mNeuLobes.numMLPs;
     cfg["inputDim"] = mNeuLobes.inputDim;
     cfg["inBlk"] = uint4(mNeuLobes.inBlk[0], mNeuLobes.inBlk[1], mNeuLobes.inBlk[2], 0);
     cfg["outBlk"] = uint4(mNeuLobes.outBlk[0], mNeuLobes.outBlk[1], mNeuLobes.outBlk[2], 0);
@@ -720,6 +1157,102 @@ void PTTest::bindNeuLobesData(const ShaderVar& var)
     var["gNeuB0"] = mNeuLobes.pB[0];
     var["gNeuB1"] = mNeuLobes.pB[1];
     var["gNeuB2"] = mNeuLobes.pB[2];
+}
+
+void PTTest::loadSHModel(const std::string& dir)
+{
+    const std::filesystem::path root(dir);
+    std::ifstream ifs(root / "manifest.json");
+    if (ifs)
+    {
+        try
+        {
+            nlohmann::json j = nlohmann::json::parse(ifs, nullptr, true, true);
+            mSH.degree = j.value("degree", mSH.degree);
+            mSH.numCoeffs = j.value("numBasisFuncs", (mSH.degree + 1) * (mSH.degree + 1));
+        }
+        catch (const std::exception& e)
+        {
+            logWarning("[SH] Failed to parse manifest.json ({}).", e.what());
+        }
+    }
+    else
+    {
+        logWarning("[SH] manifest.json not found in {}. SH model not loaded.", dir);
+        return;
+    }
+
+    std::vector<float> coeffs = readFloatBinary(root / "coeffs.bin");
+    if (coeffs.empty() || mSH.numCoeffs == 0)
+    {
+        logWarning("[SH] Missing coeffs.bin or invalid degree in {}. SH model not loaded.", dir);
+        return;
+    }
+
+    mSH.poolSize = (uint32_t)(coeffs.size() / (mSH.numCoeffs * 3));
+    mSH.pCoeffs = mpDevice->createStructuredBuffer(
+        sizeof(float), (uint32_t)coeffs.size(), ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, coeffs.data(), false
+    );
+    mSH.loaded = true;
+    logInfo("[SH] Loaded from {} (degree={}, numCoeffs={}, pool={}).", dir, mSH.degree, mSH.numCoeffs, mSH.poolSize);
+}
+
+void PTTest::loadSGModel(const std::string& dir)
+{
+    const std::filesystem::path root(dir);
+    std::ifstream ifs(root / "manifest.json");
+    if (ifs)
+    {
+        try
+        {
+            nlohmann::json j = nlohmann::json::parse(ifs, nullptr, true, true);
+            mSG.numSGs = j.value("numSGs", mSG.numSGs);
+        }
+        catch (const std::exception& e)
+        {
+            logWarning("[SG] Failed to parse manifest.json ({}).", e.what());
+        }
+    }
+    else
+    {
+        logWarning("[SG] manifest.json not found in {}. SG model not loaded.", dir);
+        return;
+    }
+
+    std::vector<float> axes = readFloatBinary(root / "axes.bin");
+    std::vector<float> lambdas = readFloatBinary(root / "lambdas.bin");
+    std::vector<float> amps = readFloatBinary(root / "amplitudes.bin");
+    if (axes.empty() || lambdas.empty() || amps.empty() || mSG.numSGs == 0)
+    {
+        logWarning("[SG] Missing binaries or invalid numSGs in {}. SG model not loaded.", dir);
+        return;
+    }
+
+    mSG.poolSize = (uint32_t)(lambdas.size() / mSG.numSGs);
+    const ResourceBindFlags flags = ResourceBindFlags::ShaderResource;
+    mSG.pAxes = mpDevice->createStructuredBuffer(sizeof(float), (uint32_t)axes.size(), flags, MemoryType::DeviceLocal, axes.data(), false);
+    mSG.pLambdas = mpDevice->createStructuredBuffer(sizeof(float), (uint32_t)lambdas.size(), flags, MemoryType::DeviceLocal, lambdas.data(), false);
+    mSG.pAmps = mpDevice->createStructuredBuffer(sizeof(float), (uint32_t)amps.size(), flags, MemoryType::DeviceLocal, amps.data(), false);
+    mSG.loaded = true;
+    logInfo("[SG] Loaded from {} (numSGs={}, pool={}).", dir, mSG.numSGs, mSG.poolSize);
+}
+
+void PTTest::bindProbeReprData(const ShaderVar& var)
+{
+    var["CB"]["gProbeRepr"] = mProbeRepr;
+
+    var["CB"]["gSHDegree"] = mSH.degree;
+    var["CB"]["gSHNumCoeffs"] = mSH.numCoeffs;
+    if (mSH.loaded)
+        var["gSHCoeffs"] = mSH.pCoeffs;
+
+    var["CB"]["gSGCount"] = mSG.numSGs;
+    if (mSG.loaded)
+    {
+        var["gSGAxes"] = mSG.pAxes;
+        var["gSGLambdas"] = mSG.pLambdas;
+        var["gSGAmps"] = mSG.pAmps;
+    }
 }
 
 void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
