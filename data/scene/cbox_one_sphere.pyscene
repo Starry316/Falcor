@@ -72,10 +72,32 @@ smallBox.metallic = 0.8
 
 quadMesh = TriangleMesh.createQuad()
 cubeMesh = TriangleMesh.createCube()
-sphereMesh = TriangleMesh.createSphere(radius=1, segmentsU=32, segmentsV=16)
-sphereMeshSmall = TriangleMesh.createSphere(radius=1, segmentsU=32, segmentsV=16)
+# sphereMesh = TriangleMesh.createSphere(radius=1, segmentsU=32, segmentsV=16)
+# sphereMeshSmall = TriangleMesh.createSphere(radius=1, segmentsU=32, segmentsV=16)
+# sphereMesh = TriangleMesh.createSphere(radius=1, segmentsU=8, segmentsV=4)
 
-# sphereMesh = TriangleMesh.createFromFile('ico.fbx')
+# sphereMesh = TriangleMesh.createFromFile('ico2.obj', smoothNormals=True)
+sphereMesh = TriangleMesh.createFromFile('icosphere.obj', smoothNormals=True)
+
+
+sceneBuilder.addMeshInstance(
+    sceneBuilder.addNode('Large Sphere', Transform(scaling=float3(0.085, 0.085, 0.085), translation=float3(0.00, 0.25, 0.0))),
+    sceneBuilder.addTriangleMesh(sphereMesh, largeBox)
+)
+
+
+duckMesh = TriangleMesh.createFromFile('duck.fbx')
+
+
+duck = StandardMaterial('duck')
+duck.roughness = 0.8
+duck.metallic = 0.2
+duck.loadTexture(MaterialTextureSlot.BaseColor, 'duck.fbm/rubber_duck_toy_diff_1k.jpg')
+
+sceneBuilder.addMeshInstance(
+    sceneBuilder.addNode('Duck', Transform(scaling=float3(0.085, 0.085, 0.085), translation=float3(0.00, 0.25, 0.0))),
+    sceneBuilder.addTriangleMesh(duckMesh, duck)
+)
 
 # Create mesh instances
 
@@ -87,15 +109,12 @@ sphereMeshSmall = TriangleMesh.createSphere(radius=1, segmentsU=32, segmentsV=16
 #     sceneBuilder.addNode('Small Box', Transform(scaling=float3(0.165, 0.165, 0.165), translation=float3(-0.093, 0.0825, -0.071), rotationEuler=float3(0, -1.27, 0))),
 #     sceneBuilder.addTriangleMesh(cubeMesh, smallBox)
 # )
-sceneBuilder.addMeshInstance(
-    sceneBuilder.addNode('Large Box', Transform(scaling=float3(0.165, 0.33, 0.165), translation=float3(-0.093, 0.165, -0.071), rotationEuler=float3(0, -1.27, 0))),
-    sceneBuilder.addTriangleMesh(cubeMesh, largeBox)
-)
+# sceneBuilder.addMeshInstance(
+#     sceneBuilder.addNode('Large Box', Transform(scaling=float3(0.165, 0.33, 0.165), translation=float3(-0.093, 0.165, -0.071), rotationEuler=float3(0, -1.27, 0))),
+#     sceneBuilder.addTriangleMesh(cubeMesh, largeBox)
+# )
 
-sceneBuilder.addMeshInstance(
-    sceneBuilder.addNode('Large Sphere', Transform(scaling=float3(0.085, 0.085, 0.085), translation=float3(0.09, 0.085, 0.111))),
-    sceneBuilder.addTriangleMesh(sphereMesh, largeBox)
-)
+
 
 
 sceneBuilder.addMeshInstance(

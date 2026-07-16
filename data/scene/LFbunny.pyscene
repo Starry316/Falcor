@@ -1,0 +1,71 @@
+
+# Create materials
+
+
+floor = Material('Floor')
+floor.baseColor = float4(0.7, 0.7, 0.7, 1.0)
+floor.roughness = 0.1
+
+box = Material('Box')
+box.baseColor = float4(0.9, 0.6, 0.4, 1.0)
+box.roughness = 0.1
+
+
+largeBox = StandardMaterial('Large Box')
+largeBox.baseColor = float4(0.725, 0.71, 0.68, 1.0)
+largeBox.roughness = 0.2
+largeBox.metallic = 0.8
+
+
+
+# Create geometry
+quadMesh = TriangleMesh.createQuad()
+cubeMesh = TriangleMesh.createCube()
+
+sphereMesh = TriangleMesh.createFromFile('bounding_shell_6.obj', smoothNormals=True)
+
+sceneBuilder.addMeshInstance(
+    sceneBuilder.addNode('Large Sphere', Transform(scaling=float3(0.1, 0.1, 0.1), translation=float3(0.00, 0.0, 0.0))),
+    sceneBuilder.addTriangleMesh(sphereMesh, largeBox)
+)
+
+
+bunnyMesh = TriangleMesh.createFromFile('bunny.obj', smoothNormals=True)
+
+# duckMesh = TriangleMesh.createFromFile('duck2.fbx')
+
+# duck = StandardMaterial('duck')
+# duck.roughness = 0.8
+# duck.metallic = 0.2
+# duck.loadTexture(MaterialTextureSlot.BaseColor, 'duck.fbm/rubber_duck_toy_diff_1k.jpg')
+
+# sceneBuilder.addMeshInstance(
+#     sceneBuilder.addNode('Duck', Transform(scaling=float3(0.085, 0.085, 0.085), translation=float3(0.00, 0.25, 0.0))),
+#     sceneBuilder.addTriangleMesh(duckMesh, duck)
+# )
+
+sceneBuilder.addMeshInstance(
+    sceneBuilder.addNode('bunny', Transform(scaling=float3(0.1), translation=float3(0.0, 0.0, 0.0))),
+    sceneBuilder.addTriangleMesh(bunnyMesh, box)
+)
+
+# Create mesh instances
+
+
+# Create env map
+
+sceneBuilder.envMap = EnvMap('test_scenes/envmaps/20050806-03_hd.hdr')
+
+pointLight = PointLight('Point light')
+pointLight.intensity = float3(0.05, 0.05, 0.05)
+pointLight.position = float3(0, 0.485, 0)
+sceneBuilder.addLight(pointLight)
+
+# Create camera
+
+camera = Camera()
+camera.position = float3(0, 0.28, 1.2)
+camera.target = float3(0, 0.28, 0)
+camera.up = float3(0, 1, 0)
+camera.focalLength = 35.0
+sceneBuilder.addCamera(camera)
