@@ -1123,28 +1123,14 @@ void scatterMiss(inout ScatterRayData rayData)
 {
     // Ray missed the scene. Mark the ray as terminated.
     rayData.terminated = true;
-    // if (rayData.pathLength == 1) {
-    //     rayData.radiance = 0;
-    //     if (gShowOffset) {
 
-    //         // float t;
-    //         // intersectRaySphere(rayData.origin, rayData.direction, float3(0), 1.1, t, 0.f, kRayTMax, false);
-    //         rayData.radiance = 0;
-    //     }
-    //     return;
-    // }
 
     // Add contribution from distant light (env map) in this direction.
-    if (kUseEnvLight) {
-        float3 Le = gScene.envMap.eval(WorldRayDirection());
-        rayData.radiance += rayData.thp * Le;
-    }
-    // if (kUseEnvLight && rayData.pathLength == 1)
-    // if (kUseEnvLight && (kComputeDirect || rayData.pathLength > 0))
-    // {
+    // if (kUseEnvLight) {
     //     float3 Le = gScene.envMap.eval(WorldRayDirection());
     //     rayData.radiance += rayData.thp * Le;
     // }
+
 
 
 

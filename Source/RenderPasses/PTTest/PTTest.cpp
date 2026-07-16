@@ -419,6 +419,28 @@ void PTTest::stopOutput()
     mTriSampleV = startingUV;
 }
 
+float2 PTTest::interpolateSampleTexcrd(uint32_t triangleID, float u, float v) const
+{
+    if (triangleID >= mInstanceTriIndicesOrig.size())
+        return float2(0.f);
+
+    const uint3 tri = mInstanceTriIndicesOrig[triangleID];
+    const uint32_t n = (uint32_t)mInstanceTexcrds.size();
+    if (tri.x >= n || tri.y >= n || tri.z >= n)
+        return float2(0.f);
+
+    // Barycentric weights matching sample_triangle() in MathHelpers.slang:
+    //   bary = (su*(1-v), 1-su, su*v), with su = sqrt(u).
+    // The shader interpolates as bary.x*v0 + bary.y*v1 + bary.z*v2 (scene vertex order), so we use
+    // the original (pre-weld) corner indices in the same order.
+    const float su = std::sqrt(u);
+    const float w0 = su * (1.0f - v);
+    const float w1 = 1.0f - su;
+    const float w2 = su * v;
+
+    return w0 * mInstanceTexcrds[tri.x] + w1 * mInstanceTexcrds[tri.y] + w2 * mInstanceTexcrds[tri.z];
+}
+
 void PTTest::handleOutput()
 {
         auto camera = mpScene->getCamera();
@@ -450,8 +472,9 @@ void PTTest::handleOutput()
             mSelectedTriangleID = vp.triangleID;
             mTriSampleU = vertexUV[vp.uvIndex].x;
             mTriSampleV = vertexUV[vp.uvIndex].y;
+            mSampleTexcrd = interpolateSampleTexcrd(mSelectedTriangleID, mTriSampleU, mTriSampleV);
 
-            camera->setOutputPath(fmt::format(mVertexOutputPath, mSelectedInstanceID, mVertexGlobalID, vp.vertexID));
+            camera->setOutputPath(fmt::format(mVertexOutputPath, mSelectedInstanceID, mVertexGlobalID, vp.vertexID, mSampleTexcrd.x, mSampleTexcrd.y));
             if (!camera->isNextStep())
             {
                 return;
@@ -489,8 +512,9 @@ void PTTest::handleOutput()
             const uint3 vids = (mSelectedTriangleID < mInstanceTriIndices.size())
                 ? mInstanceTriIndices[mSelectedTriangleID]
                 : uint3(0);
+            mSampleTexcrd = interpolateSampleTexcrd(mSelectedTriangleID, mTriSampleU, mTriSampleV);
             camera->setOutputPath(
-                fmt::format(mOutputPath, mSelectedInstanceID, mGlobalOutputID, mSelectedTriangleID, vids.x, vids.y, vids.z, mTriSampleU, mTriSampleV)
+                fmt::format(mOutputPath, mSelectedInstanceID, mGlobalOutputID, mSelectedTriangleID, vids.x, vids.y, vids.z, mTriSampleU, mTriSampleV, mSampleTexcrd.x, mSampleTexcrd.y)
             );
             if (!camera->isNextStep())
             {
@@ -548,8 +572,9 @@ void PTTest::handleOutput()
             const uint3 vids = (mSelectedTriangleID < mInstanceTriIndices.size())
                 ? mInstanceTriIndices[mSelectedTriangleID]
                 : uint3(0);
+            mSampleTexcrd = interpolateSampleTexcrd(mSelectedTriangleID, mTriSampleU, mTriSampleV);
             camera->setOutputPath(
-                fmt::format(mOutputPath, mSelectedInstanceID, mGlobalOutputID, mSelectedTriangleID, vids.x, vids.y, vids.z, mTriSampleU, mTriSampleV)
+                fmt::format(mOutputPath, mSelectedInstanceID, mGlobalOutputID, mSelectedTriangleID, vids.x, vids.y, vids.z, mTriSampleU, mTriSampleV, mSampleTexcrd.x, mSampleTexcrd.y)
             );
             if (!camera->isNextStep())
             {
@@ -898,6 +923,8 @@ void PTTest::computeSelectedTriangleWorldPositions()
 void PTTest::cacheInstanceTriangles()
 {
     mInstanceTriIndices.clear();
+    mInstanceTriIndicesOrig.clear();
+    mInstanceTexcrds.clear();
     mInstanceVertices.clear();
     mInstanceTriangleCount = 0;
 
@@ -943,15 +970,28 @@ void PTTest::cacheInstanceTriangles()
         mpDevice->createStructuredBuffer(sizeof(uint3), triangleCount, ResourceBindFlags::None, MemoryType::ReadBack, nullptr, false);
     auto pPosStaging =
         mpDevice->createStructuredBuffer(sizeof(float3), vertexCount, ResourceBindFlags::None, MemoryType::ReadBack, nullptr, false);
+    auto pTexStaging =
+        mpDevice->createStructuredBuffer(sizeof(float3), vertexCount, ResourceBindFlags::None, MemoryType::ReadBack, nullptr, false);
 
     RenderContext* pRenderContext = mpDevice->getRenderContext();
     pRenderContext->copyBufferRegion(pIdxStaging.get(), 0, pIndices.get(), 0, sizeof(uint3) * triangleCount);
     pRenderContext->copyBufferRegion(pPosStaging.get(), 0, pPositions.get(), 0, sizeof(float3) * vertexCount);
+    pRenderContext->copyBufferRegion(pTexStaging.get(), 0, pTexcrds.get(), 0, sizeof(float3) * vertexCount);
     pRenderContext->submit(true); // Wait for GPU work to complete.
 
     const uint3* pIdxData = reinterpret_cast<const uint3*>(pIdxStaging->map());
     mInstanceTriIndices.assign(pIdxData, pIdxData + triangleCount);
+    // Keep an untouched copy of the scene-order indices for texcoord interpolation (see below).
+    mInstanceTriIndicesOrig.assign(pIdxData, pIdxData + triangleCount);
     pIdxStaging->unmap();
+
+    // Read back per-vertex texture coordinates. The mesh loader packs the float2 UV into a float3
+    // (xy = UV, z = 0), so we drop the unused z component here.
+    const float3* pTexData = reinterpret_cast<const float3*>(pTexStaging->map());
+    mInstanceTexcrds.resize(vertexCount);
+    for (uint32_t i = 0; i < vertexCount; ++i)
+        mInstanceTexcrds[i] = float2(pTexData[i].x, pTexData[i].y);
+    pTexStaging->unmap();
 
     mInstanceTriangleCount = triangleCount;
 

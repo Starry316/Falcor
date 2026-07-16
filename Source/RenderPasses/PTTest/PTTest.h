@@ -124,6 +124,10 @@ private:
     void cacheInstanceTriangles();
     /// Sets (mTriSampleU, mTriSampleV) to a jittered position inside the current stratum.
     void updateStratifiedSample();
+
+    /// Interpolate the mesh texture coordinate at a sampled point on a triangle.
+    /// (u, v) are the sample_triangle() inputs (same convention as mTriSampleU/V).
+    float2 interpolateSampleTexcrd(uint32_t triangleID, float u, float v) const;
     /// Sets (mTriSampleU, mTriSampleV) to a jittered position along the current triangle edge.
     void updateEdgeSample();
     /// Stops the output loop and resets the traversal state.
@@ -189,9 +193,9 @@ private:
     uint mOutputOffsetIndx = 0;
     uint mOutputSPP = 32;
     // Separate output paths for the two phases (all include the instance ID as the first field).
-    std::string mVertexOutputPath = "C:/Data/LF/train/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
+    std::string mVertexOutputPath = "C:/Data/LF/train_shell/vertex/{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, vertexID, texU, texV
     std::string mOutputPath =
-        "C:/Data/LF/train/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
+        "C:/Data/LF/train_shell/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v, texU, texV
     std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
 
     float mSampleTheta = 0;
@@ -238,6 +242,11 @@ private:
     uint32_t mSelectedTriVertexIDs[3] = {0, 0, 0};
     // Cached triangle vertex indices for the selected instance (populated when output starts).
     std::vector<uint3> mInstanceTriIndices;
+    /// Original (pre-weld) triangle vertex indices, in scene order. Used for texcoord lookup because
+    /// UVs split at seams, so welded/canonical IDs cannot address per-vertex texcoords correctly.
+    std::vector<uint3> mInstanceTriIndicesOrig;
+    /// Per mesh-local vertex texture coordinates (indexed by original vertex ID).
+    std::vector<float2> mInstanceTexcrds;
     uint32_t mInstanceTriangleCount = 0;
     /// GPU copy of the position-weld remap: remap[localVertexIndex] -> canonical vertex ID (mesh-local space).
     ref<Buffer> mpVertexRemap;
@@ -261,6 +270,8 @@ private:
     // Barycentric sample coordinates for uniform triangle sampling of the primary ray origin.
     float mTriSampleU = 0.5f;
     float mTriSampleV = 0.5f;
+    /// Interpolated mesh texture coordinate at the current sample point (updated by handleOutput()).
+    float2 mSampleTexcrd = float2(0.f);
     // Stratified sampling state for the triangle-interior phase: current stratum (cell) indices
     // over the NxN grid, plus an RNG for the in-cell jitter.
     uint32_t mStrataI = 0;
