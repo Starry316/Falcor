@@ -286,25 +286,7 @@ void printCudaDeviceProperties(int device)
     cudaGetDeviceProperties(&deviceProp, device);
 
     std::cout << "Device " << device << ": " << deviceProp.name << std::endl;
-    std::cout << "  Compute capability: " << deviceProp.major << "." << deviceProp.minor << std::endl;
-    std::cout << "  Total global memory: " << deviceProp.totalGlobalMem << " bytes" << std::endl;
-    std::cout << "  Shared memory per block: " << deviceProp.sharedMemPerBlock << " bytes" << std::endl;
-    std::cout << "  Registers per block: " << deviceProp.regsPerBlock << std::endl;
-    std::cout << "  Warp size: " << deviceProp.warpSize << std::endl;
-    std::cout << "  Max threads per block: " << deviceProp.maxThreadsPerBlock << std::endl;
-    std::cout << "  Max threads per multiprocessor: " << deviceProp.maxThreadsPerMultiProcessor << std::endl;
-    std::cout << "  Max blocks per multiprocessor: " << deviceProp.maxBlocksPerMultiProcessor << std::endl;
-    std::cout << "  Max grid size: (" << deviceProp.maxGridSize[0] << ", " << deviceProp.maxGridSize[1] << ", " << deviceProp.maxGridSize[2]
-              << ")" << std::endl;
-    std::cout << "  Max block dimensions: (" << deviceProp.maxThreadsDim[0] << ", " << deviceProp.maxThreadsDim[1] << ", "
-              << deviceProp.maxThreadsDim[2] << ")" << std::endl;
-    std::cout << "  Memory clock rate: " << deviceProp.memoryClockRate << " kHz" << std::endl;
-    std::cout << "  Memory bus width: " << deviceProp.memoryBusWidth << " bits" << std::endl;
-    std::cout << "  L2 cache size: " << deviceProp.l2CacheSize << " bytes" << std::endl;
-    std::cout << "  Number of multiprocessors: " << deviceProp.multiProcessorCount << std::endl;
-    std::cout << "  Clock rate: " << deviceProp.clockRate << " kHz" << std::endl;
-    std::cout << "  Concurrent kernels: " << (deviceProp.concurrentKernels ? "Yes" : "No") << std::endl;
-    std::cout << "  ECC enabled: " << (deviceProp.ECCEnabled ? "Yes" : "No") << std::endl;
+
 }
 
 int main(int argc, char** argv)

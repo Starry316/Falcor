@@ -109,6 +109,7 @@ cbuffer CB
     uint gSHDegree;           ///< SH degree.
     uint gSHNumCoeffs;        ///< (degree+1)^2.
     uint gSGCount;            ///< SG lobes per vertex.
+    uint gSVCount;            ///< SV sites per vertex.
 }
 
 // Inputs
@@ -149,9 +150,9 @@ StructuredBuffer<float4> gNeuB0;       ///< Layer 0 biases, [numMLPs][outBlk] fl
 StructuredBuffer<float4> gNeuB1;       ///< Layer 1 biases.
 StructuredBuffer<float4> gNeuB2;       ///< Layer 2 biases.
 
-static const uint kNeuMaxBlk = 8;      ///< Max 4x4 blocks per activation (inputDim <= 32).
-static const uint kNeuMaxIn = 32;      ///< kNeuMaxBlk * 4.
-static const uint kNeuMaxFeat = 8;     ///< Max feature channels (planeDim <= 8).
+static const uint kNeuMaxBlk = 16;     ///< Max 4x4 blocks per activation (inputDim <= 64).
+static const uint kNeuMaxIn = 64;      ///< kNeuMaxBlk * 4.
+static const uint kNeuMaxFeat = 16;    ///< Max feature channels (planeDim <= 16).
 
 float4 neuLeakyRelu(float4 v)
 {
@@ -294,7 +295,7 @@ float3 neuLobesInference(float3 dir, float3 bary, int3 vertexID)
     neuLayer(gNeuW2, gNeuB2, gNeuLobes.inBlk.z, gNeuLobes.outBlk.z, bary, vertexID, h2, h3);
 
     // 6. Output lanes are mu-law compressed radiance; decompress with mu = 5000.
-    const float mu = 5000.0f;
+    const float mu = 16.0f;
     float3 pred = h3[0].xyz;
     return (pow(float3(1.0f + mu), pred) - 1.0f) / mu;
 }
@@ -308,6 +309,9 @@ StructuredBuffer<float> gSHCoeffs;   ///< [pool][numCoeffs][3].
 StructuredBuffer<float> gSGAxes;     ///< [pool][numSGs][3].
 StructuredBuffer<float> gSGLambdas;  ///< [pool][numSGs].
 StructuredBuffer<float> gSGAmps;     ///< [pool][numSGs][3].
+StructuredBuffer<float> gSVSites;    ///< Spherical-Voronoi site directions [pool][numSites][3].
+StructuredBuffer<float> gSVColors;   ///< Spherical-Voronoi per-site log-RGB [pool][numSites][3].
+StructuredBuffer<float> gSVBeta;     ///< Spherical-Voronoi softmax sharpness [pool].
 
 // Associated Legendre polynomial P_l^m(x) (matches fit_SH.associatedLegendre).
 float shAssocLegendre(int l, int m, float x)
@@ -425,6 +429,50 @@ float3 sgInference(float3 dir, float3 bary, int3 vertexID)
     return exp(outLog) - 1.0f;
 }
 
+/// Reads one Spherical-Voronoi site direction / color for probe `v`, site `k`.
+float3 svReadSite(uint v, uint k)
+{
+    uint base = (v * gSVCount + k) * 3;
+    return float3(gSVSites[base + 0], gSVSites[base + 1], gSVSites[base + 2]);
+}
+float3 svReadColor(uint v, uint k)
+{
+    uint base = (v * gSVCount + k) * 3;
+    return float3(gSVColors[base + 0], gSVColors[base + 1], gSVColors[base + 2]);
+}
+
+/// Evaluates the per-vertex Spherical Voronoi pool. Unlike SH/SG, the blend is NOT of the final value:
+/// with fixed (shared) sites, the per-site colors and the beta scalar are blended by bary FIRST, then
+/// a single temperature-controlled softmax over the sites produces log-RGB. radiance = exp(y) - 1.
+///   scores_k = beta * dot(dir, site_k);  W = softmax(scores);  logRGB = sum_k W_k * color_k
+float3 svInference(float3 dir, float3 bary, int3 vertexID)
+{
+    float3 d = normalize(dir);
+    const uint v0 = (uint)vertexID.x, v1 = (uint)vertexID.y, v2 = (uint)vertexID.z;
+
+    // Sites are shared across vertices (fixed-site fit), so a single set (from v0) is reused. Beta is
+    // blended by bary. (With learned/free sites this barycentric blend would not be valid.)
+    const float beta = bary.x * gSVBeta[v0] + bary.y * gSVBeta[v1] + bary.z * gSVBeta[v2];
+
+    // Pass 1: max score for a numerically stable softmax.
+    float maxScore = -1e30f;
+    for (uint k = 0; k < gSVCount; ++k)
+        maxScore = max(maxScore, beta * dot(d, svReadSite(v0, k)));
+
+    // Pass 2: softmax-weighted sum of the bary-blended per-site colors.
+    float3 logRGB = float3(0.0f);
+    float wsum = 0.0f;
+    for (uint k = 0; k < gSVCount; ++k)
+    {
+        float w = exp(beta * dot(d, svReadSite(v0, k)) - maxScore);
+        float3 color = bary.x * svReadColor(v0, k) + bary.y * svReadColor(v1, k) + bary.z * svReadColor(v2, k);
+        logRGB += w * color;
+        wsum += w;
+    }
+    logRGB /= max(wsum, 1e-20f);
+    return exp(logRGB) - 1.0f;
+}
+
 /// Dispatches to the selected probe representation.
 float3 evalProbe(float3 dir, float3 bary, int3 vertexID)
 {
@@ -432,6 +480,8 @@ float3 evalProbe(float3 dir, float3 bary, int3 vertexID)
         return shInference(dir, bary, vertexID);
     if (gProbeRepr == 2)
         return sgInference(dir, bary, vertexID);
+    if (gProbeRepr == 3)
+        return svInference(dir, bary, vertexID);
     return neuLobesInference(dir, bary, vertexID);
 }
 
@@ -930,18 +980,20 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     // spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI)).xzy * 5;
     primaryRayDir = oct_to_ndir_equal_area_unorm(originUV).xzy;
 
+
     // Prepare ray payload.
     ScatterRayData rayData = ScatterRayData(sg);
     rayData.origin = primaryRayOrigin;
     rayData.direction = primaryRayDir;
     rayData.pathLength = 1;
 
+
     // // Lower hemisphere
-    // if (dot(selectedTriNormal, primaryRayDir) <= kMinCosTheta) {
-    //     rayData.terminated = true;
-    //     rayData.radiance = float3(0.0, 0.0, 0.0);
-    //     return rayData;
-    // }
+    if (dot(selectedTriNormal, primaryRayDir) <= kMinCosTheta) {
+        rayData.terminated = true;
+        rayData.radiance = float3(0.0, 0.0, 0.0);
+        return rayData;
+    }
 
     traceScatterRay(rayData);
     return rayData;

@@ -197,6 +197,7 @@ PTTest::PTTest(ref<Device> pDevice, const Properties& props) : RenderPass(pDevic
     loadNeuLobesModel(mNeuLobesDir);
     loadSHModel(mSHDir);
     loadSGModel(mSGDir);
+    loadSVModel(mSVDir);
 }
 
 void PTTest::parseProperties(const Properties& props)
@@ -363,18 +364,47 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     mFrameCount++;
 }
 
-void PTTest::updateStratifiedSample()
+uint32_t PTTest::triangleStrataDim() const
+{
+    const uint32_t target = std::max<uint32_t>(1u, mTriangleSamples);
+    return std::max<uint32_t>(1u, (uint32_t)std::lround(std::sqrt((double)target)));
+}
+
+uint32_t PTTest::interiorSampleCount() const
+{
+    if (mSamplingMode == 1) // uniform: exactly the requested count
+        return std::max<uint32_t>(1u, mTriangleSamples);
+    const uint32_t n = triangleStrataDim(); // stratified: nearest N*N grid
+    return n * n;
+}
+
+void PTTest::updateInteriorSample()
 {
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-    mTriSampleU = startingUV + (mStrataI + dist(mSampleRng)) * intervalUV;
-    mTriSampleV = startingUV + (mStrataJ + dist(mSampleRng)) * intervalUV;
+    if (mSamplingMode == 1)
+    {
+        // Uniform random over the triangle (unit square -> sample_triangle on the shader side).
+        mTriSampleU = dist(mSampleRng);
+        mTriSampleV = dist(mSampleRng);
+    }
+    else
+    {
+        // Stratified: jittered sample inside cell (i, j) of an NxN grid over the unit square.
+        const uint32_t n = triangleStrataDim();
+        const uint32_t i = mSampleIndex % n;
+        const uint32_t j = mSampleIndex / n;
+        mTriSampleU = (i + dist(mSampleRng)) / (float)n;
+        mTriSampleV = (j + dist(mSampleRng)) / (float)n;
+    }
 }
 
 void PTTest::updateEdgeSample()
 {
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-    // Parameter along the edge, inset by startingUV to avoid the vertices (already sampled in phase 0).
-    const float t = startingUV + (mEdgeStratum + dist(mSampleRng)) * intervalUV;
+    // Parameter t in (0,1) along the edge (jittered stratum for stratified mode, random for uniform).
+    const float t = (mSamplingMode == 1)
+        ? dist(mSampleRng)
+        : (mEdgeStratum + dist(mSampleRng)) / (float)std::max<uint32_t>(1u, mEdgeSamples);
     // Pick (u, v) so sample_triangle(u, v) lands on the chosen edge (one barycentric == 0):
     //   edge 0 (v0-v1): bary = (1-t, t, 0)  -> u = (1-t)^2, v = 0
     //   edge 1 (v1-v2): bary = (0, 1-t, t)  -> u = t^2,     v = 1
@@ -403,8 +433,7 @@ void PTTest::stopOutput()
     mVertexIndex = 0;
     mOutputPhase = 0;
     mSelectedTriangleID = 0;
-    mStrataI = 0;
-    mStrataJ = 0;
+    mSampleIndex = 0;
     mEdgeIndex = 0;
     mEdgeStratum = 0;
     mIsOutputing = false;
@@ -415,15 +444,14 @@ void PTTest::stopOutput()
         camera->setNextStep(false);
         camera->setAccumulating(false);
     }
-    mTriSampleU = startingUV;
-    mTriSampleV = startingUV;
+    mTriSampleU = 0.5f;
+    mTriSampleV = 0.5f;
 }
 
 void PTTest::handleOutput()
 {
         auto camera = mpScene->getCamera();
 
-        const uint32_t strataN = (uint32_t)numberOfInterals;
         const bool doTriangles = (mPhaseSelection != kPhaseVerticesOnly);
 
         // Phase 0: per-vertex precompute. Each unique vertex is rendered once (probe origin placed at
@@ -437,9 +465,8 @@ void PTTest::handleOutput()
                 {
                     mOutputPhase = 1;
                     mSelectedTriangleID = 0;
-                    mStrataI = 0;
-                    mStrataJ = 0;
-                    updateStratifiedSample();
+                    mSampleIndex = 0;
+                    updateInteriorSample();
                     return;
                 }
                 stopOutput();
@@ -467,12 +494,11 @@ void PTTest::handleOutput()
             {
                 if (doTriangles)
                 {
-                    // All vertices done; switch to stratified triangle interior sampling.
+                    // All vertices done; switch to triangle interior sampling.
                     mOutputPhase = 1;
                     mSelectedTriangleID = 0;
-                    mStrataI = 0;
-                    mStrataJ = 0;
-                    updateStratifiedSample();
+                    mSampleIndex = 0;
+                    updateInteriorSample();
                 }
                 else
                 {
@@ -482,8 +508,7 @@ void PTTest::handleOutput()
             return;
         }
 
-        // Phase 1: per-triangle interior sampling. Stratified over an NxN grid: one jittered sample
-        // per stratum (corners are skipped, they were done in phase 0).
+        // Phase 1: per-triangle interior sampling (stratified grid or uniform random, mTriangleSamples).
         if (mOutputPhase == 1)
         {
             const uint3 vids = (mSelectedTriangleID < mInstanceTriIndices.size())
@@ -503,23 +528,16 @@ void PTTest::handleOutput()
             // This triangle sample file has been committed; advance the global running index.
             mGlobalOutputID++;
 
-            // Advance to the next stratum.
-            mStrataI++;
-            if (mStrataI >= strataN)
-            {
-                mStrataI = 0;
-                mStrataJ++;
-            }
-
-            if (mStrataJ >= strataN)
+            // Advance to the next interior sample.
+            mSampleIndex++;
+            if (mSampleIndex >= interiorSampleCount())
             {
                 // Finished this triangle's interior; advance to the next triangle in the instance.
                 mSelectedTriangleID++;
                 if (mSelectedTriangleID < mInstanceTriangleCount)
                 {
-                    mStrataI = 0;
-                    mStrataJ = 0;
-                    updateStratifiedSample();
+                    mSampleIndex = 0;
+                    updateInteriorSample();
                     return;
                 }
 
@@ -537,12 +555,12 @@ void PTTest::handleOutput()
                 return;
             }
 
-            // Compute the jittered sample for the new stratum.
-            updateStratifiedSample();
+            // Compute the next interior sample.
+            updateInteriorSample();
             return;
         }
 
-        // Phase 2: per-triangle EDGE sampling (data augmentation). Extra jittered samples along each
+        // Phase 2: per-triangle EDGE sampling (data augmentation). mEdgeSamples samples along each
         // of the 3 edges (one barycentric coordinate == 0), emitted via the same triangle output path.
         {
             const uint3 vids = (mSelectedTriangleID < mInstanceTriIndices.size())
@@ -563,7 +581,7 @@ void PTTest::handleOutput()
 
             // Advance along the current edge, then to the next edge, then the next triangle.
             mEdgeStratum++;
-            if (mEdgeStratum >= strataN)
+            if (mEdgeStratum >= mEdgeSamples)
             {
                 mEdgeStratum = 0;
                 mEdgeIndex++;
@@ -661,21 +679,24 @@ void PTTest::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Change Light", mChangeLight);
 
     dirty |= widget.checkbox("Use NeuLobes probe", mUseNeuLobes);
-    widget.tooltip("Evaluate a per-vertex light probe (neural / SH / SG) and write it to the output color.", true);
+    widget.tooltip("Evaluate a per-vertex light probe (neural / SH / SG / SV) and write it to the output color.", true);
     if (mUseNeuLobes)
     {
         Gui::DropdownList reprList = {
             {0u, "Neural (mu-law)"},
             {1u, "Spherical Harmonics"},
             {2u, "Spherical Gaussians"},
+            {3u, "Spherical Voronoi"},
         };
         dirty |= widget.dropdown("Probe representation", reprList, mProbeRepr);
         if (mProbeRepr == 0)
             widget.text(mNeuLobes.loaded ? "Neural: loaded" : "Neural: NOT loaded");
         else if (mProbeRepr == 1)
             widget.text(mSH.loaded ? fmt::format("SH: loaded (deg {}, pool {})", mSH.degree, mSH.poolSize) : "SH: NOT loaded");
-        else
+        else if (mProbeRepr == 2)
             widget.text(mSG.loaded ? fmt::format("SG: loaded ({} lobes, pool {})", mSG.numSGs, mSG.poolSize) : "SG: NOT loaded");
+        else
+            widget.text(mSV.loaded ? fmt::format("SV: loaded ({} sites, pool {})", mSV.numSites, mSV.poolSize) : "SV: NOT loaded");
 
         dirty |= widget.var("NeuLobes bary", mNeuBary, 0.0f, 1.0f);
         dirty |= widget.var("NeuLobes vertexID (demo)", mNeuVertexID);
@@ -711,18 +732,31 @@ void PTTest::renderUI(Gui::Widgets& widget)
         {kPhaseBoth, "Vertices + Triangles"},
     };
     dirty |= widget.dropdown("Output phase", phaseList, mPhaseSelection);
+
+    Gui::DropdownList samplingList = {
+        {0u, "Stratified"},
+        {1u, "Uniform"},
+    };
+    dirty |= widget.dropdown("Interior sampling", samplingList, mSamplingMode);
+    dirty |= widget.var("Samples per triangle", mTriangleSamples, 1u, 1u << 16);
+    if (mSamplingMode == 0)
+        widget.text(fmt::format("  (stratified {0}x{0} = {1} samples)", triangleStrataDim(), interiorSampleCount()));
+
     dirty |= widget.checkbox("Sample triangle edges", mSampleTriangleEdges);
-    widget.tooltip("Adds extra stratified samples along the 3 triangle edges as data augmentation.", true);
+    widget.tooltip("Adds extra samples along the 3 triangle edges as data augmentation.", true);
+    if (mSampleTriangleEdges)
+        dirty |= widget.var("Samples per edge", mEdgeSamples, 1u, 1u << 16);
 
     widget.var("OutputSPP", mOutputSPP);
     if (mIsOutputing)
     {
         const char* phaseName = (mOutputPhase == 0) ? "vertices" : ((mOutputPhase == 1) ? "triangle interior" : "triangle edges");
         widget.text(fmt::format(
-            "Phase: {} | vertex {}/{} | triangle {}/{} | edge {}",
+            "Phase: {} | vertex {}/{} | triangle {}/{} | interior {}/{} | edge {}",
             phaseName,
             mVertexIndex, (uint32_t)mInstanceVertices.size(),
-            mSelectedTriangleID, mInstanceTriangleCount, mEdgeIndex
+            mSelectedTriangleID, mInstanceTriangleCount,
+            mSampleIndex, interiorSampleCount(), mEdgeIndex
         ));
         handleOutput();
         if (widget.button("Stop", true))
@@ -742,8 +776,7 @@ void PTTest::renderUI(Gui::Widgets& widget)
             cacheInstanceTriangles();
             mVertexIndex = 0;
             mSelectedTriangleID = 0;
-            mStrataI = 0;
-            mStrataJ = 0;
+            mSampleIndex = 0;
             mEdgeIndex = 0;
             mEdgeStratum = 0;
             mGlobalOutputID = 0;
@@ -755,9 +788,9 @@ void PTTest::renderUI(Gui::Widgets& widget)
 
             if (mPhaseSelection == kPhaseTrianglesOnly)
             {
-                // Triangles only: skip the vertex phase and seed the first stratified sample.
+                // Triangles only: skip the vertex phase and seed the first interior sample.
                 mOutputPhase = 1;
-                updateStratifiedSample();
+                updateInteriorSample();
             }
             else
             {
@@ -788,8 +821,7 @@ void PTTest::renderUI(Gui::Widgets& widget)
             mVertexIndex = 0;
             mOutputPhase = 0;
             mSelectedTriangleID = 0;
-            mStrataI = 0;
-            mStrataJ = 0;
+            mSampleIndex = 0;
             mEdgeIndex = 0;
             mEdgeStratum = 0;
             mGlobalOutputID = 0;
@@ -1126,6 +1158,21 @@ void PTTest::loadNeuLobesModel(const std::string& dir)
         "[NeuLobes] Loaded model from {} (peBands={}, res={}, rank={}, planeDim={}, hiddenDim={}, inputDim={}, numMLPs={}).",
         dir, mNeuLobes.peBands, mNeuLobes.res, mNeuLobes.rank, mNeuLobes.planeDim, mNeuLobes.hiddenDim, mNeuLobes.inputDim, mNeuLobes.numMLPs
     );
+
+    // These must stay within the shader's fixed-array caps (kNeuMaxBlk/kNeuMaxIn/kNeuMaxFeat in
+    // MinimalPathTracer.rt.slang). Exceeding them causes out-of-bounds writes -> garbage/bright output.
+    const uint32_t kShaderMaxBlk = 16, kShaderMaxIn = 64, kShaderMaxFeat = 16;
+    const uint32_t maxInBlk = std::max({mNeuLobes.inBlk[0], mNeuLobes.inBlk[1], mNeuLobes.inBlk[2]});
+    const uint32_t maxOutBlk = std::max({mNeuLobes.outBlk[0], mNeuLobes.outBlk[1], mNeuLobes.outBlk[2]});
+    if (mNeuLobes.inputDim > kShaderMaxIn || maxInBlk > kShaderMaxBlk || maxOutBlk > kShaderMaxBlk ||
+        mNeuLobes.planeDim > kShaderMaxFeat)
+    {
+        logWarning(
+            "[NeuLobes] Model exceeds shader caps (inputDim={} > {}, maxBlk={} > {}, planeDim={} > {}). "
+            "Raise kNeuMaxIn/kNeuMaxBlk/kNeuMaxFeat in MinimalPathTracer.rt.slang.",
+            mNeuLobes.inputDim, kShaderMaxIn, std::max(maxInBlk, maxOutBlk), kShaderMaxBlk, mNeuLobes.planeDim, kShaderMaxFeat
+        );
+    }
 }
 
 void PTTest::bindNeuLobesData(const ShaderVar& var)
@@ -1253,6 +1300,62 @@ void PTTest::bindProbeReprData(const ShaderVar& var)
         var["gSGLambdas"] = mSG.pLambdas;
         var["gSGAmps"] = mSG.pAmps;
     }
+
+    var["CB"]["gSVCount"] = mSV.numSites;
+    if (mSV.loaded)
+    {
+        var["gSVSites"] = mSV.pSites;
+        var["gSVColors"] = mSV.pColors;
+        var["gSVBeta"] = mSV.pBeta;
+    }
+}
+
+void PTTest::loadSVModel(const std::string& dir)
+{
+    const std::filesystem::path root(dir);
+    std::ifstream ifs(root / "manifest.json");
+    if (ifs)
+    {
+        try
+        {
+            nlohmann::json j = nlohmann::json::parse(ifs, nullptr, true, true);
+            mSV.numSites = j.value("numSites", mSV.numSites);
+            mSV.fixedSites = j.value("fixedSites", mSV.fixedSites);
+        }
+        catch (const std::exception& e)
+        {
+            logWarning("[SV] Failed to parse manifest.json ({}).", e.what());
+        }
+    }
+    else
+    {
+        logWarning("[SV] manifest.json not found in {}. SV model not loaded.", dir);
+        return;
+    }
+
+    std::vector<float> sites = readFloatBinary(root / "sites.bin");
+    std::vector<float> colors = readFloatBinary(root / "colors.bin");
+    std::vector<float> beta = readFloatBinary(root / "beta.bin");
+    if (sites.empty() || colors.empty() || beta.empty() || mSV.numSites == 0)
+    {
+        logWarning("[SV] Missing binaries or invalid numSites in {}. SV model not loaded.", dir);
+        return;
+    }
+    if (!mSV.fixedSites)
+    {
+        // With learned (free) sites there is no site correspondence across vertices, so the
+        // barycentric blend used by the shader is invalid. Blending would need an OT/matching step.
+        logWarning("[SV] Model uses learned (free) sites; barycentric triangle blending is not valid. "
+                   "Refit with fixed sites for correct interpolation.");
+    }
+
+    mSV.poolSize = (uint32_t)beta.size();
+    const ResourceBindFlags flags = ResourceBindFlags::ShaderResource;
+    mSV.pSites = mpDevice->createStructuredBuffer(sizeof(float), (uint32_t)sites.size(), flags, MemoryType::DeviceLocal, sites.data(), false);
+    mSV.pColors = mpDevice->createStructuredBuffer(sizeof(float), (uint32_t)colors.size(), flags, MemoryType::DeviceLocal, colors.data(), false);
+    mSV.pBeta = mpDevice->createStructuredBuffer(sizeof(float), (uint32_t)beta.size(), flags, MemoryType::DeviceLocal, beta.data(), false);
+    mSV.loaded = true;
+    logInfo("[SV] Loaded from {} (numSites={}, pool={}, fixedSites={}).", dir, mSV.numSites, mSV.poolSize, mSV.fixedSites);
 }
 
 void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)

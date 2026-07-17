@@ -108,11 +108,25 @@ public:
         bool loaded = false;
     };
 
+    /// Per-vertex soft Spherical Voronoi pool (log-space fit; softmax over sites).
+    struct SVModel
+    {
+        uint32_t numSites = 0;    ///< Sites per vertex (S).
+        uint32_t poolSize = 0;    ///< Number of probe vertices (rows).
+        bool fixedSites = true;   ///< True if sites are shared across vertices (required for bary blend).
+        ref<Buffer> pSites;       ///< StructuredBuffer<float> [pool][numSites][3] (unit directions).
+        ref<Buffer> pColors;      ///< StructuredBuffer<float> [pool][numSites][3] (log-space RGB >= 0).
+        ref<Buffer> pBeta;        ///< StructuredBuffer<float> [pool] (softmax sharpness).
+        bool loaded = false;
+    };
+
     /// Loads the SH coefficient pool + manifest from `dir` and uploads it to the GPU.
     void loadSHModel(const std::string& dir);
     /// Loads the SG axes/lambdas/amplitudes pool + manifest from `dir` and uploads it to the GPU.
     void loadSGModel(const std::string& dir);
-    /// Binds the SH/SG buffers and config to the ray tracing program.
+    /// Loads the SV sites/colors/beta pool + manifest from `dir` and uploads it to the GPU.
+    void loadSVModel(const std::string& dir);
+    /// Binds the SH/SG/SV buffers and config to the ray tracing program.
     void bindProbeReprData(const ShaderVar& var);
 
 private:
@@ -122,9 +136,13 @@ private:
     void computeSelectedTriangleWorldPositions();
     /// Reads back and caches the triangle vertex indices for the whole selected instance (single GPU readback).
     void cacheInstanceTriangles();
-    /// Sets (mTriSampleU, mTriSampleV) to a jittered position inside the current stratum.
-    void updateStratifiedSample();
-    /// Sets (mTriSampleU, mTriSampleV) to a jittered position along the current triangle edge.
+    /// Sets (mTriSampleU, mTriSampleV) for the current interior sample (stratified or uniform).
+    void updateInteriorSample();
+    /// Number of interior 4x4 grid divisions for stratified mode (round(sqrt(mTriangleSamples))).
+    uint32_t triangleStrataDim() const;
+    /// Total interior samples emitted per triangle for the current mode.
+    uint32_t interiorSampleCount() const;
+    /// Sets (mTriSampleU, mTriSampleV) to a position along the current triangle edge.
     void updateEdgeSample();
     /// Stops the output loop and resets the traversal state.
     void stopOutput();
@@ -189,9 +207,9 @@ private:
     uint mOutputOffsetIndx = 0;
     uint mOutputSPP = 32;
     // Separate output paths for the two phases (all include the instance ID as the first field).
-    std::string mVertexOutputPath = "C:/Data/Probe/train_dense/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
+    std::string mVertexOutputPath = "C:/Data/Probe/train_shell/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
     std::string mOutputPath =
-        "C:/Data/Probe/train_dense/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
+        "C:/Data/Probe/train_shell/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
     std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
 
     float mSampleTheta = 0;
@@ -206,12 +224,14 @@ private:
     std::string mNeuLobesDir = "C:/projects/neulobes/outputs/neulobes_multi_bin";
     bool mUseNeuLobes = false;
 
-    // SH / SG per-vertex analytic light-probe pools (alternatives to the neural model).
+    // SH / SG / SV per-vertex analytic light-probe pools (alternatives to the neural model).
     SHModel mSH;
     SGModel mSG;
+    SVModel mSV;
     std::string mSHDir = "C:/projects/neulobes/outputs/vertex_coeffs/SH";
     std::string mSGDir = "C:/projects/neulobes/outputs/vertex_coeffs/SG";
-    /// Which representation to evaluate when the probe is enabled: 0 = neural, 1 = SH, 2 = SG.
+    std::string mSVDir = "C:/projects/neulobes/outputs/vertex_coeffs/SV";
+    /// Which representation to evaluate when the probe is enabled: 0 = neural, 1 = SH, 2 = SG, 3 = SV.
     uint32_t mProbeRepr = 0;
     /// Barycentric probe-blend weights used for the demo inference query (should sum to 1).
     float3 mNeuBary = float3(1.0f, 0.0f, 0.0f);
@@ -261,13 +281,21 @@ private:
     // Barycentric sample coordinates for uniform triangle sampling of the primary ray origin.
     float mTriSampleU = 0.5f;
     float mTriSampleV = 0.5f;
-    // Stratified sampling state for the triangle-interior phase: current stratum (cell) indices
-    // over the NxN grid, plus an RNG for the in-cell jitter.
-    uint32_t mStrataI = 0;
-    uint32_t mStrataJ = 0;
     std::mt19937 mSampleRng{12345u};
-    // Edge-sampling augmentation state: which of the 3 edges and which stratum along it.
+
+    // Interior sampling controls.
+    /// Sampling scheme for the triangle interior: 0 = stratified grid, 1 = uniform random.
+    uint32_t mSamplingMode = 0;
+    /// Target number of interior samples per triangle (UI-adjustable). Stratified rounds to the
+    /// nearest N*N grid; uniform uses this exact count.
+    uint32_t mTriangleSamples = 64;
+    /// Running index of the current interior sample within a triangle.
+    uint32_t mSampleIndex = 0;
+
+    // Edge-sampling augmentation state.
     bool mSampleTriangleEdges = true;
+    /// Number of samples per triangle edge (UI-adjustable).
+    uint32_t mEdgeSamples = 8;
     uint32_t mEdgeIndex = 0;
     uint32_t mEdgeStratum = 0;
     /// Global running index across all triangle output files (unique per emitted triangle sample).
@@ -275,8 +303,5 @@ private:
     /// Global running index across all vertex output files (unique per emitted vertex sample).
     uint32_t mVertexGlobalID = 0;
     const float2 vertexUV[3] = {float2(0.0f, 0.0f), float2(0.999f, 0.0f), float2(0.999f, 0.999f)};
-    // const float startingUV = 0.05f;
     const float startingUV = 0.05f;
-    float numberOfInterals = 8;
-    float intervalUV = (1.0f - 2 * startingUV) / numberOfInterals;
 };
