@@ -151,6 +151,30 @@ void NeuRaster::loadModel(const std::string& dir)
     mpVecX = getDevice()->createBuffer(vecx.size() * sizeof(float), flags, MemoryType::DeviceLocal, vecx.data());
     mpMatYZ = getDevice()->createBuffer(matyz.size() * sizeof(float), flags, MemoryType::DeviceLocal, matyz.data());
 
+    // Texture-backed feature planes: width=res, height=numMLPs*rank (one row per (probe,rank) pair).
+    // Requires planeDim==4 (channels packed into RGBA) and dims within the HW 2D limit. The raw
+    // tensors are already row-major in this exact layout, so they upload with no repacking.
+    mpVecXTex = nullptr;
+    mpMatYZTex = nullptr;
+    mpFeatSampler = nullptr;
+    const uint32_t texRows = mNumMLPs * mRank;
+    mTexturesFeasible = (mPlaneDim == 4) && (texRows > 0) && (mRes > 0) && (texRows <= 16384) && (mRes <= 16384) &&
+                        (vecx.size() == (size_t)texRows * mRes) && (matyz.size() == (size_t)texRows * mRes * 4);
+    if (mTexturesFeasible)
+    {
+        mpVecXTex = getDevice()->createTexture2D(mRes, texRows, ResourceFormat::R32Float, 1, 1, vecx.data(), flags);
+        mpMatYZTex = getDevice()->createTexture2D(mRes, texRows, ResourceFormat::RGBA32Float, 1, 1, matyz.data(), flags);
+
+        Sampler::Desc sd;
+        sd.setFilterMode(TextureFilteringMode::Linear, TextureFilteringMode::Linear, TextureFilteringMode::Point);
+        sd.setAddressingMode(TextureAddressingMode::Clamp, TextureAddressingMode::Clamp, TextureAddressingMode::Clamp);
+        mpFeatSampler = getDevice()->createSampler(sd);
+    }
+    else
+    {
+        mUseTextures = false; // Force the buffer path if textures are not usable for this model.
+    }
+
     // Weights/biases: repack each layer's raw floats into mul-ready float4x4 / float4 blocks (as in the pass).
     for (int l = 0; l < 3; ++l)
     {
@@ -183,8 +207,8 @@ void NeuRaster::loadModel(const std::string& dir)
         dir, mPeBands, mRes, mRank, mPlaneDim, mHiddenDim, mInputDim, mNumMLPs
     );
 
-    // VS-interpolation interpolant budget: weights + biases + feature + bary, each a float4 VS output.
-    // The hardware allows ~32 such outputs, so large models can only run the fragment-shader-blend mode.
+    // VS-interpolation interpolant budget (worst case: both weights and feature interpolated in the VS).
+    // The hardware allows ~32 float4 outputs, so large models can only run the pixel-shader-blend mode.
     const uint32_t weightsVec4 = 4 * (mInBlk[0] * mOutBlk[0] + mInBlk[1] * mOutBlk[1] + mInBlk[2] * mOutBlk[2]);
     const uint32_t biasVec4 = mOutBlk[0] + mOutBlk[1] + mOutBlk[2];
     const uint32_t featVec4 = (mPlaneDim + 3) / 4;
@@ -214,6 +238,8 @@ DefineList NeuRaster::buildShaderDefines()
     defines.add("NEU_L2_IN_BLK", std::to_string(std::max(mInBlk[2], 1u)));
     defines.add("NEU_L2_OUT_BLK", std::to_string(std::max(mOutBlk[2], 1u)));
     defines.add("NEU_VS_INTERP", mVsInterp ? "1" : "0");
+    defines.add("NEU_FEAT_VS_INTERP", mFeatVsInterp ? "1" : "0");
+    defines.add("NEU_USE_TEXTURES", mUseTextures ? "1" : "0");
 
     const std::string dims = fmt::format(
         "peBands={} planeDim={} inBlk=[{},{},{}] outBlk=[{},{},{}]",
@@ -275,8 +301,17 @@ void NeuRaster::bindModel()
     var["NeuCB"]["gRes"] = mRes;
     var["NeuCB"]["gRank"] = mRank;
 
-    var["gNeuVecX"] = mpVecX;
-    var["gNeuMatYZ"] = mpMatYZ;
+    if (mUseTextures)
+    {
+        var["gNeuVecXTex"] = mpVecXTex;
+        var["gNeuMatYZTex"] = mpMatYZTex;
+        var["gNeuFeatSampler"] = mpFeatSampler;
+    }
+    else
+    {
+        var["gNeuVecX"] = mpVecX;
+        var["gNeuMatYZ"] = mpMatYZ;
+    }
     var["gNeuW0"] = mpW[0];
     var["gNeuW1"] = mpW[1];
     var["gNeuW2"] = mpW[2];
@@ -380,6 +415,23 @@ void NeuRaster::onGuiRender(Gui* pGui)
         w.text("Only fragment-shader blend is available for this model.");
     }
     w.text(fmt::format("Mode: {}", mVsInterp ? "vertex-shader interpolation" : "fragment-shader blend"));
+
+    // Feature-fetch location toggle (recompiles the shader), independent of the weight-blend mode.
+    if (w.checkbox("Fetch feature in VS (off = fragment shader)", mFeatVsInterp))
+        createRasterPass();
+    w.text(fmt::format("Feature fetch: {}", mFeatVsInterp ? "vertex shader" : "fragment shader"));
+
+    // Feature-plane backend toggle (recompiles the shader). Only offered when textures are usable.
+    if (mTexturesFeasible)
+    {
+        if (w.checkbox("Texture feature planes (off = StructuredBuffer)", mUseTextures))
+            createRasterPass();
+    }
+    else if (mModelLoaded)
+    {
+        w.text("Texture feature planes unavailable (needs planeDim==4 and dims <= 16384).");
+    }
+    w.text(fmt::format("Feature backend: {}", mUseTextures ? "Texture2D + HW filtering" : "StructuredBuffer"));
     w.text(fmt::format("  VS-interp draw: {:.4f} ms", mGpuMsVsInterp));
     w.text(fmt::format("  PS-blend  draw: {:.4f} ms", mGpuMsPsBlend));
     if (mGpuMsVsInterp > 0.0 && mGpuMsPsBlend > 0.0)

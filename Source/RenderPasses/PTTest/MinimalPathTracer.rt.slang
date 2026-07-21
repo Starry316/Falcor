@@ -211,15 +211,16 @@ void neuLayer(
 /// Evaluates the multi-probe NeuLobes model (PETensorFMLPInterpMulti): predicts linear incident
 /// radiance for a unit direction `dir` at a triangle whose 3 probe vertices are `vertexID`, blended
 /// by barycentric weights `bary` (sum to 1). Each of the 3 vertices indexes the pooled planes/weights.
-float3 neuLobesInference(float3 dir, float3 bary, int3 vertexID)
+float3 neuLobesInference(float3 dir, float3 featDir, float3 bary, int3 vertexID)
 {
     const uint res = gNeuLobes.res;
     const uint rank = gNeuLobes.rank;
     const uint planeDim = gNeuLobes.planeDim;
     const uint peBands = gNeuLobes.peBands;
 
-    // 1. Direction -> octahedral UV.
-    float2 uv = neuDirToOctUV(dir);
+    // 1. Feature-plane lookup direction -> octahedral UV. This is the reflection of the camera->triangle
+    //    centroid ray about the face normal (probe space), shared by all 3 probe vertices.
+    float2 uv = neuDirToOctUV(featDir);
 
     // 2. Bilinear sample setup (align-corners, border clamp).
     float tu = uv.x * (res - 1);
@@ -473,8 +474,10 @@ float3 svInference(float3 dir, float3 bary, int3 vertexID)
     return exp(logRGB) - 1.0f;
 }
 
-/// Dispatches to the selected probe representation.
-float3 evalProbe(float3 dir, float3 bary, int3 vertexID)
+/// Dispatches to the selected probe representation. `featDir` is the feature-plane lookup direction
+/// (reflection of camera->triangle-centroid about the face normal); only the neural representation
+/// uses it. The analytic reprs use `dir`.
+float3 evalProbe(float3 dir, float3 featDir, float3 bary, int3 vertexID)
 {
     if (gProbeRepr == 1)
         return shInference(dir, bary, vertexID);
@@ -482,7 +485,7 @@ float3 evalProbe(float3 dir, float3 bary, int3 vertexID)
         return sgInference(dir, bary, vertexID);
     if (gProbeRepr == 3)
         return svInference(dir, bary, vertexID);
-    return neuLobesInference(dir, bary, vertexID);
+    return neuLobesInference(dir, featDir, bary, vertexID);
 }
 
 // Static configuration based on defines set from the host.
@@ -864,11 +867,28 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         float3 barys = float3(1 - th.barycentrics.x - th.barycentrics.y, th.barycentrics.x, th.barycentrics.y);
         // The 3 probe vertices of this triangle (pool indices), matching barys order (tri[0],tri[1],tri[2]).
         int3 vids = (int3)getCanonicalVertexIDs(th.instanceID, th.primitiveIndex);
+
+        // Feature-plane lookup direction: reflect the camera->triangle-centroid ray about the
+        // shading normal at the centroid, in probe space. A single direction shared by all 3 vertices.
+        float3 triPos[3];
+        gScene.getVertexPositionsW(th.instanceID, th.primitiveIndex, triPos);
+
+        // Interpolated (shading) normal at the centroid: barycentrics (1/3,1/3,1/3).
+        TriangleHit centerHit;
+        centerHit.instanceID = th.instanceID;
+        centerHit.primitiveIndex = th.primitiveIndex;
+        centerHit.barycentrics = float2(1.0f / 3.0f, 1.0f / 3.0f);
+        float3 shadingN = normalize(gScene.getVertexData(centerHit).normalW);
+
+        float3 triCenter = (triPos[0] + triPos[1] + triPos[2]) * (1.0f / 3.0f);
+        float3 camToCenter = normalize(triCenter - gScene.camera.getPosition());
+        float3 featDir = reflect(camToCenter, shadingN).xzy;
+
         // Sample material.
         BSDFSample bsdfSample;
         if (mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
         {
-            rayData.radiance += rayData.thp * evalProbe(bsdfSample.wo.xzy, barys, vids) * bsdfSample.weight;
+            rayData.radiance += rayData.thp * evalProbe(bsdfSample.wo.xzy, featDir, barys, vids) * bsdfSample.weight;
             rayData.terminated = true;
         }
         return;

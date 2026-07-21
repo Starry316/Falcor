@@ -89,6 +89,14 @@ private:
     bool mVsInterpFeasible = true; ///< False if the model's weights exceed the VS interpolant budget.
     uint32_t mVsInterpVec4 = 0;    ///< float4 VS-output interpolants the VS-interp mode would need.
 
+    // Feature-fetch location: true = compute in the vertex shader and interpolate (NEU_FEAT_VS_INTERP=1),
+    // false = fetch + blend the 3 corner probes' features in the pixel shader (NEU_FEAT_VS_INTERP=0).
+    bool mFeatVsInterp = false;
+
+    // Feature-plane storage backend: false = StructuredBuffer (baseline), true = Texture2D + HW filtering.
+    bool mUseTextures = false;
+    bool mTexturesFeasible = false; ///< True only when planeDim==4 and the texture dims fit HW limits.
+
     // Query parameters (UI-controlled).
     uint32_t mCornerProbe[4] = {0, 0, 0, 0}; ///< Probe pool index for each of the quad's 4 corners.
     float mDirAzimuth = 0.0f;                ///< Azimuth in degrees [0,360).
@@ -117,4 +125,9 @@ private:
     ref<Buffer> mpMatYZ;
     ref<Buffer> mpW[3];
     ref<Buffer> mpB[3];
+
+    // Texture-backed feature planes (used when mUseTextures is on). Same data as mpVecX/mpMatYZ.
+    ref<Texture> mpVecXTex;   ///< R32Float, width=res, height=numMLPs*rank.
+    ref<Texture> mpMatYZTex;  ///< RGBA32Float, width=res, height=numMLPs*rank (planeDim==4).
+    ref<Sampler> mpFeatSampler; ///< Linear filter, clamp addressing.
 };

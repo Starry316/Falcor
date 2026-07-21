@@ -207,9 +207,9 @@ private:
     uint mOutputOffsetIndx = 0;
     uint mOutputSPP = 32;
     // Separate output paths for the two phases (all include the instance ID as the first field).
-    std::string mVertexOutputPath = "C:/Data/Probe/train_shell/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
+    std::string mVertexOutputPath = "C:/Data/Probe/train_whale/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
     std::string mOutputPath =
-        "C:/Data/Probe/train_shell/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
+        "C:/Data/Probe/train_whale/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
     std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
 
     float mSampleTheta = 0;

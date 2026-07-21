@@ -26,19 +26,19 @@
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
 
-// Full-screen NeuLobes inference with two interchangeable blending strategies, for A/B perf testing:
+// Full-screen NeuLobes inference with two INDEPENDENT blending toggles, for A/B perf testing:
 //
-//   NEU_VS_INTERP = 1 (vertex-shader interpolation): the vertex shader reads each corner probe's MLP
-//       weights and computes its feature, and the RASTERIZER barycentric-blends them (many hardware
-//       interpolants). The pixel shader just consumes the already-blended values.
+//   NEU_VS_INTERP (MLP weights): 1 = the vertex shader loads each corner probe's weights and the
+//       RASTERIZER barycentric-blends them (many hardware interpolants); 0 = the pixel shader fetches
+//       the 3 corner probes' weights from the pool buffers and blends them itself (no weight interpolants).
 //
-//   NEU_VS_INTERP = 0 (fragment-shader blend): the vertex shader only passes barycentric coordinates;
-//       the PIXEL shader fetches the triangle's three corner-probe weights/features from the pool
-//       buffers and blends them itself (matches PTTest's manual blend). No weight interpolants.
+//   NEU_FEAT_VS_INTERP (neural feature): 1 = the vertex shader computes each corner probe's feature and
+//       the RASTERIZER interpolates it; 0 = the pixel shader fetches the 3 corner probes' features and
+//       blends by barycentrics.
 //
-// Both produce the same image; only the work distribution differs. The quad's four corners map to
-// probes via gCornerProbe. Interpolant sizes are fixed by the NEU_* macros (injected from the model
-// dimensions on the host).
+// The two are orthogonal (any of the 4 combinations is valid). All combinations produce the same image;
+// only the work distribution differs. The quad's four corners map to probes via gCornerProbe. Interpolant
+// sizes are fixed by the NEU_* macros (injected from the model dimensions on the host).
 
 #include "Utils/Math/MathConstants.slangh"
 
@@ -68,9 +68,22 @@
 #define NEU_L2_OUT_BLK 1
 #endif
 
-// Blending strategy: 1 = interpolate weights/feature in the vertex shader; 0 = blend in the pixel shader.
+// Feature-plane storage backend: 0 = StructuredBuffer with manual bilinear interp (baseline),
+// 1 = Texture2D with hardware linear filtering. The texture path requires NEU_PLANE_DIM == 4
+// (the plane channels are packed into one RGBA texel); the host only enables it in that case.
+#ifndef NEU_USE_TEXTURES
+#define NEU_USE_TEXTURES 0
+#endif
+
+// Weight-blending strategy: 1 = interpolate MLP weights in the vertex shader; 0 = blend in the pixel shader.
 #ifndef NEU_VS_INTERP
 #define NEU_VS_INTERP 1
+#endif
+
+// Feature-fetch location: 1 = compute the feature in the vertex shader and interpolate it (rasterizer
+// blends), 0 = fetch the 3 corner probes' features in the pixel shader and blend by barycentrics.
+#ifndef NEU_FEAT_VS_INTERP
+#define NEU_FEAT_VS_INTERP 0
 #endif
 
 // Derived sizes. Each 4x4 weight block is 4 float4 (rows); each bias block is 1 float4.
@@ -91,8 +104,16 @@ cbuffer NeuCB
 }
 
 // NeuLobes weight tensors (same layout as PTTest::loadNeuLobesModel).
+#if NEU_USE_TEXTURES
+// Feature planes as textures: width = res, height = numMLPs*rank (one row per (probe,rank) pair).
+// gNeuVecXTex is scalar; gNeuMatYZTex packs the NEU_PLANE_DIM(=4) channels into RGBA.
+Texture2D<float> gNeuVecXTex;      ///< [numMLPs*rank] rows x [res] cols (u axis).
+Texture2D<float4> gNeuMatYZTex;    ///< [numMLPs*rank] rows x [res] cols (v axis), RGBA = planeDim.
+SamplerState gNeuFeatSampler;      ///< Linear filtering, clamp addressing.
+#else
 StructuredBuffer<float> gNeuVecX;      ///< [numMLPs][rank][res].
 StructuredBuffer<float> gNeuMatYZ;     ///< [numMLPs][rank][res][planeDim].
+#endif
 StructuredBuffer<float4x4> gNeuW0;     ///< Layer 0 weights, [numMLPs][outBlk][inBlk] 4x4 blocks.
 StructuredBuffer<float4x4> gNeuW1;     ///< Layer 1 weights.
 StructuredBuffer<float4x4> gNeuW2;     ///< Layer 2 weights.
@@ -120,38 +141,94 @@ float2 neuDirToOctUV(float3 dir)
     return 0.5f * (float2(px, py) + 1.0f);
 }
 
-// Low-rank feature for a single probe `p` at direction `dir` (the per-probe part of PTTest's blend).
-void neuFeature(uint p, float3 dir, out float featS[NEU_PLANE_DIM])
+// Shared per-fragment octahedral sample coordinates (independent of which probe is sampled).
+struct NeuOctSetup
+{
+#if NEU_USE_TEXTURES
+    float su;   ///< Normalized u sample coord for gNeuVecXTex / MatYZ (x axis).
+    float sv;   ///< Normalized v sample coord for gNeuMatYZTex (x axis).
+    float invH; ///< 1 / texture height (rows = numMLPs*rank).
+#else
+    int i0, i1, j0, j1; ///< Bilinear texel indices.
+    float fu, fv;       ///< Bilinear fractions.
+#endif
+};
+
+// Compute the direction-dependent sample coords once (octahedral map + bilinear setup). Shared by all
+// probes at a fragment, so the FS blend computes this once instead of per probe.
+NeuOctSetup neuOctSetup(float3 dir)
 {
     const uint res = gRes;
-    const uint rank = gRank;
-
     float2 uv = neuDirToOctUV(dir);
     float tu = uv.x * (res - 1);
     float tv = uv.y * (res - 1);
-    int i0 = (int)clamp(floor(tu), 0.0f, (float)(res - 1));
-    int i1 = min(i0 + 1, (int)res - 1);
-    float fu = clamp(tu - i0, 0.0f, 1.0f);
-    int j0 = (int)clamp(floor(tv), 0.0f, (float)(res - 1));
-    int j1 = min(j0 + 1, (int)res - 1);
-    float fv = clamp(tv - j0, 0.0f, 1.0f);
 
+    NeuOctSetup s;
+#if NEU_USE_TEXTURES
+    // Texel-center convention: sampling at (t+0.5)/res reproduces lerp(texel_i0, texel_i0+1, frac(t)),
+    // matching the manual clamp-to-edge interpolation of the buffer path.
+    uint dimX, dimY;
+    gNeuMatYZTex.GetDimensions(dimX, dimY);
+    float invW = 1.0f / (float)res;
+    s.su = (tu + 0.5f) * invW;
+    s.sv = (tv + 0.5f) * invW;
+    s.invH = 1.0f / (float)dimY;
+#else
+    s.i0 = (int)clamp(floor(tu), 0.0f, (float)(res - 1));
+    s.i1 = min(s.i0 + 1, (int)res - 1);
+    s.fu = clamp(tu - s.i0, 0.0f, 1.0f);
+    s.j0 = (int)clamp(floor(tv), 0.0f, (float)(res - 1));
+    s.j1 = min(s.j0 + 1, (int)res - 1);
+    s.fv = clamp(tv - s.j0, 0.0f, 1.0f);
+#endif
+    return s;
+}
+
+// Accumulate weight * (probe p's low-rank feature) into featS, using precomputed sample coords.
+// The rank loop is outer so the VecX term (independent of channel) is fetched once per rank, not per
+// channel; the barycentric weight is fused in so callers avoid per-probe temp arrays.
+void neuFeatureAccum(uint p, NeuOctSetup s, float weight, inout float featS[NEU_PLANE_DIM])
+{
+    const uint rank = gRank;
+#if NEU_USE_TEXTURES
+    // The row (y) coordinate is point-sampled (row+0.5)/H so the Linear sampler never blends across rows.
+    float4 acc = float4(0.0f);
+    for (uint r = 0; r < rank; ++r)
+    {
+        float yv = ((float)(p * rank + r) + 0.5f) * s.invH;
+        float vx = gNeuVecXTex.SampleLevel(gNeuFeatSampler, float2(s.su, yv), 0);
+        float4 my = gNeuMatYZTex.SampleLevel(gNeuFeatSampler, float2(s.sv, yv), 0);
+        acc += vx * my;
+    }
     [unroll]
     for (uint c = 0; c < NEU_PLANE_DIM; ++c)
+        featS[c] += weight * acc[c];
+#else
+    const uint res = gRes;
+    for (uint r = 0; r < rank; ++r)
     {
-        float acc = 0.0f;
-        for (uint r = 0; r < rank; ++r)
+        uint base = (p * rank + r) * res;
+        float vx = lerp(gNeuVecX[base + s.i0], gNeuVecX[base + s.i1], s.fu); // once per rank
+        [unroll]
+        for (uint c = 0; c < NEU_PLANE_DIM; ++c)
         {
-            uint base = (p * rank + r) * res;
-            float vx = lerp(gNeuVecX[base + i0], gNeuVecX[base + i1], fu);
             float my = lerp(
-                gNeuMatYZ[(base + j0) * NEU_PLANE_DIM + c],
-                gNeuMatYZ[(base + j1) * NEU_PLANE_DIM + c],
-                fv);
-            acc += vx * my;
+                gNeuMatYZ[(base + s.j0) * NEU_PLANE_DIM + c],
+                gNeuMatYZ[(base + s.j1) * NEU_PLANE_DIM + c],
+                s.fv);
+            featS[c] += weight * vx * my;
         }
-        featS[c] = acc;
     }
+#endif
+}
+
+// Low-rank feature for a single probe `p` at direction `dir` (used by the VS-interp feature path).
+void neuFeature(uint p, float3 dir, out float featS[NEU_PLANE_DIM])
+{
+    [unroll]
+    for (uint c = 0; c < NEU_PLANE_DIM; ++c)
+        featS[c] = 0.0f;
+    neuFeatureAccum(p, neuOctSetup(dir), 1.0f, featS);
 }
 
 // Build the layer-0 input blocks: concat(positional encoding of dir, feature), zero-padded.
@@ -253,7 +330,7 @@ struct VSIn
 struct VSOut
 {
     float4 pos : SV_POSITION;
-    float3 bary : BARYW; ///< Interpolated barycentric coords (used by the PS-blend path).
+    float3 bary : BARYW; ///< Interpolated barycentric coords (used by the PS-blend paths).
 #if NEU_VS_INTERP
     float4 wA[NEU_W0_VEC4] : WLA;     ///< Layer 0 weight rows.
     float4 bA[NEU_L0_OUT_BLK] : BLA;  ///< Layer 0 biases.
@@ -261,6 +338,8 @@ struct VSOut
     float4 bB[NEU_L1_OUT_BLK] : BLB;  ///< Layer 1 biases.
     float4 wC[NEU_W2_VEC4] : WLC;     ///< Layer 2 weight rows.
     float4 bC[NEU_L2_OUT_BLK] : BLC;  ///< Layer 2 biases.
+#endif
+#if NEU_FEAT_VS_INTERP
     float4 feat[NEU_FEAT_VEC4] : FEAT; ///< Neural feature (planeDim channels, zero-padded).
 #endif
 };
@@ -271,14 +350,20 @@ VSOut vsMain(VSIn vIn)
     o.pos = float4(vIn.pos, 0.f, 1.f);
     o.bary = vIn.bary;
 
-#if NEU_VS_INTERP
-    // Emit this corner probe's weights + feature; the rasterizer barycentric-blends them.
+#if NEU_VS_INTERP || NEU_FEAT_VS_INTERP
+    // This corner's probe; used for whichever quantities are emitted as interpolants below.
     const uint p = gCornerProbe[min(vIn.corner, 3u)];
+#endif
 
+#if NEU_VS_INTERP
+    // Emit this corner probe's weights; the rasterizer barycentric-blends them.
     NEU_LOAD_WEIGHTS(gNeuW0, gNeuB0, NEU_L0_IN_BLK, NEU_L0_OUT_BLK, o.wA, o.bA, p);
     NEU_LOAD_WEIGHTS(gNeuW1, gNeuB1, NEU_L1_IN_BLK, NEU_L1_OUT_BLK, o.wB, o.bB, p);
     NEU_LOAD_WEIGHTS(gNeuW2, gNeuB2, NEU_L2_IN_BLK, NEU_L2_OUT_BLK, o.wC, o.bC, p);
+#endif
 
+#if NEU_FEAT_VS_INTERP
+    // Compute this corner probe's feature and emit it; the rasterizer barycentric-blends it.
     float featS[NEU_PLANE_DIM];
     neuFeature(p, gInputDir, featS);
     [unroll]
@@ -299,54 +384,47 @@ VSOut vsMain(VSIn vIn)
     return o;
 }
 
-#if NEU_VS_INTERP
-// Vertex-shader-interpolation path: weights and feature already arrive blended in the interpolants.
-float3 neuEval(VSOut i, float3 dir)
+// Unified evaluation. The feature is either read from a VS interpolant (NEU_FEAT_VS_INTERP) or blended
+// here from the 3 corner probes; the MLP weights are either read from VS interpolants (NEU_VS_INTERP)
+// or fetched+blended here. `probes` are the triangle's 3 corner probes; `i.bary` are the barycentrics.
+float3 neuEval(VSOut i, uint3 probes, float3 dir)
 {
+    // --- Feature ---
     float featS[NEU_PLANE_DIM];
+#if NEU_FEAT_VS_INTERP
     [unroll]
     for (uint c = 0; c < NEU_PLANE_DIM; ++c)
         featS[c] = i.feat[c / 4][c % 4];
+#else
+    // Fetch + blend the 3 corner probes' features in the pixel shader. The octahedral/bilinear setup
+    // is direction-only, so compute it once and accumulate each probe weighted by its barycentric.
+    [unroll]
+    for (uint c = 0; c < NEU_PLANE_DIM; ++c)
+        featS[c] = 0.0f;
+    NeuOctSetup setup = neuOctSetup(dir);
+    neuFeatureAccum(probes.x, setup, i.bary.x, featS);
+    neuFeatureAccum(probes.y, setup, i.bary.y, featS);
+    neuFeatureAccum(probes.z, setup, i.bary.z, featS);
+#endif
 
     float4 h0[NEU_L0_IN_BLK];
     neuBuildInput(dir, featS, h0);
 
+    // --- MLP layers ---
     float4 h1[NEU_L0_OUT_BLK];
     float4 h2[NEU_L1_OUT_BLK];
     float4 h3[NEU_L2_OUT_BLK];
+#if NEU_VS_INTERP
     NEU_MATVEC_LAYER(i.wA, i.bA, NEU_L0_IN_BLK, NEU_L0_OUT_BLK, h0, h1);
     NEU_MATVEC_LAYER(i.wB, i.bB, NEU_L1_IN_BLK, NEU_L1_OUT_BLK, h1, h2);
     NEU_MATVEC_LAYER(i.wC, i.bC, NEU_L2_IN_BLK, NEU_L2_OUT_BLK, h2, h3);
-    return neuDecode(h3[0]);
-}
 #else
-// Fragment-shader-blend path: fetch the 3 corner probes' weights/features and blend them here.
-float3 neuEval(float3 bary, uint3 probes, float3 dir)
-{
-    // Blend the three probes' features by barycentric weight.
-    float f0[NEU_PLANE_DIM];
-    float f1[NEU_PLANE_DIM];
-    float f2[NEU_PLANE_DIM];
-    neuFeature(probes.x, dir, f0);
-    neuFeature(probes.y, dir, f1);
-    neuFeature(probes.z, dir, f2);
-    float featS[NEU_PLANE_DIM];
-    [unroll]
-    for (uint c = 0; c < NEU_PLANE_DIM; ++c)
-        featS[c] = bary.x * f0[c] + bary.y * f1[c] + bary.z * f2[c];
-
-    float4 h0[NEU_L0_IN_BLK];
-    neuBuildInput(dir, featS, h0);
-
-    float4 h1[NEU_L0_OUT_BLK];
-    float4 h2[NEU_L1_OUT_BLK];
-    float4 h3[NEU_L2_OUT_BLK];
-    NEU_MATVEC_LAYER_PS(gNeuW0, gNeuB0, NEU_L0_IN_BLK, NEU_L0_OUT_BLK, probes.x, probes.y, probes.z, bary, h0, h1);
-    NEU_MATVEC_LAYER_PS(gNeuW1, gNeuB1, NEU_L1_IN_BLK, NEU_L1_OUT_BLK, probes.x, probes.y, probes.z, bary, h1, h2);
-    NEU_MATVEC_LAYER_PS(gNeuW2, gNeuB2, NEU_L2_IN_BLK, NEU_L2_OUT_BLK, probes.x, probes.y, probes.z, bary, h2, h3);
+    NEU_MATVEC_LAYER_PS(gNeuW0, gNeuB0, NEU_L0_IN_BLK, NEU_L0_OUT_BLK, probes.x, probes.y, probes.z, i.bary, h0, h1);
+    NEU_MATVEC_LAYER_PS(gNeuW1, gNeuB1, NEU_L1_IN_BLK, NEU_L1_OUT_BLK, probes.x, probes.y, probes.z, i.bary, h1, h2);
+    NEU_MATVEC_LAYER_PS(gNeuW2, gNeuB2, NEU_L2_IN_BLK, NEU_L2_OUT_BLK, probes.x, probes.y, probes.z, i.bary, h2, h3);
+#endif
     return neuDecode(h3[0]);
 }
-#endif
 
 float4 psMain(VSOut i, uint primID : SV_PrimitiveID) : SV_TARGET
 {
@@ -354,28 +432,19 @@ float4 psMain(VSOut i, uint primID : SV_PrimitiveID) : SV_TARGET
     float3 color;
     float sink = 0.f;
 
-#if NEU_VS_INTERP
-    color = neuEval(i, gInputDir);
-    [loop]
-    for (uint it = 1u; it < iters; ++it)
-    {
-        float3 c = neuEval(i, gInputDir + float(it) * 1e-4f);
-        sink += c.x + c.y + c.z;
-    }
-#else
     // The quad is two triangles: prim 0 = corners {0,1,2}, prim 1 = corners {0,2,3}. bary.{x,y,z}
     // weight the triangle's local vertices in that order, matching the CPU-assigned barycentric basis.
+    // probes are needed whenever the feature or the weights are blended in the pixel shader.
     uint3 corners = (primID == 0u) ? uint3(0, 1, 2) : uint3(0, 2, 3);
     uint3 probes = uint3(gCornerProbe[corners.x], gCornerProbe[corners.y], gCornerProbe[corners.z]);
 
-    color = neuEval(i.bary, probes, gInputDir);
+    color = neuEval(i, probes, gInputDir);
     [loop]
     for (uint it = 1u; it < iters; ++it)
     {
-        float3 c = neuEval(i.bary, probes, gInputDir + float(it) * 1e-4f);
+        float3 c = neuEval(i, probes, gInputDir + float(it) * 1e-4f);
         sink += c.x + c.y + c.z;
     }
-#endif
 
     // Keep the extra perf-loop work alive (see notes) without visibly changing the displayed color.
     color += sink * 1e-20f;
