@@ -698,6 +698,15 @@ void PTTest::renderUI(Gui::Widgets& widget)
         else
             widget.text(mSV.loaded ? fmt::format("SV: loaded ({} sites, pool {})", mSV.numSites, mSV.poolSize) : "SV: NOT loaded");
 
+        if (mProbeRepr == 0)
+        {
+            Gui::DropdownList featInterpList = {
+                {0u, "Bilinear"},
+                {1u, "Nearest"},
+            };
+            dirty |= widget.dropdown("Feature interpolation", featInterpList, mFeatInterp);
+        }
+
         dirty |= widget.var("NeuLobes bary", mNeuBary, 0.0f, 1.0f);
         dirty |= widget.var("NeuLobes vertexID (demo)", mNeuVertexID);
     }
@@ -1287,6 +1296,7 @@ void PTTest::loadSGModel(const std::string& dir)
 void PTTest::bindProbeReprData(const ShaderVar& var)
 {
     var["CB"]["gProbeRepr"] = mProbeRepr;
+    var["CB"]["gFeatInterp"] = mFeatInterp;
 
     var["CB"]["gSHDegree"] = mSH.degree;
     var["CB"]["gSHNumCoeffs"] = mSH.numCoeffs;

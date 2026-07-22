@@ -106,6 +106,7 @@ cbuffer CB
     bool gUseNeuLobes;        ///< Runtime toggle: evaluate the probe in the hit shader.
     bool gHasVertexRemap;     ///< True if gVertexRemap is bound (position-weld canonical IDs available).
     uint gProbeRepr;          ///< 0 = neural, 1 = SH, 2 = SG.
+    uint gFeatInterp;         ///< NeuLobes feature-plane interpolation: 0 = bilinear, 1 = nearest.
     uint gSHDegree;           ///< SH degree.
     uint gSHNumCoeffs;        ///< (degree+1)^2.
     uint gSGCount;            ///< SG lobes per vertex.
@@ -222,15 +223,30 @@ float3 neuLobesInference(float3 dir, float3 featDir, float3 bary, int3 vertexID)
     //    centroid ray about the face normal (probe space), shared by all 3 probe vertices.
     float2 uv = neuDirToOctUV(featDir);
 
-    // 2. Bilinear sample setup (align-corners, border clamp).
+    // 2. Feature-plane sample setup. gFeatInterp: 0 = bilinear (align-corners, border clamp), 1 = nearest.
     float tu = uv.x * (res - 1);
     float tv = uv.y * (res - 1);
-    int i0 = (int)clamp(floor(tu), 0.0f, (float)(res - 1));
-    int i1 = min(i0 + 1, (int)res - 1);
-    float fu = clamp(tu - i0, 0.0f, 1.0f);
-    int j0 = (int)clamp(floor(tv), 0.0f, (float)(res - 1));
-    int j1 = min(j0 + 1, (int)res - 1);
-    float fv = clamp(tv - j0, 0.0f, 1.0f);
+    int i0, i1, j0, j1;
+    float fu, fv;
+    if (gFeatInterp == 1)
+    {
+        // Nearest: snap to the closest texel; endpoints collapse and fractions are zero.
+        i0 = (int)clamp(round(tu), 0.0f, (float)(res - 1));
+        j0 = (int)clamp(round(tv), 0.0f, (float)(res - 1));
+        i1 = i0;
+        j1 = j0;
+        fu = 0.0f;
+        fv = 0.0f;
+    }
+    else
+    {
+        i0 = (int)clamp(floor(tu), 0.0f, (float)(res - 1));
+        i1 = min(i0 + 1, (int)res - 1);
+        fu = clamp(tu - i0, 0.0f, 1.0f);
+        j0 = (int)clamp(floor(tv), 0.0f, (float)(res - 1));
+        j1 = min(j0 + 1, (int)res - 1);
+        fv = clamp(tv - j0, 0.0f, 1.0f);
+    }
 
     // Low-rank feature vector: gather the 3 probe planes by vertexID, then blend by bary.
     float feat[kNeuMaxFeat];
@@ -882,12 +898,17 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
         float3 triCenter = (triPos[0] + triPos[1] + triPos[2]) * (1.0f / 3.0f);
         float3 camToCenter = normalize(triCenter - gScene.camera.getPosition());
-        float3 featDir = reflect(camToCenter, shadingN).xzy;
+        float3 featDir = reflect(camToCenter, sd.faceN).xzy;
+
+
+
+        // float3 featDir = reflect(camToCenter, shadingN);
 
         // Sample material.
         BSDFSample bsdfSample;
         if (mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
         {
+
             rayData.radiance += rayData.thp * evalProbe(bsdfSample.wo.xzy, featDir, barys, vids) * bsdfSample.weight;
             rayData.terminated = true;
         }
@@ -993,12 +1014,28 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     // Uniformly sample a position on the selected triangle using the UI-provided sample coordinates.
     float3 bary = sample_triangle(gTriSampleUV);
     float3 sampledPos = bary.x * selectedTriPos[0] + bary.y * selectedTriPos[1] + bary.z * selectedTriPos[2];
+
+    // Shading normal WITH normal mapping at the sampled point. Note: getVertexData().normalW returns
+    // ONLY the interpolated vertex normal - the normal map is applied inside the material instance and
+    // exposed as guideNormal. Use the face normal as the view direction so the result is oriented outward.
+    TriangleHit sampledHit;
+    sampledHit.instanceID = selectedInstance;
+    sampledHit.primitiveIndex = gSelectedTriangleID;
+    sampledHit.barycentrics = float2(bary.y, bary.z);
+    ShadingData sdSampled = loadShadingData(HitInfo(sampledHit), sampledPos, -selectedTriNormal);
+    let sampledLod = ExplicitLodTextureSampler(0.f);
+    let sampledMi = gScene.materials.getMaterialInstance(sdSampled, sampledLod, MaterialInstanceHints::AdjustShadingNormal);
+    float3 shadingNormal = sampledMi.getProperties(sdSampled).guideNormal;
+
     float3 primaryRayOrigin = computeRayOrigin(sampledPos, selectedTriNormal);
-    // float3 primaryRayOrigin = sampledPos;
     float3 primaryRayDir;
-    // float3 cameraPos = gProbePos;
-    // spherical_to_cartesian_rad(float2(gViewTheta * M_PI, gViewPhi * M_2PI)).xzy * 5;
     primaryRayDir = oct_to_ndir_equal_area_unorm(originUV).xzy;
+
+    // primaryRayDir is assumed to be a virtual view direction V mirror-reflected about the face normal.
+    // Recover V (reflection is its own inverse), then reflect it about the shading normal so the traced
+    // ray follows the interpolated shading normal instead of the flat face normal.
+    float3 V = reflect(primaryRayDir, selectedTriNormal);
+    primaryRayDir = reflect(V, shadingNormal);
 
 
     // Prepare ray payload.
@@ -1006,9 +1043,11 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     rayData.origin = primaryRayOrigin;
     rayData.direction = primaryRayDir;
     rayData.pathLength = 1;
+    // rayData.terminated = true;
+    // rayData.radiance = 0.5 * shadingNormal + 0.5;
+    // return rayData;
 
-
-    // // Lower hemisphere
+    // Lower hemisphere
     if (dot(selectedTriNormal, primaryRayDir) <= kMinCosTheta) {
         rayData.terminated = true;
         rayData.radiance = float3(0.0, 0.0, 0.0);

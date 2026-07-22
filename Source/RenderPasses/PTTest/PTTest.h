@@ -207,9 +207,9 @@ private:
     uint mOutputOffsetIndx = 0;
     uint mOutputSPP = 32;
     // Separate output paths for the two phases (all include the instance ID as the first field).
-    std::string mVertexOutputPath = "C:/Data/Probe/train_whale/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
+    std::string mVertexOutputPath = "C:/Data/Probe/train_arcade/vertex/{:06}_{:06}_{:06}.exr"; // instanceID, globalID, vertexID
     std::string mOutputPath =
-        "C:/Data/Probe/train_whale/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
+        "C:/Data/Probe/train_arcade/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
     std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
 
     float mSampleTheta = 0;
@@ -233,6 +233,8 @@ private:
     std::string mSVDir = "C:/projects/neulobes/outputs/vertex_coeffs/SV";
     /// Which representation to evaluate when the probe is enabled: 0 = neural, 1 = SH, 2 = SG, 3 = SV.
     uint32_t mProbeRepr = 0;
+    /// NeuLobes feature-plane interpolation scheme: 0 = bilinear, 1 = nearest.
+    uint32_t mFeatInterp = 0;
     /// Barycentric probe-blend weights used for the demo inference query (should sum to 1).
     float3 mNeuBary = float3(1.0f, 0.0f, 0.0f);
     /// The 3 probe vertex IDs (pool indices) used for the demo inference query.
