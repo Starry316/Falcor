@@ -5,6 +5,7 @@ target_sources(PTTest PRIVATE
     PTTest.h
     MinimalPathTracer.rt.slang
     ShadeLightProbe.rt.slang
+    ExportTriFrames.cs.slang
     Tools/Utils.cpp
     Tools/Utils.h
 )

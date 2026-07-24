@@ -27,6 +27,7 @@
  **************************************************************************/
 #pragma once
 #include "Falcor.h"
+#include "Core/Pass/ComputePass.h"
 #include "RenderGraph/RenderPass.h"
 #include "Utils/Sampling/SampleGenerator.h"
 #include "Rendering/Lights/EnvMapSampler.h"
@@ -128,6 +129,8 @@ public:
     void loadSVModel(const std::string& dir);
     /// Binds the SH/SG/SV buffers and config to the ray tracing program.
     void bindProbeReprData(const ShaderVar& var);
+    /// Reads back the per-triangle frame buffer (gTriFrame) and writes it to a text file.
+    void exportTriFrames(const std::string& path);
 
 private:
     void parseProperties(const Properties& props);
@@ -151,6 +154,11 @@ private:
     ref<Texture> mpBarycentric;
     ref<Texture> mpWi;
     ref<Texture> mpRadiance;
+
+    /// Per-triangle local->world frame export (ProbeTriFrame[triangleCount]); written once per triangle.
+    ref<Buffer> mpTriFrame;
+    /// Compute pass that fills mpTriFrame for ALL triangles of the selected instance on export.
+    ref<ComputePass> mpExportTriFramesPass;
 
     // Internal state
 
@@ -211,6 +219,7 @@ private:
     std::string mOutputPath =
         "C:/Data/Probe/train_arcade/tri/{:06}_{:06}_{:06}_{:06}_{:06}_{:06}_{:.6f}_{:.6f}.exr"; // instanceID, globalID, triID, v0, v1, v2, u, v
     std::string mOutputBTFPath = "D:/Data/BTF/test/{:06}_{:.6f}_{:.6f}_{:.6f}_{:.6f}.exr";
+    std::string mTriFrameOutputPath = "C:/Data/Probe/train_arcade/tri_frames.txt"; ///< Per-triangle local->world frame export.
 
     float mSampleTheta = 0;
     float mSampleLightTheta = 0;

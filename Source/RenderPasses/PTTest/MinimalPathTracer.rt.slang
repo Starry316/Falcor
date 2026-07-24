@@ -107,6 +107,7 @@ cbuffer CB
     bool gHasVertexRemap;     ///< True if gVertexRemap is bound (position-weld canonical IDs available).
     uint gProbeRepr;          ///< 0 = neural, 1 = SH, 2 = SG.
     uint gFeatInterp;         ///< NeuLobes feature-plane interpolation: 0 = bilinear, 1 = nearest.
+    bool gVertexMode;         ///< true = vertex probe (full sphere), false = triangle probe (hemisphere).
     uint gSHDegree;           ///< SH degree.
     uint gSHNumCoeffs;        ///< (degree+1)^2.
     uint gSGCount;            ///< SG lobes per vertex.
@@ -122,6 +123,17 @@ RWTexture2D<float4> gOutputColor;
 RWTexture2D<float4> gBarycentric;
 RWTexture2D<float4> gWi;
 RWTexture2D<float4> gRadiance;
+
+// Per-triangle local->world frame export. Written once per triangle (from a single representative
+// invocation) so the host can reconstruct the local->world transform used for the sampled directions.
+struct ProbeTriFrame
+{
+    float4 N;      ///< xyz = world-space face normal (local +z axis).
+    float4 T;      ///< xyz = world-space tangent (local +x axis).
+    float4 B;      ///< xyz = world-space bitangent (local +y axis).
+    float4 origin; ///< xyz = world-space sample origin on the triangle.
+};
+RWStructuredBuffer<ProbeTriFrame> gTriFrame;
 
 // Position-weld remap: gVertexRemap[localVertexIndex] -> canonical vertex ID (mesh-local space),
 // matching PTTest::buildVertexWeldRemap on the host.
@@ -886,19 +898,19 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
         // Feature-plane lookup direction: reflect the camera->triangle-centroid ray about the
         // shading normal at the centroid, in probe space. A single direction shared by all 3 vertices.
-        float3 triPos[3];
-        gScene.getVertexPositionsW(th.instanceID, th.primitiveIndex, triPos);
+        // float3 triPos[3];
+        // gScene.getVertexPositionsW(th.instanceID, th.primitiveIndex, triPos);
 
-        // Interpolated (shading) normal at the centroid: barycentrics (1/3,1/3,1/3).
-        TriangleHit centerHit;
-        centerHit.instanceID = th.instanceID;
-        centerHit.primitiveIndex = th.primitiveIndex;
-        centerHit.barycentrics = float2(1.0f / 3.0f, 1.0f / 3.0f);
-        float3 shadingN = normalize(gScene.getVertexData(centerHit).normalW);
+        // // Interpolated (shading) normal at the centroid: barycentrics (1/3,1/3,1/3).
+        // TriangleHit centerHit;
+        // centerHit.instanceID = th.instanceID;
+        // centerHit.primitiveIndex = th.primitiveIndex;
+        // centerHit.barycentrics = float2(1.0f / 3.0f, 1.0f / 3.0f);
+        // float3 shadingN = normalize(gScene.getVertexData(centerHit).normalW);
 
-        float3 triCenter = (triPos[0] + triPos[1] + triPos[2]) * (1.0f / 3.0f);
-        float3 camToCenter = normalize(triCenter - gScene.camera.getPosition());
-        float3 featDir = reflect(camToCenter, sd.faceN).xzy;
+        // float3 triCenter = (triPos[0] + triPos[1] + triPos[2]) * (1.0f / 3.0f);
+        // float3 camToCenter = normalize(triCenter - gScene.camera.getPosition());
+        // float3 featDir = reflect(camToCenter, sd.faceN).xzy;
 
 
 
@@ -908,8 +920,7 @@ void handleHit(const HitInfo hit, inout ScatterRayData rayData)
         BSDFSample bsdfSample;
         if (mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
         {
-
-            rayData.radiance += rayData.thp * evalProbe(bsdfSample.wo.xzy, featDir, barys, vids) * bsdfSample.weight;
+            rayData.radiance += rayData.thp * evalProbe(bsdfSample.wo.xzy, bsdfSample.wo.xzy, barys, vids) * bsdfSample.weight;
             rayData.terminated = true;
         }
         return;
@@ -1018,14 +1029,14 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     // Shading normal WITH normal mapping at the sampled point. Note: getVertexData().normalW returns
     // ONLY the interpolated vertex normal - the normal map is applied inside the material instance and
     // exposed as guideNormal. Use the face normal as the view direction so the result is oriented outward.
-    TriangleHit sampledHit;
-    sampledHit.instanceID = selectedInstance;
-    sampledHit.primitiveIndex = gSelectedTriangleID;
-    sampledHit.barycentrics = float2(bary.y, bary.z);
-    ShadingData sdSampled = loadShadingData(HitInfo(sampledHit), sampledPos, -selectedTriNormal);
-    let sampledLod = ExplicitLodTextureSampler(0.f);
-    let sampledMi = gScene.materials.getMaterialInstance(sdSampled, sampledLod, MaterialInstanceHints::AdjustShadingNormal);
-    float3 shadingNormal = sampledMi.getProperties(sdSampled).guideNormal;
+    // TriangleHit sampledHit;
+    // sampledHit.instanceID = selectedInstance;
+    // sampledHit.primitiveIndex = gSelectedTriangleID;
+    // sampledHit.barycentrics = float2(bary.y, bary.z);
+    // ShadingData sdSampled = loadShadingData(HitInfo(sampledHit), sampledPos, -selectedTriNormal);
+    // let sampledLod = ExplicitLodTextureSampler(0.f);
+    // let sampledMi = gScene.materials.getMaterialInstance(sdSampled, sampledLod, MaterialInstanceHints::AdjustShadingNormal);
+    // float3 shadingNormal = sampledMi.getProperties(sdSampled).guideNormal;
 
     float3 primaryRayOrigin = computeRayOrigin(sampledPos, selectedTriNormal);
     float3 primaryRayDir;
@@ -1034,8 +1045,8 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     // primaryRayDir is assumed to be a virtual view direction V mirror-reflected about the face normal.
     // Recover V (reflection is its own inverse), then reflect it about the shading normal so the traced
     // ray follows the interpolated shading normal instead of the flat face normal.
-    float3 V = reflect(primaryRayDir, selectedTriNormal);
-    primaryRayDir = reflect(V, shadingNormal);
+    // float3 V = reflect(primaryRayDir, selectedTriNormal);
+    // primaryRayDir = reflect(V, shadingNormal);
 
 
     // Prepare ray payload.
@@ -1058,6 +1069,80 @@ ScatterRayData traceLightProbePrimaryRay(const uint2 pixel, const uint2 frameDim
     return rayData;
 }
 
+// Triangle mode: sample the HEMISPHERE above the sampled point (local z-up), rotate into world space
+// with the per-triangle tangent frame, and export that frame so the transform can be reconstructed.
+ScatterRayData traceLightProbeHemiPrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
+    float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
+
+    // ndir_to_oct_equal_area_unorm
+    // Look up the selected triangle's geometry directly from the scene.
+    GeometryInstanceID selectedInstance;
+    selectedInstance.index = gSelectedInstanceID;
+    float3 selectedTriPos[3];
+    gScene.getVertexPositionsW(selectedInstance, gSelectedTriangleID, selectedTriPos);
+    float3 selectedTriNormal = gScene.getFaceNormalW(selectedInstance, gSelectedTriangleID);
+    // Uniformly sample a position on the selected triangle using the UI-provided sample coordinates.
+    float3 bary = sample_triangle(gTriSampleUV);
+    float3 sampledPos = bary.x * selectedTriPos[0] + bary.y * selectedTriPos[1] + bary.z * selectedTriPos[2];
+
+    float3 primaryRayOrigin = computeRayOrigin(sampledPos, selectedTriNormal);
+
+    // Build the per-triangle local->world tangent frame from the face normal (local z-up). This frame
+    // is identical for every sample of the triangle, so it defines the world-space transform once.
+    float3 frameN = selectedTriNormal;
+    float3 frameT = normalize(perp_stark(frameN));
+    float3 frameB = cross(frameN, frameT);
+
+    // Sample the hemisphere in local space, then rotate into world space with the triangle frame.
+    float3 localDir = squareToDiskHemisphereShirley(originUV);
+    float3 primaryRayDir = frameT * localDir.x + frameB * localDir.y + frameN * localDir.z;
+
+    // Export the frame once per triangle (single representative invocation) so the local->world
+    // transform (and world-space positions) can be reconstructed on the host.
+    if (all(pixel == uint2(0, 0)))
+    {
+        ProbeTriFrame tf;
+        tf.N = float4(frameN, 0.0f);
+        tf.T = float4(frameT, 0.0f);
+        tf.B = float4(frameB, 0.0f);
+        tf.origin = float4(sampledPos, 1.0f);
+        gTriFrame[gSelectedTriangleID] = tf;
+    }
+
+    // Prepare ray payload.
+    ScatterRayData rayData = ScatterRayData(sg);
+    rayData.origin = primaryRayOrigin;
+    rayData.direction = primaryRayDir;
+    rayData.pathLength = 1;
+
+    traceScatterRay(rayData);
+    return rayData;
+}
+
+// Vertex mode: sample the FULL sphere directly in world space via the equal-area octahedral map
+// (same convention as traceLightProbePrimaryRay). No tangent frame is built or exported.
+ScatterRayData traceLightProbeVertexPrimaryRay(const uint2 pixel, const uint2 frameDim, SampleGenerator sg) {
+    float2 originUV = ((float2)pixel + sampleNext2D(sg)) / (float2)frameDim;
+
+    GeometryInstanceID selectedInstance;
+    selectedInstance.index = gSelectedInstanceID;
+    float3 selectedTriPos[3];
+    gScene.getVertexPositionsW(selectedInstance, gSelectedTriangleID, selectedTriPos);
+    float3 selectedTriNormal = gScene.getFaceNormalW(selectedInstance, gSelectedTriangleID);
+    float3 bary = sample_triangle(gTriSampleUV);
+    float3 sampledPos = bary.x * selectedTriPos[0] + bary.y * selectedTriPos[1] + bary.z * selectedTriPos[2];
+
+    float3 primaryRayOrigin = computeRayOrigin(sampledPos, selectedTriNormal);
+    float3 primaryRayDir = oct_to_ndir_equal_area_unorm(originUV).xzy;
+
+    ScatterRayData rayData = ScatterRayData(sg);
+    rayData.origin = primaryRayOrigin;
+    rayData.direction = primaryRayDir;
+    rayData.pathLength = 1;
+
+    traceScatterRay(rayData);
+    return rayData;
+}
 
 float3 tracePath(const uint2 pixel, const uint2 frameDim)
 {
@@ -1074,14 +1159,8 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
     ScatterRayData rayData;
     // ScatterRayData rayData = tracePrimaryRay(pixel, frameDim, sg);
     if (!gBTFViewMode)
-        rayData = traceLightProbePrimaryRay(pixel, frameDim, sg);
-        // rayData = traceBTFPrimaryRay(pixel, frameDim, sg);
-        // if (gPluckerMode)
-        //     rayData = traceFullSpherePosPrimaryRay(pixel, frameDim, sg);
-        // else
-        //     rayData = traceFullSpherePrimaryRay(pixel, frameDim, sg);
-
-
+        rayData = gVertexMode ? traceLightProbeVertexPrimaryRay(pixel, frameDim, sg)
+                              : traceLightProbeHemiPrimaryRay(pixel, frameDim, sg);
     else
         rayData = tracePrimaryRay(pixel, frameDim, sg);
 

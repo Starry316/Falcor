@@ -97,6 +97,7 @@ float4x4 makeOrthoProjection(float halfSize)
 namespace
 {
 const char kShaderFile[] = "RenderPasses/PTTest/MinimalPathTracer.rt.slang";
+const char kExportTriFramesShaderFile[] = "RenderPasses/PTTest/ExportTriFrames.cs.slang";
 
 // Ray tracing settings that affect the traversal stack size.
 // These should be set as small as possible.
@@ -322,11 +323,16 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     var["CB"]["gSelectedInstanceID"] = mSelectedInstanceID;
     var["CB"]["gSelectedTriangleID"] = mSelectedTriangleID;
     var["CB"]["gTriSampleUV"] = float2(mTriSampleU, mTriSampleV);
+    // Probe mode: vertex probes sample the full sphere; triangle probes sample the hemisphere. During
+    // export this follows the output phase (0 = vertices); interactively it follows the phase dropdown.
+    var["CB"]["gVertexMode"] = mIsOutputing ? (mOutputPhase == 0) : (mPhaseSelection != kPhaseTrianglesOnly);
     var["CB"]["gProbePos"] = mProbePos;
 
     var["gBarycentric"] = mpBarycentric;
     var["gWi"] = mpWi;
     var["gRadiance"] = mpRadiance;
+    if (mpTriFrame)
+        var["gTriFrame"] = mpTriFrame;
 
     if (mpEnvMapSampler)
         mpEnvMapSampler->bindShaderData(var["CB"]["gEnvMapSampler"]);
@@ -334,7 +340,9 @@ void PTTest::execute(RenderContext* pRenderContext, const RenderData& renderData
     // Bind NeuLobes neural light-probe model. The runtime flag gates evaluation in the shader,
     // so the resources are always referenced (present in reflection) even when disabled.
     // Ensure the vertex-weld remap exists for the current instance (needed for the pool gather).
-    if (mUseNeuLobes && (!mpVertexRemap || mVertexRemapInstanceID != mSelectedInstanceID))
+    // Cache the selected instance's triangle data (also creates the per-triangle frame buffer used by
+    // the hemisphere path). Needed regardless of NeuLobes, since the hemisphere render always runs.
+    if (!mpVertexRemap || mVertexRemapInstanceID != mSelectedInstanceID)
         cacheInstanceTriangles();
     bindNeuLobesData(var);
     bindProbeReprData(var);
@@ -725,6 +733,10 @@ void PTTest::renderUI(Gui::Widgets& widget)
 
     }
 
+    if (widget.button("export tri frames"))
+        exportTriFrames(mTriFrameOutputPath);
+    widget.textbox("Tri-frame Output Path", mTriFrameOutputPath);
+
     if (!mChangeLight)
     {
         widget.textbox("Vertex Output Path", mVertexOutputPath);
@@ -995,6 +1007,15 @@ void PTTest::cacheInstanceTriangles()
     pIdxStaging->unmap();
 
     mInstanceTriangleCount = triangleCount;
+
+    // Per-triangle local->world frame export buffer (ProbeTriFrame = 4 x float4 = 64 bytes/triangle).
+    // Zero-initialized so triangles that were never rendered read back as zeros rather than garbage.
+    std::vector<float4> triFrameInit((size_t)triangleCount * 4, float4(0.f));
+    mpTriFrame = mpDevice->createStructuredBuffer(
+        sizeof(float4) * 4, triangleCount,
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+        MemoryType::DeviceLocal, triFrameInit.data(), false
+    );
 
     // Weld positionally-coincident vertices to a single canonical ID. Mesh formats split a vertex
     // whenever adjacent faces need different normals (flat shading) or UVs (seams), so the same
@@ -1293,6 +1314,64 @@ void PTTest::loadSGModel(const std::string& dir)
     logInfo("[SG] Loaded from {} (numSGs={}, pool={}).", dir, mSG.numSGs, mSG.poolSize);
 }
 
+void PTTest::exportTriFrames(const std::string& path)
+{
+    // Lazily build the per-triangle buffer if it hasn't been created yet (e.g. NeuLobes disabled, so
+    // cacheInstanceTriangles() was never triggered by the render loop).
+    if (!mpTriFrame || mVertexRemapInstanceID != mSelectedInstanceID)
+        cacheInstanceTriangles();
+
+    if (!mpTriFrame || mInstanceTriangleCount == 0)
+    {
+        logWarning("PTTest: no triangle-frame buffer to export (need a loaded scene and a valid triangle-mesh instance).");
+        return;
+    }
+
+    RenderContext* pRenderContext = mpDevice->getRenderContext();
+
+    // Fill the frame for ALL triangles of the selected instance via the compute pass. This matches the
+    // render path's per-triangle frame math, so the whole table is populated (not just the rendered tri).
+    if (mpExportTriFramesPass && mpScene)
+    {
+        auto var = mpExportTriFramesPass->getRootVar();
+        mpScene->bindShaderData(var["gScene"]);
+        var["gTriFrame"] = mpTriFrame;
+        var["CB"]["gInstanceID"] = mSelectedInstanceID;
+        var["CB"]["gTriangleCount"] = mInstanceTriangleCount;
+        var["CB"]["gTriSampleUV"] = float2(mTriSampleU, mTriSampleV);
+        mpExportTriFramesPass->execute(pRenderContext, mInstanceTriangleCount, 1, 1);
+    }
+
+    const uint32_t triCount = mInstanceTriangleCount;
+    const size_t stride = sizeof(float4) * 4; // ProbeTriFrame (N, T, B, origin)
+    auto pStaging = mpDevice->createStructuredBuffer(
+        (uint32_t)stride, triCount, ResourceBindFlags::None, MemoryType::ReadBack, nullptr, false
+    );
+    pRenderContext->copyBufferRegion(pStaging.get(), 0, mpTriFrame.get(), 0, stride * triCount);
+    pRenderContext->submit(true); // flush + wait so the readback data is valid.
+
+    const float4* pData = reinterpret_cast<const float4*>(pStaging->map());
+    std::ofstream ofs(path);
+    if (!ofs)
+    {
+        logWarning("PTTest: failed to open '{}' for triangle-frame export.", path);
+        pStaging->unmap();
+        return;
+    }
+    ofs << "# triIndex Nx Ny Nz Tx Ty Tz Bx By Bz Ox Oy Oz\n";
+    for (uint32_t t = 0; t < triCount; ++t)
+    {
+        const float4& N = pData[t * 4 + 0];
+        const float4& T = pData[t * 4 + 1];
+        const float4& B = pData[t * 4 + 2];
+        const float4& O = pData[t * 4 + 3];
+        ofs << t << " " << N.x << " " << N.y << " " << N.z << " " << T.x << " " << T.y << " " << T.z << " " << B.x << " "
+            << B.y << " " << B.z << " " << O.x << " " << O.y << " " << O.z << "\n";
+    }
+    pStaging->unmap();
+    logInfo("PTTest: exported {} triangle frames to '{}'.", triCount, path);
+}
+
 void PTTest::bindProbeReprData(const ShaderVar& var)
 {
     var["CB"]["gProbeRepr"] = mProbeRepr;
@@ -1375,6 +1454,7 @@ void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
     mTracer.pProgram = nullptr;
     mTracer.pBindingTable = nullptr;
     mTracer.pVars = nullptr;
+    mpExportTriFramesPass = nullptr;
     mFrameCount = 0;
 
     // Set new scene.
@@ -1463,6 +1543,17 @@ void PTTest::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
         }
 
         mTracer.pProgram = Program::create(mpDevice, desc, mpScene->getSceneDefines());
+
+        // Compute pass that fills the per-triangle frame buffer for ALL triangles of the selected
+        // instance (used by the "export tri frames" button). Uses the same gScene geometry queries as
+        // the render path so the exported frames match exactly.
+        {
+            ProgramDesc cdesc;
+            cdesc.addShaderModules(mpScene->getShaderModules());
+            cdesc.addShaderLibrary(kExportTriFramesShaderFile).csEntry("main");
+            cdesc.addTypeConformances(mpScene->getTypeConformances());
+            mpExportTriFramesPass = ComputePass::create(mpDevice, cdesc, mpScene->getSceneDefines());
+        }
     }
 
 
