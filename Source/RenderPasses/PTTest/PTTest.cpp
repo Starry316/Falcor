@@ -737,6 +737,11 @@ void PTTest::renderUI(Gui::Widgets& widget)
         exportTriFrames(mTriFrameOutputPath);
     widget.textbox("Tri-frame Output Path", mTriFrameOutputPath);
 
+    if (widget.button("export vertex mapping"))
+        exportVertexMapping(mNeuLobesDir);
+    widget.tooltip("Writes vertex_canonical_pos.bin (float32 [N][3]) + tri_canonical_ids.bin (int32 [T][3]) "
+                   "and records them in manifest.json, into the NeuLobes model directory.", true);
+
     if (!mChangeLight)
     {
         widget.textbox("Vertex Output Path", mVertexOutputPath);
@@ -1027,6 +1032,22 @@ void PTTest::cacheInstanceTriangles()
     // Count unique welded positions for logging.
     std::unordered_set<uint32_t> uniquePositions(remap.begin(), remap.end());
     const size_t uniquePositionCount = uniquePositions.size();
+
+    // Record the representative mesh-local position of each canonical ID (first-appearance order, so
+    // index == canonical ID). Used by exportVertexMapping for order-independent recovery in Unity.
+    mCanonicalPositions.assign(uniquePositionCount, float3(0.f));
+    {
+        std::vector<uint8_t> filled(uniquePositionCount, 0u);
+        for (uint32_t i = 0; i < vertexCount; ++i)
+        {
+            const uint32_t c = remap[i];
+            if (c < uniquePositionCount && !filled[c])
+            {
+                mCanonicalPositions[c] = pPosData[i];
+                filled[c] = 1u;
+            }
+        }
+    }
     pPosStaging->unmap();
 
     // Upload the remap so the shader can map a triangle's (mesh-local) vertex indices to canonical IDs.
@@ -1370,6 +1391,115 @@ void PTTest::exportTriFrames(const std::string& path)
     }
     pStaging->unmap();
     logInfo("PTTest: exported {} triangle frames to '{}'.", triCount, path);
+}
+
+void PTTest::exportVertexMapping(const std::string& dir)
+{
+    if (!mpScene)
+    {
+        logWarning("PTTest: no scene loaded; cannot export vertex mapping.");
+        return;
+    }
+    // Make sure the canonical mapping for the selected instance is built.
+    if (mVertexRemapInstanceID != mSelectedInstanceID || mCanonicalPositions.empty())
+        cacheInstanceTriangles();
+    if (mCanonicalPositions.empty() || mInstanceTriIndices.empty())
+    {
+        logWarning("PTTest: vertex mapping is empty (need a valid triangle-mesh instance).");
+        return;
+    }
+
+    const std::filesystem::path root(dir);
+    std::error_code ec;
+    std::filesystem::create_directories(root, ec);
+
+    const uint32_t numCanonical = (uint32_t)mCanonicalPositions.size();
+    const uint32_t numTris = (uint32_t)mInstanceTriIndices.size();
+
+    // (a) canonical-ID -> representative mesh-local position: float32 [numCanonical][3].
+    const std::string posFile = "vertex_canonical_pos.bin";
+    {
+        std::ofstream ofs(root / posFile, std::ios::binary);
+        if (!ofs)
+        {
+            logWarning("PTTest: failed to open '{}' for vertex-position export.", (root / posFile).string());
+            return;
+        }
+        for (const float3& p : mCanonicalPositions)
+        {
+            const float xyz[3] = {p.x, p.y, p.z};
+            ofs.write(reinterpret_cast<const char*>(xyz), sizeof(xyz));
+        }
+    }
+
+    // (c) per-triangle canonical vertex IDs: int32 [numTris][3] (validation / fast path).
+    const std::string triFile = "tri_canonical_ids.bin";
+    {
+        std::ofstream ofs(root / triFile, std::ios::binary);
+        if (!ofs)
+        {
+            logWarning("PTTest: failed to open '{}' for tri-ID export.", (root / triFile).string());
+            return;
+        }
+        for (const uint3& t : mInstanceTriIndices)
+        {
+            const int32_t ids[3] = {(int32_t)t.x, (int32_t)t.y, (int32_t)t.z};
+            ofs.write(reinterpret_cast<const char*>(ids), sizeof(ids));
+        }
+    }
+
+    // Record the mapping in the directory's manifest.json (merged into any existing content) so the
+    // .bin + manifest loader picks it up. Includes the coordinate space so the consumer can align.
+    const std::filesystem::path manifestPath = root / "manifest.json";
+    nlohmann::json j;
+    {
+        std::ifstream ifs(manifestPath);
+        if (ifs)
+        {
+            try
+            {
+                j = nlohmann::json::parse(ifs, nullptr, true /*exceptions*/, true /*ignore comments*/);
+            }
+            catch (const std::exception& e)
+            {
+                logWarning("PTTest: manifest.json parse failed ({}); writing a new one.", e.what());
+                j = nlohmann::json::object();
+            }
+        }
+    }
+    j["vertexMapping"] = {
+        {"canonicalPosFile", posFile},                 // float32 [numCanonical][3]
+        {"triCanonicalIdsFile", triFile},              // int32   [numTris][3]
+        {"numCanonical", numCanonical},
+        {"numTris", numTris},
+        {"weldEpsilon", kWeldEpsilon},
+        {"quantize", "key = llround(pos * (1/weldEpsilon)) per component (int64)"},
+        {"space", "mesh-local (object space), pre-world-transform; Falcor getMeshVerticesAndIndices"},
+        {"coordinateSystem", "right-handed, Y-up (Falcor)"},
+        {"consumerNote",
+         "Undo importer scale/units, axis conversion and X/handedness flip so positions equal these "
+         "before quantizing. Recommended FBX import: scale 1, no mesh optimize/reorder."},
+        {"instanceID", mSelectedInstanceID},
+    };
+    {
+        std::ofstream ofs(manifestPath);
+        if (!ofs)
+        {
+            logWarning("PTTest: failed to open '{}' to write manifest.", manifestPath.string());
+            return;
+        }
+        ofs << j.dump(4);
+    }
+
+    if (mNeuLobes.loaded && numCanonical != mNeuLobes.numMLPs)
+    {
+        logWarning(
+            "PTTest: exported {} canonical vertices but model numMLPs={} (mesh/pool mismatch).", numCanonical, mNeuLobes.numMLPs
+        );
+    }
+    logInfo(
+        "PTTest: exported vertex mapping to '{}' ({} canonical positions, {} triangles).", dir, numCanonical, numTris
+    );
 }
 
 void PTTest::bindProbeReprData(const ShaderVar& var)

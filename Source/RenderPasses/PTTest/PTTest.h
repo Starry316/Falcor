@@ -131,6 +131,9 @@ public:
     void bindProbeReprData(const ShaderVar& var);
     /// Reads back the per-triangle frame buffer (gTriFrame) and writes it to a text file.
     void exportTriFrames(const std::string& path);
+    /// Exports the canonical vertex-ID mapping (canonical-ID->position table + per-triangle canonical
+    /// IDs) as .bin files into `dir` and records them in that directory's manifest.json.
+    void exportVertexMapping(const std::string& dir);
 
 private:
     void parseProperties(const Properties& props);
@@ -270,6 +273,9 @@ private:
     // Cached triangle vertex indices for the selected instance (populated when output starts).
     std::vector<uint3> mInstanceTriIndices;
     uint32_t mInstanceTriangleCount = 0;
+    /// Representative mesh-local position for each canonical vertex ID (index = canonical ID). Built in
+    /// cacheInstanceTriangles; used by exportVertexMapping so Unity can recover IDs by position matching.
+    std::vector<float3> mCanonicalPositions;
     /// GPU copy of the position-weld remap: remap[localVertexIndex] -> canonical vertex ID (mesh-local space).
     ref<Buffer> mpVertexRemap;
     /// Instance the vertex remap was last built for (to avoid rebuilding every frame).
