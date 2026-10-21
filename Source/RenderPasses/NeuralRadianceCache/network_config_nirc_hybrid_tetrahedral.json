@@ -1,0 +1,32 @@
+{
+    "dims": {
+        "input": 10,
+        "output": 3,
+        "output_after_transform": 3
+    },
+    "loss": {
+        "otype": "RelativeL2Luminance",
+        "luminance_weighting": false,
+        "custom_weighting": false,
+        "tonemapped": false,
+        "lum_weight": 1.0,
+        "var_weight": 0.0,
+        "luminance_divider": 0.01
+    },
+    "optimizer": {
+        "otype": "EMA",
+        "nested": {
+            "otype": "Adam",
+            "learning_rate": 0.001,
+            "beta1": 0.9,
+            "beta2": 0.99,
+            "l2_reg": 1e-08,
+            "epsilon": 1e-16
+        }
+    },
+    "hybrid": {
+        "mlp_grid_cells": 4,
+        "log2_hashmap_size": 18,
+        "spatial_interpolation": "tetrahedral"
+    }
+}
