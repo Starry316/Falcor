@@ -123,6 +123,8 @@ public:
     virtual void setScene(RenderContext* pRenderContext, const Falcor::ref<Falcor::Scene>& pScene) override;
     bool onMouseEvent(const MouseEvent& mouseEvent) override;
     bool onKeyEvent(const Falcor::KeyboardEvent& keyEvent) override;
+    void inspectPixel(uint32_t x, uint32_t y);
+    uint32_t getInspectorSamples() const { return mInspectorSamples; }
 
      void resetNN();
 
@@ -165,6 +167,7 @@ public:
 
     PortBuffers mInternalBuffers;
     uint2 mScreenDim = { 1920, 1080 };
+    uint32_t mTrainingSampleCapacity = 0;
     std::vector<uint32_t> lodSizes;
     uint32_t m_LOD;
     static const char* sDesc;
@@ -263,7 +266,15 @@ private:
 
     bool bResidualVarianceLoss = false;
     bool bNNEstimatorDebugRender = false;
-    bool bFreezeDebugMouse = false;
+    bool bFreezeDebugMouse = true;
+    uint32_t mInspectorSamples = 0;
+    uint32_t mInspectorSeed = 0;
+    float mInspectorExposure = 0.f;
+    uint32_t mInspectorComponent = 0; // Cached continuation, or full incoming with traced direct term.
+    float2 mInspectorRotation = {0.f, 0.f};
+    ref<ComputePass> mpInspectorAccumulate;
+    ref<ComputePass> mpInspectorDisplay;
+    ref<Texture> mpInspectorPreview;
 
     float roughnessThreshold = 0.45f;
     float roulleteProb = 0.0f;
@@ -289,7 +300,7 @@ private:
     uint2  mSelectedPixel = { 0, 0 };      ///< Currently selected pixel.
 
     bool bResetModel = false;
-    uint32_t mNircArchitecture = 0; // Original, DirectionalHash, Hybrid
+    uint32_t mNircArchitecture = 0; // Original, DirectionalHash, Hybrid, OriginalHashLocal
     uint32_t mNircInterpolation = 1; // Trilinear, Tetrahedral (default for custom models)
     NeuralRequestData mainRenderData;
     NeuralRequestData debugRenderData;

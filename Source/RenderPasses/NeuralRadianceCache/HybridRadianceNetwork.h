@@ -3,11 +3,12 @@
 // and spatially interpolated MLP parameters, adapted from neulobes'
 // HashSphereHemiMLP. Spatial banks live on a regular world-space grid rather
 // than mesh vertices, so the cache works at arbitrary ray intersections.
-#include <tiny-cuda-nn/network.h>
-#include <tiny-cuda-nn/gpu_memory.h>
+#include <cstdlib>
+#include <fstream>
 #include <map>
 #include <random>
-#include <fstream>
+#include <tiny-cuda-nn/gpu_memory.h>
+#include <tiny-cuda-nn/network.h>
 
 namespace nirc_hybrid
 {
@@ -48,6 +49,8 @@ struct Settings
 {
     int cells, banks, mlpCount;
     bool tetrahedral;
+    // Experimental MLP-only override; hash-feature interpolation is unchanged.
+    bool mlpTrilinear = false;
     uint32_t offset[Levels], size[Levels];
     uint32_t faceOffset[4];
     const Face* faces;
@@ -201,7 +204,7 @@ __device__ inline Banks banksAtImpl(const Settings& cfg, Vec p)
 }
 __device__ inline Banks banksAt(const Settings& cfg, Vec p)
 {
-    return cfg.tetrahedral ? banksAtImpl<true>(cfg, p) : banksAtImpl<false>(cfg, p);
+    return cfg.tetrahedral && !cfg.mlpTrilinear ? banksAtImpl<true>(cfg, p) : banksAtImpl<false>(cfg, p);
 }
 __device__ inline float blend(const __half* p, const Banks& b, int index)
 {
@@ -456,6 +459,75 @@ __device__ inline float lookupFeature(const Settings& cfg, const __half* params,
     return cfg.tetrahedral ? lookupFeatureImpl<true>(cfg, params, p, direction, face, level, channel)
                            : lookupFeatureImpl<false>(cfg, params, p, direction, face, level, channel);
 }
+// Vector loads require the even hash offsets established in Network.
+// Each feature retains the scalar kernel's accumulation order.
+__device__ inline Vec directionWeights(const Face& f, Vec direction)
+{
+    Vec beta = bary(f, direction);
+    beta = {fmaxf(beta.x, 0.f), fmaxf(beta.y, 0.f), fmaxf(beta.z, 0.f)};
+    float sum = beta.x + beta.y + beta.z;
+    return {beta.x / sum, beta.y / sum, beta.z / sum};
+}
+template<bool Tetra>
+__device__ inline float2 lookupFeaturePairWithWeights(
+    const Settings& cfg, const __half* params, Vec p, const Face& f, Vec beta, int level)
+{
+    int n = 4 << level;
+    float x = fminf(fmaxf(p.x, 0.f), 1.f) * (n - 1), y = fminf(fmaxf(p.y, 0.f), 1.f) * (n - 1), z = fminf(fmaxf(p.z, 0.f), 1.f) * (n - 1);
+    int ix = min(int(x), n - 2), iy = min(int(y), n - 2), iz = min(int(z), n - 2);
+    x -= ix;
+    y -= iy;
+    z -= iz;
+    uint32_t vertices = 10 * (1u << (2 * (level / 2))) + 2;
+    bool dense = uint64_t(n) * n * n * vertices <= cfg.size[level];
+    float2 value{0, 0};
+    Tetrahedron tetra;
+    if constexpr (Tetra)
+        tetra = tetrahedron(x, y, z);
+#pragma unroll
+    for (int k = 0; k < (Tetra ? 4 : 8); ++k)
+    {
+        int corner = Tetra ? tetra.corner[k] : k;
+        uint32_t a = ix + (corner & 1), b = iy + ((corner >> 1) & 1), c = iz + (corner >> 2);
+        float w = Tetra ? tetra.weight[k] : ((k & 1) ? x : 1 - x) * ((k & 2) ? y : 1 - y) * ((k & 4) ? z : 1 - z);
+#pragma unroll
+        for (int v = 0; v < 3; ++v)
+        {
+            uint32_t slot = dense ? (a + n * (b + n * c)) * vertices + f.id[v]
+                                  : ((a * 1u) ^ (b * 2654435761u) ^ (c * 805459861u) ^ f.hash[v]) & (cfg.size[level] - 1);
+            float weight = w * (v == 0 ? beta.x : v == 1 ? beta.y : beta.z);
+            const __half* address = params + cfg.offset[level] + slot * Features;
+            float2 pair = __half22float2(*reinterpret_cast<const __half2*>(address));
+            value.x += weight * pair.x;
+            value.y += weight * pair.y;
+        }
+    }
+    return value;
+}
+
+template<bool Tetra>
+__device__ inline float2 lookupFeaturePair(const Settings& cfg, const __half* params, Vec p, Vec direction, int face, int level)
+{
+    const Face& f = cfg.faces[face];
+    return lookupFeaturePairWithWeights<Tetra>(cfg, params, p, f, directionWeights(f, direction), level);
+}
+
+template<int Width>
+__device__ inline int bestFaceWide(unsigned mask, float score, int id)
+{
+#pragma unroll
+    for (int step = Width / 2; step; step >>= 1)
+    {
+        float other = __shfl_xor_sync(mask, score, step, Width);
+        int otherId = __shfl_xor_sync(mask, id, step, Width);
+        if (other > score || (other == score && otherId < id))
+        {
+            score = other;
+            id = otherId;
+        }
+    }
+    return id;
+}
 template<bool Tetra>
 __device__ inline Banks inferenceBanksImpl(const Settings& cfg, Vec p)
 {
@@ -615,25 +687,217 @@ __global__ void infer8(
     }
 }
 
+#include "HybridMlpTexture.cuh"
+
+// A thread keeps a complete small MLP in registers. Consecutive threads
+// walk the same feature levels, improving locality versus lanes split across
+// levels. Width=2 remains available to the replay profiler for comparison.
+template<int Width, bool ReuseDirectionWeights = false, int MlpBackend = 0>
+__global__ void inferSmall(
+    const __grid_constant__ Settings cfg,
+    Inputs inputs,
+    int count,
+    const __half* params,
+    float* prediction,
+    tcnn::FusedOutputData fused,
+    cudaTextureObject_t texture = 0
+)
+{
+    int sample = (blockIdx.x * blockDim.x + threadIdx.x) / Width, lane = threadIdx.x % Width;
+    if (sample >= count)
+        return;
+    unsigned mask = ((1u << Width) - 1) << (threadIdx.x & (32 - Width));
+    const float* pos = inputs.at(1, sample);
+    Vec p{pos[0], pos[1], pos[2]};
+    float2 uv = __half22float2(*reinterpret_cast<const __half2*>(inputs.at(4, sample)));
+    Vec direction = oct(uv.x, uv.y);
+    float best = -1.e30f;
+    int face = 0;
+#pragma unroll
+    for (int k = 0; k < 20 / Width; ++k)
+    {
+        int candidate = lane + Width * k;
+        float score = coneScore(cfg.faces[candidate], direction);
+        if (score > best)
+        {
+            best = score;
+            face = candidate;
+        }
+    }
+    face = bestFaceWide<Width>(mask, best, face);
+    int selected[4];
+#pragma unroll
+    for (int depth = 0; depth < 4; ++depth)
+    {
+        selected[depth] = cfg.faceOffset[depth] + face;
+        if (depth < 3)
+        {
+            int child = 0;
+            float scoreBest = -1.e30f;
+#pragma unroll
+            for (int k = 0; k < 4 / Width; ++k)
+            {
+                int candidate = lane + k * Width;
+                float score = coneScore(cfg.faces[cfg.faceOffset[depth + 1] + 4 * face + candidate], direction);
+                if (score > scoreBest)
+                {
+                    scoreBest = score;
+                    child = candidate;
+                }
+            }
+            face = 4 * face + bestFaceWide<Width>(mask, scoreBest, child);
+        }
+    }
+    float2 features[8 / Width];
+    if constexpr (ReuseDirectionWeights)
+    {
+        static_assert(Width == 1, "Paired-level direction reuse expects one thread per query");
+        // Adjacent levels use the same spherical triangle. Reuse only this
+        // query's directional weights; spatial queries and MLPs are unchanged.
+#pragma unroll
+        for (int depth = 0; depth < 4; ++depth)
+        {
+            const Face& f = cfg.faces[selected[depth]];
+            Vec beta = directionWeights(f, direction);
+            features[2 * depth] = lookupFeaturePairWithWeights<true>(cfg, params, p, f, beta, 2 * depth);
+            features[2 * depth + 1] = lookupFeaturePairWithWeights<true>(cfg, params, p, f, beta, 2 * depth + 1);
+        }
+    }
+    else
+    {
+#pragma unroll
+        for (int j = 0; j < 8 / Width; ++j)
+        {
+            int level = j * Width + lane;
+            features[j] = lookupFeaturePair<true>(cfg, params, p, direction, selected[level / 2], level);
+        }
+    }
+    float2 normal = __half22float2(*reinterpret_cast<const __half2*>(inputs.at(0, sample)));
+    float surface[(6 + Width - 1) / Width];
+#pragma unroll
+    for (int j = 0; j < (6 + Width - 1) / Width; ++j)
+    {
+        int k = j * Width + lane;
+        surface[j] = k == 0 ? normal.x : k == 1 ? normal.y : k == 2 ? *inputs.at(2, sample) : k < 6 ? inputs.at(3, sample)[k - 3] : 0;
+    }
+    if constexpr (MlpBackend != 0)
+    {
+        static_assert(Width == 1, "Experimental MLP backend requires one thread per query");
+        float encoded[Input];
+#pragma unroll
+        for (int k = 0; k < 16; ++k) encoded[k] = k % 2 ? features[k / 2].y : features[k / 2].x;
+#pragma unroll
+        for (int k = 0; k < 6; ++k) encoded[16 + k] = surface[k];
+        float3 y = decodeMlp<MlpBackend>(cfg, params, texture, p, encoded);
+        float values[3] = {y.x, y.y, y.z};
+#pragma unroll
+        for (int c = 0; c < 3; ++c)
+            if (fused.arr0)
+            {
+                int id = reinterpret_cast<const uint32_t*>(fused.arr1)[sample];
+                float w = reinterpret_cast<const float*>(fused.arr0)[3 * sample + c];
+                atomicAdd(prediction + 3 * id + c, fmaxf(values[c], 0.f) * w);
+            }
+            else prediction[3 * sample + c] = values[c];
+        return;
+    }
+    Banks banks = inferenceBanksImpl<true>(cfg, p);
+    float a[8 / Width] = {}, b[8 / Width] = {};
+#pragma unroll
+    for (int k = 0; k <= Input; ++k)
+    {
+        float v = 1;
+        if (k < 16)
+            v = k % 2 ? features[k / (2 * Width)].y : features[k / (2 * Width)].x;
+        else if (k < Input)
+            v = surface[(k - 16) / Width];
+        float x = k == Input ? 1.f : __shfl_sync(mask, v, k < 16 ? (k / 2) % Width : (k - 16) % Width, Width);
+#pragma unroll
+        for (int j = 0; j < 8 / Width; ++j)
+            a[j] += inferenceBlend<4>(params, banks, k * Hidden + j * Width + lane) * x;
+    }
+#pragma unroll
+    for (int j = 0; j < 8 / Width; ++j)
+        a[j] = activate(a[j]);
+#pragma unroll
+    for (int k = 0; k <= Hidden; ++k)
+    {
+        float x = k == Hidden ? 1.f : __shfl_sync(mask, a[k / Width], k % Width, Width);
+#pragma unroll
+        for (int j = 0; j < 8 / Width; ++j)
+            b[j] += inferenceBlend<4>(params, banks, Layer0 + k * Hidden + j * Width + lane) * x;
+    }
+#pragma unroll
+    for (int j = 0; j < 8 / Width; ++j)
+        b[j] = activate(b[j]);
+    float y[(3 + Width - 1) / Width] = {};
+#pragma unroll
+    for (int k = 0; k <= Hidden; ++k)
+    {
+        float x = k == Hidden ? 1.f : __shfl_sync(mask, b[k / Width], k % Width, Width);
+#pragma unroll
+        for (int j = 0; j < (3 + Width - 1) / Width; ++j)
+            if (j * Width + lane < 3)
+                y[j] += inferenceBlend<4>(params, banks, Layer0 + Layer1 + k * 3 + j * Width + lane) * x;
+    }
+#pragma unroll
+    for (int j = 0; j < (3 + Width - 1) / Width; ++j)
+    {
+        int c = j * Width + lane;
+        if (c < 3)
+        {
+            if (fused.arr0)
+            {
+                int id = reinterpret_cast<const uint32_t*>(fused.arr1)[sample];
+                float w = reinterpret_cast<const float*>(fused.arr0)[3 * sample + c];
+                atomicAdd(prediction + 3 * id + c, fmaxf(y[j], 0.f) * w);
+            }
+            else
+                prediction[3 * sample + c] = y[j];
+        }
+    }
+}
+
 class Network final : public tcnn::Network<float, __half>
 {
 public:
     explicit Network(const tcnn::json& config)
     {
+        // Diagnostic fallback for matched production comparisons. The old
+        // eight-lane path remains available, with identical model semantics.
+        if (const char* value = std::getenv("NIRC_HYBRID_LEGACY_INFERENCE"))
+            m_legacyInference = std::string(value) == "1";
+        if (const char* value = std::getenv("NIRC_HYBRID_REUSE_DIRECTION_WEIGHTS"))
+            m_reuseDirectionWeights = std::string(value) == "1";
         const std::string interpolation = config.value("spatial_interpolation", std::string("trilinear"));
         if (interpolation != "trilinear" && interpolation != "tetrahedral")
             throw std::runtime_error("Unknown hybrid spatial interpolation");
         m_cfg.tetrahedral = interpolation == "tetrahedral";
+        if (const char* value = std::getenv("NIRC_HYBRID_MLP_BACKEND"))
+        {
+            std::string backend(value);
+            if (backend != "default" && backend != "trilinear" && backend != "texture")
+                throw std::runtime_error("NIRC_HYBRID_MLP_BACKEND must be default, trilinear or texture");
+            m_cfg.mlpTrilinear = backend != "default";
+            m_textureInference = backend == "texture";
+        }
+        // Captured models retain their training stencil independently of the
+        // replay backend. Only MLP interpolation changes in this experiment.
+        if (m_cfg.tetrahedral && config.value("mlp_interpolation", std::string()) == "trilinear") m_cfg.mlpTrilinear = true;
+        if (m_cfg.mlpTrilinear && !m_cfg.tetrahedral)
+            throw std::runtime_error("MLP-only experiment requires tetrahedral hash features");
         m_cfg.cells = config.value("mlp_grid_cells", 4);
         if (m_cfg.cells < 0 || m_cfg.cells > 16)
             throw std::runtime_error("mlp_grid_cells must be 0..16");
         m_cfg.banks = m_cfg.cells ? int(pow(m_cfg.cells + 1, 3)) : 1;
         m_cfg.mlpCount = m_cfg.banks * MlpParams;
+        if (m_textureInference) m_mlpTexture.initialize(m_cfg.cells);
         int logCapacity = config.value("log2_hashmap_size", 18);
         if (logCapacity < 10 || logCapacity > 22)
             throw std::runtime_error("Invalid hybrid hash capacity");
         uint32_t capacity = 1u << logCapacity;
-        m_count = m_cfg.mlpCount;
+        // Align paired FP16 hash features without changing any bank or hash index.
+        m_count = (m_cfg.mlpCount + 1u) & ~1u;
         for (int l = 0; l < Levels; ++l)
         {
             uint64_t n = 4ull << l, total = n * n * n * (10 * (1u << (2 * (l / 2))) + 2);
@@ -646,7 +910,10 @@ public:
     }
     size_t n_params() const override { return m_count; }
     const Settings& settings() const { return m_cfg; }
+    size_t texturePayloadBytes() const { return m_textureInference ? m_mlpTexture.payloadBytes() : 0; }
+    const char* mlpBackend() const { return m_textureInference ? "texture" : m_cfg.mlpTrilinear ? "trilinear" : "default"; }
     void setOptimizedInference(bool enabled) { m_optimizedInference = enabled; }
+    void setLegacyInference(bool enabled) { m_legacyInference = enabled; }
     bool hasCapturedInference() const { return m_captured; }
     void captureInference(
         cudaStream_t stream,
@@ -681,6 +948,11 @@ public:
         };
         save("params.bin", m_inference, m_count * sizeof(__half));
         meta["spatial_interpolation"] = m_cfg.tetrahedral ? "tetrahedral" : "trilinear";
+        meta["mlp_interpolation"] = m_cfg.mlpTrilinear ? "trilinear" : (m_cfg.tetrahedral ? "tetrahedral" : "trilinear");
+        meta["mlp_backend"] = mlpBackend();
+        meta["mlp_texture_payload_bytes"] = texturePayloadBytes();
+        meta["hash_parameter_padding"] = m_cfg.offset[0] - m_cfg.mlpCount;
+        meta["inference_lanes"] = m_cfg.tetrahedral && !m_legacyInference ? 1 : 8;
         meta["tcnn_tracked_cuda_bytes"] = tcnn::total_n_bytes_allocated().load();
         meta["output_bytes"] = outputBytes;
         meta["output_pixel_count"] = outputPixelCount;
@@ -727,7 +999,7 @@ public:
         m_inference = inference;
         m_gradients = gradients;
         std::vector<float> values(m_count);
-        for (size_t i = m_cfg.mlpCount; i < m_count; ++i)
+        for (size_t i = m_cfg.offset[0]; i < m_count; ++i)
             values[i] = (random.next_float() * 2 - 1) * 1.e-4f;
         // Shared initial basis prevents independently initialized neighbouring
         // MLPs from cancelling under parameter interpolation. Banks train apart.
@@ -759,9 +1031,31 @@ public:
     {
         if (!n)
             return;
+        if (m_cfg.mlpTrilinear)
+        {
+            if (m_textureInference)
+            {
+                // Refresh from EMA inference weights on the same stream before
+                // every call. Includes updates in measured inference cost and
+                // avoids stale parameters after optimizer/CUDA-graph execution.
+                m_mlpTexture.refresh(stream, m_inference);
+                inferSmall<1, true, 2><<<(n + 255) / 256, 256, 0, stream>>>(m_cfg, describe(input), n, m_inference, output.data(), fused, m_mlpTexture.object());
+            }
+            else
+                inferSmall<1, true, 1><<<(n + 255) / 256, 256, 0, stream>>>(m_cfg, describe(input), n, m_inference, output.data(), fused);
+            CUDA_CHECK_THROW(cudaGetLastError());
+            return;
+        }
         if (m_optimizedInference)
         {
-            if (m_cfg.tetrahedral)
+            if (m_cfg.tetrahedral && !m_legacyInference)
+            {
+                if (m_reuseDirectionWeights)
+                    inferSmall<1, true><<<(n + 255) / 256, 256, 0, stream>>>(m_cfg, describe(input), n, m_inference, output.data(), fused);
+                else
+                    inferSmall<1, false><<<(n + 255) / 256, 256, 0, stream>>>(m_cfg, describe(input), n, m_inference, output.data(), fused);
+            }
+            else if (m_cfg.tetrahedral)
                 infer8<0, true><<<(n + 15) / 16, 128, 0, stream>>>(m_cfg, describe(input), n, m_inference, output.data(), fused);
             else
                 infer8<0, false><<<(n + 15) / 16, 128, 0, stream>>>(m_cfg, describe(input), n, m_inference, output.data(), fused);
@@ -935,6 +1229,12 @@ private:
     uint32_t m_lastCount = 0;
     bool m_captured = false;
     bool m_optimizedInference = true;
+    bool m_legacyInference = false;
+    // Reuse spherical barycentrics across adjacent levels. Set the diagnostic
+    // environment switch to 0 to replay the previous arithmetic schedule.
+    bool m_reuseDirectionWeights = true;
+    bool m_textureInference = false;
+    MlpTexture m_mlpTexture;
     Inputs m_lastInput{};
     __half *m_params = nullptr, *m_inference = nullptr, *m_gradients = nullptr;
     tcnn::GPUMemory<Face> m_faces;

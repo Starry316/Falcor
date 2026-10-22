@@ -8,6 +8,7 @@
 #include "tiny-cuda-nn/losses/relative_sh_luminance.h"
 #include "tiny-cuda-nn/trainer.h"
 #include "HybridRadianceNetwork.h"
+#include "OriginalHashLocalNetwork.h"
 #include <cub/device/device_scan.cuh>
 #include <cub/device/device_radix_sort.cuh>
 #include "Legacy/NeuralNetwork/NeuralStructures.slang"
@@ -72,7 +73,35 @@ void Falcor::NNLaplacianPart::updateParams(std::string& config_path)
     nlohmann::json config;
     networkConfigStream >> config;
     networkConfigStream.close();
+
+    // Opt-in experiment configuration. Keep the released defaults untouched.
+    if (config_path.find("network_config_nirc.json") != std::string::npos)
+        if (const char* auditConfig = std::getenv("NIRC_AUDIT_CONFIG"))
+        {
+            std::ifstream stream(auditConfig);
+            if (!stream) throw std::runtime_error("Cannot open NIRC_AUDIT_CONFIG");
+            stream >> config;
+        }
     
+    if (config.contains("local_mlp"))
+        if (const char* inputs = std::getenv("NIRC_LOCAL_INPUTS"))
+        {
+            const std::string count(inputs);
+            if (count != "64" && count != "32" && count != "23")
+                throw std::runtime_error("NIRC_LOCAL_INPUTS must be 64, 32, or 23");
+            if (count != "64")
+            {
+                auto interpolation = config["local_mlp"]["spatial_interpolation"];
+                auto path = std::filesystem::path(networkConfigFullPath).parent_path() / ("network_config_nirc_local_" + count + ".json");
+                std::ifstream stream(path);
+                if (!stream) throw std::runtime_error("Cannot open reduced local MLP config");
+                stream >> config;
+                config["local_mlp"]["spatial_interpolation"] = interpolation;
+            }
+        }
+    if (config.contains("hybrid"))
+        if (const char* capacity = std::getenv("NIRC_HYBRID_HASH_LOG2"))
+            config["hybrid"]["log2_hashmap_size"] = std::stoi(capacity);
     outputDims = config["dims"]["output"];
     inputDims = config["dims"]["input"];
     outputAfterTransformDims = config["dims"]["output_after_transform"];
@@ -85,7 +114,8 @@ void Falcor::NNLaplacianPart::updateParams(std::string& config_path)
 
     loss.reset(tcnn::create_loss<precision_t>(loss_opts));
     optimizer.reset(tcnn::create_optimizer<precision_t>(optimizer_opts));
-    if (config.contains("hybrid"))
+    if (config.contains("local_mlp")) network = nirc_local::createNetwork(config);
+    else if (config.contains("hybrid"))
     {
         auto hybrid = std::make_shared<nirc_hybrid::Network>(config["hybrid"]);
         // Development-only A/B switch; optimized inference is the default.
@@ -162,6 +192,27 @@ float Falcor::NNLaplacianPart::fit(
 
 
     //uint32_t offset = 0;
+    const char* trainingReplay = epochs==0 ? std::getenv("NIRC_PORT_TRAINING_CAPTURE") : nullptr;
+    auto saveTrainingReplay = [&](const std::string& file,const void* data,size_t bytes) {
+        if(!trainingReplay)return;
+        std::filesystem::create_directories(trainingReplay);
+        std::vector<char> host(bytes);
+        CUDA_CHECK_THROW(cudaMemcpyAsync(host.data(),data,bytes,cudaMemcpyDeviceToHost,trainingStream));
+        CUDA_CHECK_THROW(cudaStreamSynchronize(trainingStream));
+        std::ofstream f(std::filesystem::path(trainingReplay)/file,std::ios::binary);f.write(host.data(),bytes);
+    };
+    if(trainingReplay) {
+        nlohmann::json meta={{"records",nElements},{"batch",elementsPerBatch},{"steps",numStepsPerFrame},{"learning_rate",optimizer->learning_rate()},{"graph",bGraph}};
+        saveTrainingReplay("initial-fp32.bin",trainer->params(),network->n_params()*sizeof(float));
+        saveTrainingReplay("bounds-min.bin",bBStart,3*sizeof(float));
+        saveTrainingReplay("bounds-max.bin",bBEnd,3*sizeof(float));
+        for(int c=0;c<5;++c){
+            meta["rows"].push_back(X.data[c].rows());
+            saveTrainingReplay("input"+std::to_string(c)+".bin",X.data[c].data(),size_t(nElements)*X.data[c].rows()*sizeof(float));
+        }
+        saveTrainingReplay("targets.bin",y.data(),size_t(nElements)*13*sizeof(float));
+        std::ofstream(std::filesystem::path(trainingReplay)/"metadata.json")<<meta.dump(2);
+    }
     for (uint32_t i = 0; i < numStepsPerFrame; ++i)
     {
         //TODO: test with and without
@@ -170,21 +221,49 @@ float Falcor::NNLaplacianPart::fit(
             tcnn::generate_random_uniform<int>(trainingStream, rng, elementsPerBatch, indices.data(), 0, nElements - 1);
             X.set_cols(elementsPerBatch);
             X.set_uniform_mapping(indices.data());
+            saveTrainingReplay("batch"+std::to_string(i)+".bin",indices.data(),elementsPerBatch*sizeof(int));
         }
         
 
         //tcnn::linear_kernel(select_samples, 0, *trainingStream.get(), batchSize, batch_selection->data());*/
        
 
+        if(trainingReplay){
+            const auto& prediction=trainer->forward(trainingStream,X,elementsPerBatch,indices.data(),bBStart,bBEnd);
+            saveTrainingReplay("training-predictions"+std::to_string(i)+".bin",prediction.data(),prediction.n_bytes());
+            if(dynamic_cast<tcnn::NetworkWithInputEncoding<precision_t>*>(network.get())){
+                auto input=static_cast<tcnn::GPUMatrix<precision_t>*>(network->getDebugInput());
+                saveTrainingReplay("encoded"+std::to_string(i)+".bin",input->data(),input->n_bytes());
+            }
+        }
         trainer->training_step(trainingStream, X, y, elementsPerBatch, (numStepsPerFrame != 1 ) ? indices.data() : mapping, bBStart, bBEnd, bGraph, &lossValue, lum, bTrain, bGradientDiffusion, laplace_csrValA, laplace_csrRowPtrA, laplace_csrColIndA, numNonZeroElements, eventLaplaceFinishMatrixBuild, eventLaplaceReceivedNNZE, denoising_max_iter, diffusion_gradients_blending);
+        if(trainingReplay){
+            CUDA_CHECK_THROW(cudaStreamSynchronize(trainingStream));
+            const auto j=trainer->serialize();const auto bytes=j["params_binary"].get<nlohmann::json::binary_t>();
+            std::ofstream f(std::filesystem::path(trainingReplay)/("step"+std::to_string(i)+".bin"),std::ios::binary);f.write(reinterpret_cast<const char*>(bytes.data()),bytes.size());
+            {const auto state=trainer->serialize(true);const auto moments=state["optimizer"]["nested"]["first_moments_binary"].get<nlohmann::json::binary_t>();
+                std::ofstream m(std::filesystem::path(trainingReplay)/("moments"+std::to_string(i)+".bin"),std::ios::binary);m.write(reinterpret_cast<const char*>(moments.data()),moments.size());}
+        }
         //offset += trainingElements;
         /*if (loss_value == std::numeric_limits<float>::quiet_NaN()) {
             std::cout << "NNNAANAN";
         }*/
     }
     epochs += 1;
+    if(trainingReplay){
+        const auto j=trainer->serialize();const auto bytes=j["params_binary"].get<nlohmann::json::binary_t>();
+        std::ofstream f(std::filesystem::path(trainingReplay)/"params.bin",std::ios::binary);f.write(reinterpret_cast<const char*>(bytes.data()),bytes.size());
+    }
     numTrainingElements = nElements;
-    std::cout << epochs << " " << lossValue << std::endl;
+    if (const char* auditPath = std::getenv("NIRC_TRAINING_AUDIT"))
+        if (epochs == 1 || epochs % 128 == 0)
+        {
+            std::ofstream stream(auditPath, std::ios::app);
+            stream << nlohmann::json({{"epoch",epochs},{"records",nElements},
+                {"batch",elementsPerBatch},{"steps",numStepsPerFrame},
+                {"learning_rate",optimizer->learning_rate()},{"loss",lossValue}}).dump() << '\n';
+        }
+    // Live training statistics are available in the GUI; avoid per-frame console I/O.
     return lossValue;
 }
 
@@ -212,7 +291,85 @@ void Falcor::NNLaplacianPart::predict(
         if (const char* path = std::getenv("NIRC_HYBRID_CAPTURE"))
             if (auto* hybrid = dynamic_cast<nirc_hybrid::Network*>(network.get())) hybrid->captureInference(trainingStream, X, nElements, path, output_data, y.n_bytes(), outputPixelCount, outputAllocationBytes);
     }
+    const char* profileDirectory = std::getenv("NIRC_INFERENCE_PROFILE");
+    const bool profile = profileDirectory && epochs >= 512 && inferenceProfileFrames < 72 && thp && pixel_m;
+    cudaEvent_t profileBegin{}, profileEnd{};
+    if (profile) {
+        CUDA_CHECK_THROW(cudaEventCreate(&profileBegin));
+        CUDA_CHECK_THROW(cudaEventCreate(&profileEnd));
+        CUDA_CHECK_THROW(cudaEventRecord(profileBegin, trainingStream));
+    }
     network->inference(trainingStream, X, y, nElements, mapping, bBStart, bBEnd, output_data);
+    // Opt-in cross-renderer replay. Capture real Falcor inputs and EMA weights,
+    // plus raw predictions before signed pixel accumulation.
+    if (epochs >= 512 && thp && pixel_m)
+        if (const char* portCapture = std::getenv("NIRC_PORT_CAPTURE"))
+        {
+            static bool captured = false;
+            if (!captured)
+            {
+                captured = true;
+                const auto directory = std::filesystem::path(portCapture);
+                std::filesystem::create_directories(directory);
+                auto save = [&](const std::string& file, const void* data, size_t bytes) {
+                    std::vector<char> host(bytes);
+                    CUDA_CHECK_THROW(cudaMemcpyAsync(host.data(), data, bytes, cudaMemcpyDeviceToHost, trainingStream));
+                    CUDA_CHECK_THROW(cudaStreamSynchronize(trainingStream));
+                    std::ofstream stream(directory/file, std::ios::binary); stream.write(host.data(), bytes);
+                };
+                const uint32_t count = std::min(nElements, 65536u);
+                save("pixels.bin",pixel_m,count*sizeof(uint32_t));
+                nlohmann::json metadata = {{"queries",count},{"epoch",epochs},{"parameters",network->n_params()}};
+                for (int c = 0; c < 5; ++c)
+                {
+                    const auto& input = X.data[c];
+                    save("input"+std::to_string(c)+".bin", input.data(), input.n_bytes());
+                    metadata["channels"].push_back({{"rows",input.rows()},{"cols",input.cols()},{"mapped",X.mappings[c]!=nullptr}});
+                    if (X.mappings[c]) save("mapping"+std::to_string(c)+".bin",X.mappings[c],count*sizeof(int));
+                }
+                const auto serialized = trainer->serialize();
+                const auto weights = serialized["params_binary"].get<nlohmann::json::binary_t>();
+                std::ofstream stream(directory/"params.bin",std::ios::binary);
+                stream.write(reinterpret_cast<const char*>(weights.data()),weights.size()); stream.close();
+                tcnn::GPUMatrix<float> raw(3,(count+255)/256*256);
+                CUDA_CHECK_THROW(cudaMemsetAsync(raw.data(),0,raw.n_bytes(),trainingStream));
+                network->inference(trainingStream,X,raw,count,mapping,bBStart,bBEnd);
+                save("predictions.bin",raw.data(),count*3*sizeof(float));
+                std::ofstream(directory/"metadata.json") << metadata.dump(2);
+            }
+        }
+    if (profile) {
+        CUDA_CHECK_THROW(cudaEventRecord(profileEnd, trainingStream));
+        CUDA_CHECK_THROW(cudaEventSynchronize(profileEnd));
+        float ms = 0;
+        CUDA_CHECK_THROW(cudaEventElapsedTime(&ms, profileBegin, profileEnd));
+        CUDA_CHECK_THROW(cudaEventDestroy(profileBegin));
+        CUDA_CHECK_THROW(cudaEventDestroy(profileEnd));
+        if (inferenceProfileFrames++ >= 8) {
+            mInferenceProfileMs.push_back(ms);
+            mInferenceProfileQueries.push_back(nElements);
+        }
+        if (inferenceProfileFrames == 72) {
+            const auto* hybridNetwork = dynamic_cast<nirc_hybrid::Network*>(network.get());
+            const bool hybrid = hybridNetwork != nullptr;
+            const auto* local = dynamic_cast<nirc_local::LocalNetworkBase*>(network.get());
+            const size_t topology = hybrid ? size_t(20 + 80 + 320 + 1280) * sizeof(nirc_hybrid::Face) : 0;
+            nlohmann::json report = {{"inference_ms",mInferenceProfileMs},{"queries",mInferenceProfileQueries},
+                {"training_epoch",epochs},{"warmup_frames",8},{"parameter_count",network->n_params()},
+                {"fp16_inference_weights_bytes",network->n_params()*sizeof(precision_t)},
+                {"persistent_parameter_optimizer_bytes",network->n_params()*(hybrid?32ull:28ull)+topology+(local?local->extraGradientBytes():0)},
+                {"spherical_topology_bytes",topology},
+                {"local_mlp_float_gradient_bytes",local?local->extraGradientBytes():0},
+                {"local_mlp_input_dims",local?local->inputWidth():0},
+                {"hybrid_mlp_backend",hybridNetwork?hybridNetwork->mlpBackend():"not_applicable"},
+                {"mlp_texture_payload_bytes",hybridNetwork?hybridNetwork->texturePayloadBytes():0},
+                {"mlp_texture_note","Payload excludes CUDA array allocation padding; not included in TCNN tracked bytes. Texture refresh is included in inference timing."},
+                {"tcnn_tracked_cuda_bytes",tcnn::total_n_bytes_allocated().load()},
+                {"scope","CUDA events around production encoding, neural inference, and fused signed pixel accumulation; excludes output clears, rendering, training, and external fence waits. Separate profiling run."}};
+            std::filesystem::create_directories(profileDirectory);
+            std::ofstream(std::filesystem::path(profileDirectory)/"inference-profile.json") << report.dump(2);
+        }
+    }
 }
 
 bool Falcor::NNLaplacianPart::renderUI(Gui::Widgets& widget)
@@ -1496,35 +1653,41 @@ bool Falcor::NNLaplacian::predict(
     }
 
     if (bPredictionLOD0 || bForcePredict) {
-        if (const char* directory = std::getenv("NIRC_HYBRID_CAPTURE"))
+        const char* profileDirectory = std::getenv("NIRC_INFERENCE_PROFILE");
+        const char* allocationDirectory = profileDirectory ? profileDirectory : std::getenv("NIRC_HYBRID_CAPTURE");
+        if (const char* directory = allocationDirectory)
         {
             auto* hybrid = dynamic_cast<nirc_hybrid::Network*>(m_networks[0]->network.get());
-            if (hybrid && m_networks[0]->epochs >= 512 && !hybrid->hasCapturedInference())
+            if (m_networks[0]->epochs >= 512 && (profileDirectory ? m_networks[0]->inferenceProfileFrames == 0 : hybrid && !hybrid->hasCapturedInference()))
             {
                 // Record D3D resource capacities separately from active CUDA views.
                 nlohmann::json allocations;
                 std::vector<const Falcor::Buffer*> seen;
                 size_t total = 0;
-                auto record = [&](const std::string& label, const Falcor::ref<Falcor::Buffer>& buffer)
+                size_t activeTotal = 0;
+                auto record = [&](const std::string& label, const Falcor::ref<Falcor::Buffer>& buffer, uint32_t activeCount)
                 {
                     if (!buffer) return;
                     auto it = std::find(seen.begin(), seen.end(), buffer.get());
                     nlohmann::json item = {{"name", label}, {"bytes", buffer->getSize()},
-                        {"capacity_elements", buffer->getElementCount()}, {"stride", buffer->getStructSize()}};
+                        {"capacity_elements", buffer->getElementCount()}, {"stride", buffer->getStructSize()},
+                        {"active_bytes",size_t(activeCount)*buffer->getStructSize()}};
                     if (it != seen.end()) item["alias_of_unique_buffer"] = std::distance(seen.begin(), it);
-                    else { total += buffer->getSize(); seen.push_back(buffer.get()); }
+                    else { total += buffer->getSize(); activeTotal += size_t(activeCount)*buffer->getStructSize(); seen.push_back(buffer.get()); }
                     allocations["buffers"].push_back(item);
                 };
                 for (size_t channel = 0; channel < X.data.size(); ++channel)
                 {
-                    record("input_" + std::to_string(channel), X.data[channel]);
-                    record("mapping_" + std::to_string(channel), X.mappings[channel]);
+                    record("input_" + std::to_string(channel), X.data[channel], X.numElementsPerChannel[channel]);
+                    record("mapping_" + std::to_string(channel), X.mappings[channel], numElements);
                 }
-                record("throughput", thp);
-                record("pixel_indices", pixel_mapping);
-                record("prediction_output", y);
+                record("throughput", thp, numElements);
+                record("pixel_indices", pixel_mapping, numElements);
+                record("prediction_output", y, thp ? outputPixelCount : numElements);
                 allocations["unique_buffer_bytes"] = total;
-                allocations["scope"] = "Main hybrid inference request buffers; excludes scene, textures, training buffers, and allocator overhead";
+                allocations["active_buffer_bytes"] = activeTotal;
+                allocations["queries"] = numElements;
+                allocations["scope"] = "Main NIRC inference request buffers; excludes scene, textures, training buffers, and allocator overhead";
                 std::filesystem::create_directories(directory);
                 std::ofstream(std::filesystem::path(directory) / "renderer-allocations.json") << allocations.dump(2);
             }

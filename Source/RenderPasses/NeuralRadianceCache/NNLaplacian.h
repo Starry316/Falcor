@@ -104,7 +104,10 @@ namespace Falcor
 
         std::shared_ptr<tcnn::Network<float, precision_t>> network;
         uint32_t numStepsPerFrame = 2;
+        uint32_t inferenceProfileFrames = 0;
     private:
+        std::vector<float> mInferenceProfileMs;
+        std::vector<uint32_t> mInferenceProfileQueries;
         std::string name;
         float* bBStart;
         float* bBEnd;

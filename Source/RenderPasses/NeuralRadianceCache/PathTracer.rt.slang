@@ -160,6 +160,7 @@ cbuffer GeneralData : register(b4)
     uint gd_hash_grid_size;
     uint max_bounce_with_cv;
     int2 debug_pixel_id;
+    uint inspector_seed;
     int2 original_dim;
     int2 train_dim_window;
     float gRoulleteProb;
@@ -176,6 +177,8 @@ ParameterBlock<PathTracerData> gData;
 // Outputs (optional)
 RWTexture2D<float4> gOutputM2;
 RWTexture2D<float4> gOutputColor;
+RWTexture2D<float4> gInspectorDirect;
+RWTexture2D<float4> gInspectorBSDF;
 RWTexture2D<float4> gOutputAlbedo;
 RWTexture2D<float4> gOutputNormal;
 RWTexture2D<uint> gOutputTime;
@@ -628,6 +631,91 @@ void rayGen()
     float3 outNormalValue = float3(0.0f, 0.0f, 0.0f);
 
     float4 backL = 0;
+#if HEMISPHERICAL_RENDER
+    // Use an unjittered pixel-centre hit so the reference averages one fixed
+    // surface point even when the main visibility pass uses temporal AA jitter.
+    Ray inspectorRay = gScene.camera.computeRayPinhole(surfacePixelID, original_dim, false);
+    InteriorList inspectorInterior = {};
+    bool inspectorHit = traceScatterRay(inspectorRay.origin, inspectorRay.dir, inspectorInterior, hit);
+    if (!inspectorHit || !hit.isValid() || hit.getType() != HitType::Triangle)
+    {
+        gOutputColor[launchIndex] = 0.f;
+        gInspectorDirect[launchIndex] = 0.f;
+        gInspectorBSDF[launchIndex] = 0.f;
+        return;
+    }
+    const TriangleHit inspectorTriangle = hit.getTriangleHit();
+    const VertexData inspectorVertex = gScene.getVertexData(inspectorTriangle);
+    sd = prepareLegacyShadingData(inspectorVertex, gScene.getMaterialID(inspectorTriangle.instanceID), -inspectorRay.dir, 0.f);
+#if GBUFFER_ADJUST_SHADING_NORMALS
+    adjustShadingNormal(sd, inspectorVertex);
+#endif
+    float2 uv = (float2(launchIndex) + .5f) / float2(launchDim);
+    float phi = (uv.x - .5f) * (2.f * 3.14159265359f);
+    float theta = uv.y * 3.14159265359f;
+    float3 localDir = float3(sin(theta) * sin(phi), cos(theta), sin(theta) * cos(phi));
+    float3 direction = sd.fromLocalFace(localDir);
+    // Legacy material eval includes the incident cosine. This allows the
+    // audit to compare Li*f*cos, as in the paper's Figure 6, without /pdf.
+    gInspectorBSDF[launchIndex] = float4(gData.standardMaterial.eval(sd, direction), 1.f);
+    float3 unused = 0.f;
+    XInferenceData query = encodeData(sd, sd, float3(1.f), unused);
+    query.Direction = ndir_to_oct_snorm(direction);
+    if (all(launchIndex == uint2(0)))
+    {
+        gPredBuffer1.IncrementCounter();
+        gPredBuffer1[0] = query.Position;
+        gPredBuffer0[0] = (f32tof16(query.SurfaceNormal.x) << 16) | f32tof16(query.SurfaceNormal.y);
+        gPredBuffer2[0] = query.Roughness;
+        gPredBuffer3[0] = query.Color;
+    }
+    uint queryID = addToPredBuffer(query, 0);
+    gPredBufferPixelID[queryID] = launchIndex.x + launchIndex.y * launchDim.x;
+    gPredBufferThroughput[queryID] = 1.f;
+
+    // Trace Li directly. The first segment is a prescribed direction, not a
+    // BSDF or light sample: unit throughput and no first-segment MIS weight.
+    float support = dot(direction, sd.N) > 0.f && dot(direction, sd.faceN) > 0.f ? 1.f : .5f;
+    PathData probe = {};
+    probe.origin = sd.computeNewRayOrigin();
+    probe.dir = direction;
+    probe.thp = 1.f;
+    probe.pdf = 1.f;
+    probe.hit = hit;
+    probe.setDelta(true);
+    probe.sg = SampleGenerator(launchIndex, inspector_seed * 29u + 104729u);
+    if (!(kRayFootprintMode == TexLODMode::Mip0))
+        probe.rayFootprint = RayFootprint.create(hit.getTriangleHit(), surfacePixelID, original_dim, probe.origin,
+            gScene.camera.getPosition(), sd.faceN, sd.N, gData.params.screenSpacePixelSpreadAngle, sd.linearRoughness, true);
+    float3 origin = probe.origin;
+    float metric = 0.f;
+    float3 excludedDirect = 0.f;
+    [loop]
+    for (uint bounce = 0; bounce < max(1u, gData.params.maxBounces); ++bounce)
+    {
+        ShadowRay shadow = {};
+        TriangleLightHit lightHit = {};
+        float3 le = 0.f, lightThp = 0.f, env = 0.f, throughput = 1.f;
+        float mis = 1.f;
+        bool scattered = true;
+        bool keepTracing = tracePathSimple(gData, sd, probe, bounce, metric, origin, shadow, lightHit,
+            le, mis, lightThp, env, scattered, throughput, false, false, bounce == 0, false);
+#if !TRAIN_DIRECT
+        // Match the training target d.att below: first-hit emission is removed.
+        // Environment misses remain in the cache only when environment NEE is off.
+        // Continue tracing after this subtraction so reflected light is retained.
+        if (bounce == 0 && (probe.hit.isValid() || kUseEnvLightNEE))
+        {
+            excludedDirect = probe.L;
+            probe.L = 0.f;
+        }
+#endif
+        if (!keepTracing) break;
+    }
+    gOutputColor[launchIndex] = float4(probe.L, support);
+    gInspectorDirect[launchIndex] = float4(excludedDirect, support);
+    return;
+#endif
     if (loadShadingData(surfacePixelID, original_dim, gScene.camera, sd, hit))
     {
 

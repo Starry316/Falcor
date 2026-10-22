@@ -56,7 +56,7 @@ namespace
     const uint32_t kMaxAttributeSizeBytes = 8;
     const uint32_t kMaxRecursionDepth = 1;
 
-    const Falcor::uint2 DEBUG_RES = Falcor::uint2(256, 256);
+    const Falcor::uint2 DEBUG_RES = Falcor::uint2(512, 256);
 
     const std::string kIsNRCEnable = "IsNRCEnable";
     const std::string kIsBiased = "IsBiased";
@@ -158,6 +158,8 @@ extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registr
     registry.registerClass<Falcor::RenderPass, Falcor::DummyNeuralNetwork>();
     Falcor::ScriptBindings::registerBinding([](pybind11::module& m) {
         pybind11::class_<Falcor::DummyNeuralNetwork, Falcor::RenderPass, Falcor::ref<Falcor::DummyNeuralNetwork>> pass(m, "NeuralRadianceCache");
+        pass.def("inspectPixel", &Falcor::DummyNeuralNetwork::inspectPixel);
+        pass.def_property_readonly("inspectorSamples", &Falcor::DummyNeuralNetwork::getInspectorSamples);
         pass.def("resetLearning", &Falcor::DummyNeuralNetwork::resetNN);
         pass.def("setTraining", &Falcor::DummyNeuralNetwork::enableTraining);
         pass.def_property_readonly("trainingEpoch", &Falcor::DummyNeuralNetwork::getTrainingEpoch);
@@ -362,10 +364,11 @@ std::string Falcor::DummyNeuralNetwork::getDesc() { return kDesc; }
  Falcor::Properties Falcor::DummyNeuralNetwork::getProperties() const
 {
     Properties p = LegacyPathTracer::getProperties();
-    p["architecture"] = mNircArchitecture == 0 ? "Original" : mNircArchitecture == 1 ? "DirectionalHash" : "Hybrid";
+    p["architecture"] = mNircArchitecture == 0 ? "Original" : mNircArchitecture == 1 ? "DirectionalHash" : mNircArchitecture == 2 ? "Hybrid" : "OriginalHashLocal";
     p["interpolation"] = mNircInterpolation == 0 ? "Trilinear" : "Tetrahedral";
     p["mode"] = bNRCEnabled ? (bIncidentNRC ? "NIRC" : "NRC") : "PathTracing";
     p["correction"] = !bNRCBiased;
+    p["terminationMetric"] = bStopByMetric;
     p["training"] = bDispatchTrainingRays;
     p["referenceSamples"] = mNumGTSamples;
     p["cacheSamples"] = mNumNRCSamplesPerDepth[0];
@@ -375,6 +378,10 @@ std::string Falcor::DummyNeuralNetwork::getDesc() { return kDesc; }
     p["fusedOutput"] = bFusedOutput;
     p["indirectOnly"] = bOnlyIndirect;
     p["directionalInspector"] = bDebugHemispherical;
+    p["inspectorPixel"] = mSelectedPixel;
+    p["inspectorExposure"] = mInspectorExposure;
+    p["inspectorComponent"] = mInspectorComponent;
+    p["inspectorRotation"] = mInspectorRotation;
     return p;
 }
 
@@ -438,19 +445,21 @@ void Falcor::DummyNeuralNetwork::nrc_experiment_setup() {
     const bool previousIncident = bIncidentNRC;
     const uint32_t previousArchitecture = mNircArchitecture;
     const uint32_t previousInterpolation = mNircInterpolation;
+    const uint32_t previousCorrectionDepth = maxBounceWithCV;
     const std::string interpolation = props.get("interpolation", std::string("Tetrahedral"));
     if (interpolation != "Trilinear" && interpolation != "Tetrahedral") FALCOR_THROW("interpolation must be Trilinear or Tetrahedral");
     mNircInterpolation = interpolation == "Trilinear" ? 0u : 1u;
     const std::string architecture = props.get("architecture", std::string("Original"));
-    if (architecture != "Original" && architecture != "DirectionalHash" && architecture != "Hybrid")
-        FALCOR_THROW("architecture must be Original, DirectionalHash, or Hybrid");
-    mNircArchitecture = architecture == "Original" ? 0u : architecture == "DirectionalHash" ? 1u : 2u;
+    if (architecture != "Original" && architecture != "DirectionalHash" && architecture != "Hybrid" && architecture != "OriginalHashLocal")
+        FALCOR_THROW("architecture must be Original, DirectionalHash, Hybrid, or OriginalHashLocal");
+    mNircArchitecture = architecture == "Original" ? 0u : architecture == "DirectionalHash" ? 1u : architecture == "Hybrid" ? 2u : 3u;
     LegacyPathTracer::parseDictionary(props);
     std::string mode = props.get("mode", std::string("NIRC"));
     if (mode != "NRC" && mode != "NIRC" && mode != "PathTracing") FALCOR_THROW("mode must be NRC, NIRC, or PathTracing");
     bNRCEnabled = mode != "PathTracing";
     bIncidentNRC = mode == "NIRC";
     bNRCBiased = !props.get("correction", true);
+    bStopByMetric = props.get("terminationMetric", bStopByMetric);
     bDispatchTrainingRays = props.get("training", true);
     mNumGTSamples = std::clamp(props.get("referenceSamples", 1u), 1u, 10u);
     mNumNRCSamplesPerDepth[0] = props.get("cacheSamples", bIncidentNRC ? 4u : 1u);
@@ -459,9 +468,15 @@ void Falcor::DummyNeuralNetwork::nrc_experiment_setup() {
     if (mNumNRCSamplesPerDepth[0] + mNumNRCSamplesPerDepth[1] + mNumNRCSamplesPerDepth[2] > MAX_SAMPLES-3)
         FALCOR_THROW("Total cache samples must be at most {}", MAX_SAMPLES-3);
     maxBounceWithCV = props.get("lastCorrectionBounce", 3u);
+    if (previousCorrectionDepth != maxBounceWithCV) requestRecompile();
     bFusedOutput = props.get("fusedOutput", true);
     bOnlyIndirect = props.get("indirectOnly", false);
-    bDebugHemispherical = props.get("directionalInspector", false);
+    bDebugHemispherical = props.get("directionalInspector", false) && bIncidentNRC && bNRCEnabled;
+    mSelectedPixel = props.get("inspectorPixel", mSelectedPixel);
+    mInspectorExposure = props.get("inspectorExposure", mInspectorExposure);
+    mInspectorComponent = std::min(props.get("inspectorComponent", mInspectorComponent), 1u);
+    mInspectorRotation = props.get("inspectorRotation", mInspectorRotation);
+    mInspectorSamples = 0;
     if (model && (previousIncident != bIncidentNRC || previousArchitecture != mNircArchitecture || previousInterpolation != mNircInterpolation)) bResetModel = true;
     enableTraining(bDispatchTrainingRays);
     mOptionsChanged = true;
@@ -579,8 +594,21 @@ Falcor::RenderPassReflection Falcor::DummyNeuralNetwork::reflect(const CompileDa
     reflector.addInternal(kExpectedValuesTmp, "Expected Values Tmp").texture2D().format(ResourceFormat::RGBA32Float).bindFlags(Falcor::ResourceBindFlags::UnorderedAccess | Falcor::ResourceBindFlags::ShaderResource);
     reflector.addOutput(kColorOutputFinal, "Output FrameBuffer Predicted by Neural Network").format(ResourceFormat::RGBA32Float).bindFlags(Falcor::ResourceBindFlags::UnorderedAccess);
     reflector.addOutput(kColor2MomentOutput, "Output 2nd Moment").format(ResourceFormat::RGBA32Float).bindFlags(Falcor::ResourceBindFlags::UnorderedAccess);
-    reflector.addOutput(kColorOutputDebug, "Output FrameBuffer Predicted by Neural Network").texture2D(DEBUG_RES.x, DEBUG_RES.y).format(ResourceFormat::RGBA32Float).bindFlags(Falcor::ResourceBindFlags::UnorderedAccess);
-    reflector.addOutput(kColorOutputDebugGT, "Output FrameBuffer Predicted by Neural Network").texture2D(DEBUG_RES.x, DEBUG_RES.y).format(ResourceFormat::RGBA32Float).bindFlags(Falcor::ResourceBindFlags::UnorderedAccess);
+    reflector.addOutput(kColorOutputDebug, "Output FrameBuffer Predicted by Neural Network").texture2D(DEBUG_RES.x, DEBUG_RES.y).format(ResourceFormat::RGBA32Float).bindFlags(ResourceBindFlags::UnorderedAccess | ResourceBindFlags::ShaderResource);
+    reflector.addOutput(kColorOutputDebugGT, "Output FrameBuffer Predicted by Neural Network").texture2D(DEBUG_RES.x, DEBUG_RES.y).format(ResourceFormat::RGBA32Float).bindFlags(ResourceBindFlags::UnorderedAccess | ResourceBindFlags::ShaderResource);
+    reflector.addOutput("incomingReference", "Accumulated reference matching the cached continuation; alpha 1 supported, 0.5 below surface, 0 no surface")
+        .texture2D(DEBUG_RES.x, DEBUG_RES.y).format(ResourceFormat::RGBA32Float)
+        .bindFlags(ResourceBindFlags::UnorderedAccess | ResourceBindFlags::ShaderResource);
+    reflector.addOutput("incomingDirect", "Deterministic first-segment emission/environment excluded from the cache target")
+        .texture2D(DEBUG_RES.x, DEBUG_RES.y).format(ResourceFormat::RGBA32Float)
+        .bindFlags(ResourceBindFlags::UnorderedAccess | ResourceBindFlags::ShaderResource);
+    reflector.addOutput("incomingBSDF", "Selected surface BRDF times incident cosine for Figure 6 integrand comparisons")
+        .texture2D(DEBUG_RES.x, DEBUG_RES.y).format(ResourceFormat::RGBA32Float)
+        .bindFlags(ResourceBindFlags::UnorderedAccess | ResourceBindFlags::ShaderResource);
+    reflector.addOutput("incomingSpheres", "Learned incoming light (left) and path-traced reference (right)")
+        .texture2D(512, 256).format(ResourceFormat::RGBA32Float)
+        .bindFlags(ResourceBindFlags::UnorderedAccess | ResourceBindFlags::ShaderResource);
+
     reflector.addInput(kOurEstimations, "Optional diagnostic image").flags(RenderPassReflection::Field::Flags::Optional).texture2D().format(ResourceFormat::RGBA32Float).bindFlags(Falcor::ResourceBindFlags::ShaderResource);
     reflector.addInput(kGTEstimations, "Optional diagnostic image").flags(RenderPassReflection::Field::Flags::Optional).texture2D().format(ResourceFormat::RGBA32Float).bindFlags(Falcor::ResourceBindFlags::ShaderResource);
     return reflector;
@@ -588,9 +616,16 @@ Falcor::RenderPassReflection Falcor::DummyNeuralNetwork::reflect(const CompileDa
 
 void Falcor::DummyNeuralNetwork::compile(RenderContext* pRenderContext, const CompileData& compileData)
 {
+    mInspectorSamples = 0;
     LegacyPathTracer::compile(pRenderContext, compileData);
     const auto dimensions = compileData.defaultTexDims;
-    if (any(mScreenDim != dimensions) && !mInternalBuffers.empty())
+    // A training path may emit a record at every cached bounce, plus a
+    // light-sampled record when direct-light caching is enabled. Two records
+    // per path were insufficient for enclosed scenes such as Bathroom.
+    const uint32_t trainingCapacity = std::max(1u, (dimensions.x / 8) * (dimensions.y / 4)) *
+        2u * std::max(1u, maxBounceWithCV);
+    const bool capacityChanged = mTrainingSampleCapacity != trainingCapacity;
+    if ((any(mScreenDim != dimensions) || capacityChanged) && !mInternalBuffers.empty())
     {
         pRenderContext->submit(true);
         CUDA_CHECK_THROW(cudaDeviceSynchronize());
@@ -600,14 +635,15 @@ void Falcor::DummyNeuralNetwork::compile(RenderContext* pRenderContext, const Co
         YTrainingBuffer = nullptr;
         YTrainingEstimatorNNBuffer = nullptr;
     }
-    if (any(mScreenDim != dimensions))
+    if (any(mScreenDim != dimensions) || capacityChanged)
     {
         mScreenDim = dimensions;
         const uint32_t pixels = mScreenDim.x * mScreenDim.y;
         mainRenderData = NeuralRequestData("main", 3, (pixels * MAX_SAMPLES + 255) / 256 * 256, (pixels * 3 + 255) / 256 * 256, true);
         mInternalBuffers.clear();
     }
-    uint32_t dims = (mScreenDim.x / 8) * (mScreenDim.y / 4) * 2;
+    mTrainingSampleCapacity = trainingCapacity;
+    uint32_t dims = mTrainingSampleCapacity;
 
     uint32_t num_bounces = 1;
 
@@ -714,6 +750,7 @@ void Falcor::DummyNeuralNetwork::setTracerData(const Falcor::PortRenderData& ren
 
 void Falcor::DummyNeuralNetwork::setScene(Falcor::RenderContext* pRenderContext, const Falcor::ref<Falcor::Scene>& pScene)
 {
+    mInspectorSamples = 0;
     LegacyPathTracer::setScene(pRenderContext, pScene);
 
     mpScene = pScene;
@@ -790,7 +827,22 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
     }
 
     // Call shared pre-render code.
+    // Camera jitter changes every frame but the inspector uses a pixel-centre ray.
+    const auto sceneChanges = mpScene->getUpdates() & ~IScene::UpdateFlags::CameraPropertiesChanged;
+    const auto cameraChanges = mpScene->getCamera()->getChanges() & ~Camera::Changes::Jitter;
+    if (mOptionsChanged || sceneChanges != IScene::UpdateFlags::None || cameraChanges != Camera::Changes::None)
+        mInspectorSamples = 0;
     if (!beginFrame(pRenderContext, renderData)) return;
+    if (!bNRCEnabled || !bIncidentNRC) bDebugHemispherical = false;
+    if (bDebugHemispherical)
+    {
+        mSelectedPixel = min(mSelectedPixel, renderData.getDefaultTextureDims() - uint2(1));
+        if (!mpInspectorAccumulate)
+        {
+            mpInspectorAccumulate = ComputePass::create(portDevice(), "RenderPasses/NeuralRadianceCache/incomingAccumulate.cs.slang");
+            mpInspectorDisplay = ComputePass::create(portDevice(), "RenderPasses/NeuralRadianceCache/incomingDisplay.cs.slang");
+        }
+    }
 
 
     // Set compile-time constants.
@@ -985,7 +1037,10 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
         pProgram->addDefine("NUM_NRC_SAMPLES", std::to_string(1));
         mTracer.pVars->getRootVar()["GeneralData"]["debug_pixel_id"] = mSelectedPixel;
         mTracer.pVars->getRootVar()["GeneralData"]["samples_per_pixel"] = 1;
+        mTracer.pVars->getRootVar()["GeneralData"]["inspector_seed"] = mInspectorSeed++;
         mTracer.pVars->getRootVar()["gOutputColor"] = renderData.getTexture(kColorOutputDebugGT);
+        mTracer.pVars->getRootVar()["gInspectorDirect"] = renderData.getTexture("incomingDirect");
+        mTracer.pVars->getRootVar()["gInspectorBSDF"] = renderData.getTexture("incomingBSDF");
 
         debugRenderData.bindBuffers(pRenderContext, mTracer.pVars, renderData, DEBUG_RES);
 
@@ -1132,6 +1187,8 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
         uint32_t* uavCounters = (uint32_t*)mpCounterTrainBuffer->map();
         NumTrainingElements = uavCounters[0];
         mpCounterTrainBuffer->unmap();
+        FALCOR_CHECK(NumTrainingElements <= mTrainingSampleCapacity,
+            "Training request count {} exceeds capacity {}", NumTrainingElements, mTrainingSampleCapacity);
 
         mainRenderData.updateNumActiveElements();
 
@@ -1161,7 +1218,7 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
     uint32_t w = mScreenDim.x;
     uint32_t h = mScreenDim.y;
     uint32_t nElements = w * h * MAX_SAMPLES;
-    uint32_t nrcElements = w * h / (8 * 4);
+    uint32_t nrcElements = mTrainingSampleCapacity;
 
 
     if (!model || bResetModel)
@@ -1183,6 +1240,9 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
             else if (mNircArchitecture == 2)
                 p += mNircInterpolation == 0 ? "RenderPasses/NeuralRadianceCache/network_config_nirc_hybrid.json"
                     : "RenderPasses/NeuralRadianceCache/network_config_nirc_hybrid_tetrahedral.json";
+            else if (mNircArchitecture == 3)
+                p += mNircInterpolation == 0 ? "RenderPasses/NeuralRadianceCache/network_config_nirc_local.json"
+                    : "RenderPasses/NeuralRadianceCache/network_config_nirc_local_tetrahedral.json";
             else
                 p += kNetworkConfigNIRC;
         }
@@ -1217,7 +1277,7 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
 
     enableTraining(bDispatchTrainingRays);
 
-    nrcElements = ((w * h) / (8 * 4))*2;
+    nrcElements = mTrainingSampleCapacity;
 
 
     if (estimationsBuffer == nullptr) {
@@ -1340,14 +1400,15 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
     }
     else{
         if (bDebugHemispherical) {
-            bool havePredictions = inferencePredict(model, mainRenderData, renderData.getTexture(kColorOutputFinal), signalValue, mpFenceForPredictionData, nullptr, false, bFusedOutput && bIncidentNRC && !bJustStarted);
+            bool havePredictions = inferencePredict(model, mainRenderData, renderData.getTexture(kColorOutputFinal), signalValue, mpFenceForPredictionData, mpFenceOut, false, bFusedOutput && bIncidentNRC && !bJustStarted);
             pRenderContext->clearTexture(renderData.getTexture(kColorOutputDebug).get());
-            inferencePredict(model, debugRenderData, renderData.getTexture(kColorOutputDebug), 0, nullptr, mpFenceOut);
+            bool haveDebugPredictions = inferencePredict(model, debugRenderData, renderData.getTexture(kColorOutputDebug), 0, nullptr, mpFenceOut);
 
             if (havePredictions) {
                 inferencePredictMerge(mainRenderData, renderData.getTexture(kColorOutputFinal), signalValue, mpFenceForPredictionData, mpFenceOut, renderData.getTexture(kColor2MomentOutput), bFusedOutput&& bIncidentNRC&& !bJustStarted);
-                inferencePredictMerge(debugRenderData, renderData.getTexture(kColorOutputDebug), 0, nullptr, nullptr, nullptr);
             }
+            if (haveDebugPredictions)
+                inferencePredictMerge(debugRenderData, renderData.getTexture(kColorOutputDebug), 0, nullptr, mpFenceOut, nullptr);
         }
         else {
             bool havePredictions = inferencePredict(model, mainRenderData, renderData.getTexture(kColorOutputFinal), signalValue, mpFenceForPredictionData, mpFenceOut, false, bFusedOutput && bIncidentNRC && !bJustStarted);
@@ -1426,7 +1487,7 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
 
 
     if (NumTrainingBuffersForNNEstimator > 0 && ((bVarianceLoss) || (bFilteringNetwork && bIncidentNRC)) && modelEstimator->getTrainFlag() && model->getTrainFlag()) {
-        uint32_t dims = (w / 8) * (h / 4) * 2;
+        uint32_t dims = mTrainingSampleCapacity;
 
         if (YTrainingEstimatorNNBuffer == nullptr) {
             YTrainingEstimatorNNBuffer = Falcor::PortBuffer::createStructured(sizeof(Falcor::YData), dims, ((Falcor::ResourceBindFlags::Shared | Falcor::ResourceBindFlags::UnorderedAccess | Falcor::ResourceBindFlags::ShaderResource)));
@@ -1447,7 +1508,7 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
 
 
     if (NumTrainingElements > 0 && model->getTrainFlag()) {
-        uint32_t dims = (w / 8) * (h / 4) * 4;
+        uint32_t dims = mTrainingSampleCapacity;
 
         if (YTrainingBuffer == nullptr) {
             YTrainingBuffer = Falcor::PortBuffer::createStructured(sizeof(Falcor::YData), dims*2, ((Falcor::ResourceBindFlags::Shared | Falcor::ResourceBindFlags::UnorderedAccess | Falcor::ResourceBindFlags::ShaderResource)));
@@ -1522,7 +1583,7 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
 
             model->transformNetworkOutput(NumTrainingElements, NumTrainingElements, predColorVarianceLossTmp, predColorVarianceLossTmp, VarianceLossThroughput, eventNetworksSyncResVar, model->getOutputScale(), false, true);
 
-            uint32_t dims = (w / 8) * (h / 4) * 2;
+            uint32_t dims = mTrainingSampleCapacity;
 
             if (YTrainingEstimatorNNBuffer == nullptr) {
                 YTrainingEstimatorNNBuffer = Falcor::PortBuffer::createStructured(sizeof(Falcor::YData), dims, ((Falcor::ResourceBindFlags::Shared | Falcor::ResourceBindFlags::UnorderedAccess | Falcor::ResourceBindFlags::ShaderResource)));
@@ -1575,24 +1636,77 @@ void Falcor::DummyNeuralNetwork::execute(Falcor::RenderContext* pRenderContext, 
     m_training_error = model->getTrainingError();
 #endif
 
+    if (const char* directory = std::getenv("NIRC_INFERENCE_PROFILE")) {
+        const auto path = std::filesystem::path(directory) / "pass-buffers.json";
+        if (m_training_epoch >= 512 && !std::filesystem::exists(path)) {
+            nlohmann::json memory;
+            std::vector<const Buffer*> seen;
+            size_t total = 0;
+            auto record = [&](const std::string& name, const ref<Buffer>& buffer) {
+                if (!buffer || std::find(seen.begin(), seen.end(), buffer.get()) != seen.end()) return;
+                seen.push_back(buffer.get()); total += buffer->getSize();
+                memory["buffers"].push_back({{"name",name},{"bytes",buffer->getSize()}});
+            };
+            for (const auto& entry : mInternalBuffers) record(entry.first, entry.second->asBuffer());
+            record("training_targets",YTrainingBuffer);
+            record("estimator_training_targets",YTrainingEstimatorNNBuffer);
+            record("estimations",estimationsBuffer); record("our_estimations",ourestimationsBuffer);
+            record("variance_loss",predColorVarianceLoss); record("variance_loss_tmp",predColorVarianceLossTmp);
+            record("variance_loss_part",predColorVarianceLossPart);
+            record("q_learning_tmp",predColorQLearningBufferTmp); record("q_learning",predColorQLearningBuffer);
+            record("main_predictions",mainRenderData.mpPredictionResults);
+            record("debug_predictions",debugRenderData.mpPredictionResults);
+            memory["buffer_resource_bytes"] = total;
+            memory["training_capacity"] = mTrainingSampleCapacity;
+            memory["scope"] = "Deduplicated pass-owned internal buffers, target arrays and prediction outputs. Includes main inference request buffers. Excludes scene, render-graph textures, CUDA allocations and driver overhead.";
+            std::filesystem::create_directories(directory);
+            std::ofstream(path) << memory.dump(2);
+        }
+    }
+
    // mpPixelStats->setEnabled(true);
+    if (bDebugHemispherical)
+    {
+        FALCOR_PROFILE(pRenderContext, "Incoming lighting inspector display");
+        auto a = mpInspectorAccumulate->getRootVar();
+        a["referenceSample"] = renderData.getTexture(kColorOutputDebugGT);
+        a["referenceMean"] = renderData.getTexture("incomingReference");
+        a["Params"]["sampleCount"] = mInspectorSamples;
+        mpInspectorAccumulate->execute(pRenderContext, uint3(DEBUG_RES, 1));
+        ++mInspectorSamples;
+        auto d = mpInspectorDisplay->getRootVar();
+        d["prediction"] = renderData.getTexture(kColorOutputDebug);
+        d["referenceMean"] = renderData.getTexture("incomingReference");
+        d["directRadiance"] = renderData.getTexture("incomingDirect");
+        mpInspectorPreview = renderData.getTexture("incomingSpheres");
+        d["spheres"] = mpInspectorPreview;
+        d["Params"]["exposure"] = mInspectorExposure;
+        d["Params"]["rotation"] = mInspectorRotation;
+        d["Params"]["includeDirect"] = mInspectorComponent;
+        mpInspectorDisplay->execute(pRenderContext, uint3(512, 256, 1));
+    }
     endFrame(pRenderContext, renderData);
 }
 
 
-bool Falcor::DummyNeuralNetwork::onMouseEvent(const MouseEvent& mouseEvent) {
-    Falcor::LegacyPathTracer::onMouseEvent(mouseEvent);
+void Falcor::DummyNeuralNetwork::inspectPixel(uint32_t x, uint32_t y)
+{
+    mSelectedPixel = uint2(x, y);
+    bDebugHemispherical = bNRCEnabled && bIncidentNRC;
+    bFreezeDebugMouse = true;
+    mInspectorSamples = 0;
+}
 
-    if (bDebugHemispherical)
+bool Falcor::DummyNeuralNetwork::onMouseEvent(const MouseEvent& mouseEvent)
+{
+    if (bDebugHemispherical && !bFreezeDebugMouse && mouseEvent.type == MouseEvent::Type::ButtonDown &&
+        mouseEvent.button == Input::MouseButton::Left)
     {
-        if (mouseEvent.type == Falcor::MouseEvent::Type::Move && !bFreezeDebugMouse)
-        {
-            mSelectedPixel = uint2(mouseEvent.pos * float2(mScreenDim));
-            return false;
-        }
+        const uint2 pixel = uint2(clamp(mouseEvent.pos, float2(0.f), float2(1.f)) * float2(mScreenDim));
+        inspectPixel(pixel.x, pixel.y);
+        return true;
     }
-
-    return false;
+    return Falcor::LegacyPathTracer::onMouseEvent(mouseEvent);
 }
 
 bool Falcor::DummyNeuralNetwork::onKeyEvent(const Falcor::KeyboardEvent& keyEvent) {
@@ -1635,14 +1749,14 @@ void Falcor::DummyNeuralNetwork::renderUI(Falcor::Gui::Widgets& widget)
     if (bNRCEnabled)
     {
         if (bIncidentNRC) {
-            static const Gui::DropdownList architectures = {{0, "Original NIRC"}, {1, "Directional hash + shared MLP"}, {2, "Directional hash + interpolated MLPs"}};
+            static const Gui::DropdownList architectures = {{0, "Original NIRC"}, {1, "Directional hash + shared MLP"}, {2, "Directional hash + interpolated MLPs"}, {3, "Original hash + interpolated MLPs"}};
             if (widget.dropdown("Cache model", architectures, mNircArchitecture)) { bResetModel = true; dirty = true; }
             widget.tooltip("Changing the model restarts learning. Hybrid blends weights of nearby local MLPs in world space. The two-level estimator is unchanged.");
             if (mNircArchitecture != 0)
             {
                 static const Gui::DropdownList interpolations = {{1, "4 corners (tetrahedral)"}, {0, "8 corners (trilinear)"}};
                 if (widget.dropdown("Spatial interpolation", interpolations, mNircInterpolation)) { bResetModel = true; dirty = true; }
-                widget.tooltip("Four corners halve spatial blending work in the directional grid and local MLP banks. Both modes interpolate continuously. Changing this restarts learning.");
+                widget.tooltip("Four corners halve spatial blending work in local MLP banks and the directional grid. Original hash interpolation stays trilinear. Both modes interpolate continuously. Changing this restarts learning.");
             }
         }
         bool correction = !bNRCBiased;
@@ -1661,7 +1775,7 @@ void Falcor::DummyNeuralNetwork::renderUI(Falcor::Gui::Widgets& widget)
                     dirty |= sampling.var(label.c_str(), mNumNRCSamplesPerDepth[depth], 0u, MAX_SAMPLES - 3u - std::min(used, MAX_SAMPLES - 3u));
                 }
                 sampling.tooltip("Cheap neural evaluations used to integrate incoming light at each supported bounce.");
-                dirty |= sampling.var("Correct through", maxBounceWithCV, 0u, 5u);
+                if (sampling.var("Correct through", maxBounceWithCV, 0u, 5u)) { dirty = true; requestRecompile(); }
             }
         }
         if (auto training = widget.group("Training", false))
@@ -1685,10 +1799,38 @@ void Falcor::DummyNeuralNetwork::renderUI(Falcor::Gui::Widgets& widget)
         dirty |= path.checkbox("Indirect lighting only", bOnlyIndirect);
         dirty |= path.checkbox("Fixed random seed", mSharedParams.useFixedSeed);
     }
+    if (bNRCEnabled && bIncidentNRC)
+    {
+        if (auto inspector = widget.group("Incoming lighting", true))
+        {
+            if (inspector.checkbox("Show spheres and reference", bDebugHemispherical)) mInspectorSamples = 0;
+            if (bDebugHemispherical)
+            {
+                Gui::Window inspector(widget, "Incoming lighting spheres", bDebugHemispherical, uint2(560, 550), uint2(420, 40));
+                if (inspector.button("Pick surface pixel")) bFreezeDebugMouse = false;
+                inspector.text(bFreezeDebugMouse ? "Selection pinned. F to pick again." : "Click a surface in the main viewport.");
+                uint2 pixel = mSelectedPixel;
+                if (inspector.var("Pixel (x, y)", pixel)) inspectPixel(pixel.x, pixel.y);
+                static const Gui::DropdownList components = {{0, "Cached component"}, {1, "Full incoming (adds traced direct)"}};
+                inspector.dropdown("Lighting", components, mInspectorComponent);
+                inspector.var("Exposure (EV)", mInspectorExposure, -12.f, 12.f, .1f);
+                inspector.var("Rotation (yaw, pitch)", mInspectorRotation, -180.f, 180.f, 1.f);
+                if (inspector.button("Restart reference")) mInspectorSamples = 0;
+                inspector.text("Reference: " + std::to_string(mInspectorSamples) + " samples/direction");
+                inspector.text(mInspectorComponent == 0 ? "Learned cached light                     Matching reference" :
+                    "Cache + traced direct                     Full reference");
+                if (mpInspectorPreview) inspector.image("Incoming spheres", mpInspectorPreview.get(), float2(512, 256));
+                inspector.text("Centre points along surface normal. Rotate to see all directions.");
+                inspector.text("Stripes: below the trained hemisphere. Grey: no surface selected.");
+                inspector.text("Shared exposure; no surface BRDF or cosine weighting.");
+                inspector.text("Visible emitters are handled separately from cache learning.");
+                inspector.text("Full view adds the same traced direct term to both sides.");
+                inspector.tooltip("Reference uses the scene lighting and path depth, without the neural cache. Training continues unless paused above. Inspector adds work only while enabled.");
+            }
+        }
+    }
     if (auto debug = widget.group("Diagnostics", false))
     {
-        dirty |= debug.checkbox("Show directional inspector", bDebugHemispherical);
-        if (bDebugHemispherical) debug.var("Inspector pixel", mSelectedPixel);
         dirty |= debug.checkbox("Record second moment", bStDevEstimation);
         dirty |= debug.checkbox("Fused NIRC output", bFusedOutput);
         debug.tooltip("Original fused CUDA integration. Keep enabled for normal NIRC rendering.");
