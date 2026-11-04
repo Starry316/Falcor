@@ -15,12 +15,11 @@ param(
     [switch]$Fullscreen,
     [switch]$Animate,
     [switch]$Build,
-    [string]$SdkDirectory = ''
+    [string]$CudaArchitectures = 'native'
 )
 $ErrorActionPreference = 'Stop'
 if ($Build) {
-    if (-not $SdkDirectory) { throw '-Build requires -SdkDirectory pointing to the exported inference SDK.' }
-    & (Join-Path $PSScriptRoot 'build_neural.ps1') -SdkDirectory $SdkDirectory -BuildDirectory $BuildDirectory
+    & (Join-Path $PSScriptRoot 'build_neural.ps1') -BuildDirectory $BuildDirectory -CudaArchitectures $CudaArchitectures
 }
 Push-Location $PSScriptRoot
 $taskOldConfig = $env:MPMAT_CONFIG

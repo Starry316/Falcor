@@ -1,17 +1,28 @@
 param(
-    [Parameter(Mandatory=$true)][string]$SdkDirectory,
     [string]$BuildDirectory = 'build/windows-ninja-msvc-ci',
     [ValidateSet('Release','Debug')][string]$Configuration = 'Release',
+    [string]$CudaArchitectures = 'native',
+    [ValidateRange(1,256)][int]$Jobs = [Math]::Min(8, [Environment]::ProcessorCount),
     [switch]$Clean
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = $PSScriptRoot
-$taskSdk = (Resolve-Path -LiteralPath $SdkDirectory).Path
-if (-not (Test-Path -LiteralPath (Join-Path $taskSdk 'include/inference_bridge.h'))) {
-    throw 'SdkDirectory must be an exported MPMat inference SDK.'
+if (-not [IO.Path]::IsPathRooted($BuildDirectory)) { $BuildDirectory = Join-Path $taskRoot $BuildDirectory }
+$BuildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
+$taskCmake = Join-Path $taskRoot 'tools/.packman/cmake/bin/cmake.exe'
+$taskNinja = Join-Path $taskRoot 'tools/.packman/ninja/ninja.exe'
+if (-not (Test-Path -LiteralPath $taskCmake) -or -not (Test-Path -LiteralPath $taskNinja) -or
+    -not (Test-Path -LiteralPath (Join-Path $taskRoot 'external/pybind11/CMakeLists.txt'))) {
+    Write-Host 'Preparing Falcor submodules and pinned build dependencies...'
+    Push-Location $taskRoot
+    try {
+        & (Join-Path $taskRoot 'setup.bat')
+        if ($LASTEXITCODE -ne 0) { throw 'Falcor dependency setup failed. Check Git and network access, then retry.' }
+    } finally { Pop-Location }
 }
 if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     $taskVsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+    if (-not (Test-Path -LiteralPath $taskVsWhere)) { throw 'Install Visual Studio C++ Build Tools with a Windows SDK.' }
     $taskVsRoot = & $taskVsWhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (-not $taskVsRoot) { throw 'Visual Studio C++ tools were not found.' }
     $taskVsDev = Join-Path $taskVsRoot 'Common7/Tools/VsDevCmd.bat'
@@ -28,14 +39,12 @@ if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
         }
     }
 }
-$taskCmake = Join-Path $taskRoot 'tools/.packman/cmake/bin/cmake.exe'
-$taskNinja = Join-Path $taskRoot 'tools/.packman/ninja/ninja.exe'
 $env:VSLANG = '1033'
 
 # CMake 3.24 can mis-decode localized MSVC /showIncludes output. Ninja matches
 # raw bytes, so preserve the compiler's actual output encoding unchanged.
 # Detect the actual prefix without changing the workstation locale.
-$taskProbeDirectory = Join-Path ([IO.Path]::GetFullPath((Join-Path $taskRoot $BuildDirectory))) 'showincludes-probe'
+$taskProbeDirectory = Join-Path $BuildDirectory 'showincludes-probe'
 New-Item -ItemType Directory -Path $taskProbeDirectory -Force | Out-Null
 [IO.File]::WriteAllText((Join-Path $taskProbeDirectory 'falcor-showincludes-probe.h'), '// include dependency probe', [Text.Encoding]::ASCII)
 [IO.File]::WriteAllText((Join-Path $taskProbeDirectory 'probe.cpp'), "#include `"falcor-showincludes-probe.h`"`nint falcorIncludeProbe;", [Text.Encoding]::ASCII)
@@ -47,6 +56,8 @@ $taskProbeProcess.StartInfo.FileName = $taskCompiler
 $taskProbeProcess.StartInfo.Arguments = '/nologo /showIncludes /c /Fodetect-prefix.obj probe.cpp'
 $taskProbeProcess.StartInfo.WorkingDirectory = $taskProbeDirectory
 $taskProbeProcess.StartInfo.UseShellExecute = $false
+# Inherit Ninja's console encoding. CREATE_NO_WINDOW makes localized cl.exe
+# switch to the ANSI code page, producing a different /showIncludes prefix.
 $taskProbeProcess.StartInfo.CreateNoWindow = $false
 $taskProbeProcess.StartInfo.RedirectStandardOutput = $true
 $taskProbeProcess.StartInfo.RedirectStandardError = $true
@@ -100,12 +111,17 @@ if ($LASTEXITCODE -ne 0 -or -not ($taskProbeDeps -match 'falcor-showincludes-pro
 }
 Push-Location $taskRoot
 try {
-    Write-Host "Neural inference SDK: $taskSdk"
+    Write-Host "Building bundled CUDA inference (architectures: $CudaArchitectures)"
     Repair-MsvcIncludePrefix $BuildDirectory
-    & $taskCmake --preset windows-ninja-msvc-ci -B $BuildDirectory "-DMPMAT_SDK_DIR:PATH=$taskSdk"
+    $taskConfigureArguments = @('--preset', 'windows-ninja-msvc-ci', '-B', $BuildDirectory,
+        '-DFALCOR_ENABLE_NEURAL_MATERIAL:BOOL=ON', "-DFALCOR_NEURAL_CUDA_ARCHITECTURES:STRING=$CudaArchitectures")
+    # Use the Windows SDK selected by the active VS environment on this machine.
+    # The upstream preset otherwise pins an SDK that may not be installed here.
+    if ($env:WindowsSDKVersion) { $taskConfigureArguments += "-DCMAKE_SYSTEM_VERSION:STRING=$($env:WindowsSDKVersion.TrimEnd('\'))" }
+    & $taskCmake @taskConfigureArguments
     if ($LASTEXITCODE -ne 0) { throw 'Falcor CMake configuration failed.' }
     Repair-MsvcIncludePrefix $BuildDirectory
-    $taskBuildArguments = @('--build', $BuildDirectory, '--config', $Configuration)
+    $taskBuildArguments = @('--build', $BuildDirectory, '--config', $Configuration, '--parallel', "$Jobs")
     if ($Clean) { $taskBuildArguments += '--clean-first' }
     $taskBuildArguments += @('--target', 'Falcor', 'Mogwai', 'GBuffer', 'ToneMapper', 'AccumulatePass', 'NeuralMaterialPass', 'AssimpImporter', 'PythonImporter')
     & $taskCmake @taskBuildArguments

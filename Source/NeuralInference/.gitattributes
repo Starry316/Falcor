@@ -1,0 +1,4 @@
+# Preserve imported bytes across machines so UPSTREAM.json hashes stay valid.
+*.cpp -text
+*.cu -text
+*.h -text

@@ -1,0 +1,20 @@
+{
+  "project": "MPMat",
+  "source_directory": "mpmat/cuda",
+  "revision": "6d8e2f8df0918b89fddd0a3b4a57b1dd14f1ef66",
+  "files": {
+    "coop_backend.cpp": "07fd4e2a65c69fbdbbd91e0d4330afd620ab327fd5e1538667a711b1c88d2bea",
+    "coop_backend.h": "1790eccacc9601f4d6fb889206313fb75f1ac299465553ba89931d535b586269",
+    "coop_programs.cu": "9469fb6226ad5c8ffe23735bdf10d5f590ddd7d71a987e68b4f8dbd23cd93a77",
+    "feature_sampling.h": "68195788ef8df2c7497b0b6925f9064499505ceb1d4395e854ea2bef9ce47d61",
+    "inference_bridge.cpp": "ad220abba98a7e50cb24ed5f5cd1f748d9a13ad92bed39ad4a4dea2ae596f23a",
+    "inference_bridge.cu": "6eb7aff721b071f4cd43b2476af25256ce14d18a15d0c83d6f15097fb9603cfb",
+    "inference_bridge.h": "a609537513a353a9ccb8d03fc1c6b26882090440405bff8510579812f1e1818b",
+    "inference_bridge_networks.h": "4fb73b761253ac9d13a0ba90461bc092de42b14e064b3e7b303017dfaec5e292",
+    "lobe_decode.h": "d3097fd714af79741410bfd91c46af341f77d4ed5b0c4cc4f52b387c027fd333",
+    "lobe_math.h": "5f2a8b8798c6790116943642321e8964bdbe1821b90d16e5eb586847ee7a3920",
+    "model_types.h": "1227aebf8c50a6d2159ac2913ee065fe73243175bc26f64b9e4e03df0e43b8ec",
+    "rgba16f.h": "999118c83aaadd81fd16af2c6fce1958ae6acc9fd163b195a661cb4800a499cf",
+    "synthesis.h": "53bbd4cfd4c8559b56a800cfef1d29c043fd6a740691190f3e02e0dfdfb7068d"
+  }
+}

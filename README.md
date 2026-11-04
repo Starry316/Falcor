@@ -78,6 +78,12 @@ To enable NSight Aftermath support, head over to https://developer.nvidia.com/ns
 Extract the content of the zip file into `external/packman/aftermath`.
 
 ## CUDA
+
+For this project's neural-material renderer, `build_neural.ps1` builds both
+Falcor and the bundled CUDA inference sources. No external MPMat checkout or
+precompiled inference SDK is needed. See [Neural materials](docs/usage/neural-material.md)
+for fresh-machine setup, CUDA target selection and model assets.
+
 To enable CUDA support, download and install [CUDA 11.6.2](https://developer.nvidia.com/cuda-11-6-2-download-archive) or later and reconfigure the build.
 
 See the `CudaInterop` sample application located in `Source/Samples/CudaInterop` for an example of how to use CUDA.

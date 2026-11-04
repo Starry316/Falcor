@@ -1,22 +1,57 @@
 # Neural materials
 
-`NeuralMaterialPass` integrates the MPMat material inference SDK into a Falcor
+`NeuralMaterialPass` integrates the bundled MPMat material inference sources into a Falcor
 deferred render graph. Primary triangle visibility comes from `GBufferRaster`.
 CUDA computes FP16 cooperative-vector lobes; Falcor computes direct lighting and
 display. The first version is D3D12 only and has no shadows or indirect bounces.
 
 ## Build and run
 
-Export the standalone SDK with MPMat's
-`python -m mpmat.native_build --inference-only --sdk-dir PATH`, and export a
-source-hash-matched material/head with `python -m mpmat.native`. No training
-checkpoint or Python/PyTorch installation is needed at render time. Falcor's
-Python scene and render-graph scripting still use its bundled interpreter.
+Only this modified Falcor project is needed to build the renderer and CUDA
+inference library. On a new Windows machine install Git, Visual Studio C++
+Build Tools with a Windows SDK, and a compatible CUDA Toolkit. Then run:
 
 ```powershell
-./build_neural.ps1 -SdkDirectory PATH_TO_SDK
+./build_neural.ps1
 ./demo_neural.ps1 -Model PATH_TO_MODEL.mpmat -Environment PATH_TO_ENVIRONMENT.hdr
 ```
+
+The build script prepares Falcor's submodules and Packman tools when missing,
+selects the installed Visual Studio/Windows SDK environment, and builds
+`Source/NeuralInference` into `mpmat_inference.dll` as part of the same CMake
+dependency graph. The first build needs network access for the pinned external
+dependencies. Cooperative-vector OptiX headers are fetched at the fixed revision
+recorded in that directory's CMake file; a separate OptiX SDK installation is
+not required for neural inference. Its PTX is compiled and embedded in the DLL.
+No MPMat checkout, prebuilt inference SDK, `SdkDirectory`, PyTorch environment
+or Python package installation is needed to build this project. Falcor still
+uses its bundled Python interpreter for scene/render-graph scripts.
+
+CUDA architectures default to `native`, detected from this machine's GPUs.
+For a build machine without the target GPU, specify an explicit target:
+
+```powershell
+./build_neural.ps1 -CudaArchitectures 120
+```
+
+The runtime still requires a GPU/driver with OptiX cooperative-vector support;
+selecting a CUDA architecture does not add support to unsupported hardware.
+FP16 inference, CUDA texture sampling and the C ABI are unchanged. Initial
+kernel sources are preserved verbatim with hashes in
+`Source/NeuralInference/UPSTREAM.json`. Standard CMake configurations can disable
+the integration with `FALCOR_ENABLE_NEURAL_MATERIAL=OFF` or set the target via
+`FALCOR_NEURAL_CUDA_ARCHITECTURES`. An old `MPMAT_SDK_DIR` cache entry is ignored
+and removed; it cannot cause a stale SDK binary to be deployed.
+
+Model `.mpmat` files and environment images remain separate runtime assets;
+copy them to the new machine or export a source-hash-matched material/head
+using MPMat's `python -m mpmat.native`. Training checkpoints are not required to
+run an already exported model. Copy/clone the modified Falcor sources including
+`Source/NeuralInference`, and use a fresh build directory on the new machine.
+Do not reuse another machine's CMake cache. `demo_neural.ps1 -Build` invokes the
+same source build before launching, without an SDK argument.
+The script defaults to at most eight parallel build jobs; `-Jobs` can override
+this limit on machines with different CPU/memory budgets.
 
 The build creates an isolated `build/windows-ninja-msvc-ci/neural-runtime/Release`
 with the current Falcor binary and only the required plugins. It does not replace
@@ -28,6 +63,23 @@ compile probe and repairs incorrectly decoded localized `/showIncludes`
 prefixes. Use `-Clean` once when upgrading a build whose old objects recorded no
 header dependencies; this avoids mixing incompatible class layouts. Normal
 subsequent builds remain incremental.
+
+Source-build validation on 2026-11-04 used Windows x64, MSVC 14.50, CUDA 13.2
+and RTX 5080. A full build in a new directory, the no-argument default build,
+and `demo_neural.ps1 -Build -Headless -Frames 4` passed. The deployed DLL hash
+matches the source-built target. The new DLL passed all 29 inference-bridge
+tests against the native oracle, four lighting GPU tests, and the accumulator
+and interactive-control render-graph regressions.
+The complete MPMat suite passed all 1,162 tests with an isolated temporary
+directory, and the source/wheel package build passed. Concurrent pytest runs
+must use different `--basetemp` paths to avoid deleting each other's fixtures.
+
+`tests/python_tests/neural_source_build_smoke.ps1` copies only the inference
+sources to a separate path containing spaces and builds them without Falcor or
+an external SDK. It verifies all 13 imported kernel-file hashes, an exact
+reconstruction of the embedded PTX, and an actual incremental PTX rebuild after
+a shared-header edit. This relocation check passed. It validates directory
+independence on the current machine, not a test on another physical computer.
 
 With the three exported demo assets in `build/neural-assets`, use:
 
