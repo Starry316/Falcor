@@ -843,6 +843,8 @@ int runMain(int argc, char** argv)
     args::ValueFlag<int32_t> verbosityFlag(parser, "verbosity", "Logging verbosity (0=disabled, 1=fatal errors, 2=errors, 3=warnings, 4=infos, 5=debugging)", { 'v', "verbosity" }, 4);
     args::Flag silentFlag(parser, "", "Start without opening a window and handling user input (deprecated: use --headless).", {"silent"});
     args::Flag fullscreenFlag(parser, "", "Start in fullscreen mode instead of windowed.", {"fullscreen"});
+    args::Flag vsyncFlag(parser, "", "Enable vertical synchronization (default: off).", {"vsync"});
+    args::Flag noVsyncFlag(parser, "", "Disable vertical synchronization.", {"no-vsync"});
     args::ValueFlag<uint32_t> widthFlag(parser, "pixels", "Initial window width.", {"width"});
     args::ValueFlag<uint32_t> heightFlag(parser, "pixels", "Initial window height.", {"height"});
     args::Flag useSceneCacheFlag(parser, "", "Use scene cache to improve scene load times.", {'c', "use-cache"});
@@ -944,6 +946,7 @@ int runMain(int argc, char** argv)
         config.deviceDesc.enableRaytracingValidation = true;
 
     config.windowDesc.title = "Mogwai";
+    config.windowDesc.enableVSync = bool(vsyncFlag) && !bool(noVsyncFlag);
     if (widthFlag)
         config.windowDesc.width = args::get(widthFlag);
     if (heightFlag)

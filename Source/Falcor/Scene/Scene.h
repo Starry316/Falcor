@@ -857,6 +857,23 @@ namespace Falcor
         */
         const ref<Light>& getLight(uint32_t lightID) const { return mLights[lightID]; }
 
+        /** Add an analytic light to the scene. The same light instance cannot be added twice.
+            GPU data and active-light statistics are updated by update() or refreshLighting().
+            \return The light's index in getLights().
+        */
+        uint32_t addLight(const ref<Light>& pLight);
+
+        /** Remove an analytic light. Indices after lightID shift down by one.
+            GPU data and active-light statistics are updated by update() or refreshLighting().
+        */
+        void removeLight(uint32_t lightID);
+
+        /** Synchronize edited analytic lights and the environment map without advancing scene animation.
+            Call after editing lighting between update() and rendering. This updates getUpdates() immediately;
+            the same changes are also reported by the next update() for other scene observers.
+        */
+        IScene::UpdateFlags refreshLighting();
+
         /** Get a light by name.
         */
         ref<Light> getLightByName(const std::string& name) const;
@@ -902,8 +919,12 @@ namespace Falcor
         */
         IScene::UpdateFlags update(RenderContext* pRenderContext, double currentTime);
 
+        /** Get the timeline time in seconds passed to the most recent update().
+        */
+        double getTime() const { return mTime; }
+
         /** Get the changes that happened during the last update.
-            The flags only change during an `update()` call, if something changed between calling `update()` and `getUpdates()`, the returned result will not reflect it.
+            Edits are reflected after update(), or after refreshLighting() for explicit lighting synchronization.
             \return Flags indicating what changes happened in the last update.
         */
         IScene::UpdateFlags getUpdates() const { return mUpdates; }
@@ -1196,7 +1217,7 @@ namespace Falcor
         bool updateAnimatable(Animatable& animatable, const AnimationController& controller, bool force = false);
 
         IScene::UpdateFlags updateSelectedCamera(bool forceUpdate);
-        IScene::UpdateFlags updateLights(bool forceUpdate);
+        IScene::UpdateFlags updateLights(bool forceUpdate, bool applyAnimation = true);
         IScene::UpdateFlags updateGridVolumes(bool forceUpdate);
         IScene::UpdateFlags updateEnvMap(bool forceUpdate);
         IScene::UpdateFlags updateMaterials(bool forceUpdate);
@@ -1300,6 +1321,8 @@ namespace Falcor
         // Lights
         std::vector<ref<Light>> mLights;                            ///< All analytic lights. Note that not all may be active.
         std::vector<ref<Light>> mActiveLights;                      ///< All active analytic lights.
+        bool mAnalyticLightsChanged = false;                        ///< Analytic lights were added or removed since the last upload.
+        IScene::UpdateFlags mPendingLightingUpdates = IScene::UpdateFlags::None; ///< Same-frame lighting edits to report on the next update.
         std::vector<ref<GridVolume>> mGridVolumes;                  ///< All loaded grid volumes.
         std::vector<ref<Grid>> mGrids;                              ///< All loaded grids.
         std::unordered_map<ref<Grid>, SdfGridID> mGridIDs;          ///< Lookup table for grid IDs.
@@ -1359,6 +1382,7 @@ namespace Falcor
         std::map<RasterizerState::CullMode, ref<RasterizerState>> mFrontClockwiseRS;
         std::map<RasterizerState::CullMode, ref<RasterizerState>> mFrontCounterClockwiseRS;
         IScene::UpdateFlags mUpdates = IScene::UpdateFlags::All;
+        double mTime = 0.0;                                        ///< Timeline time of the most recent scene update.
         std::unique_ptr<AnimationController> mpAnimationController;
 
         // Raytracing data

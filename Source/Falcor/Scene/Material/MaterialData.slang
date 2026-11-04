@@ -137,7 +137,7 @@ struct MaterialHeader
 
     /** Get double-sided flag.
     */
-    bool isDoubleSided() CONST_FUNCTION { return packedData.x & (1u << kDoubleSidedFlagOffset); }
+    bool isDoubleSided() CONST_FUNCTION { return (packedData.x & (1u << kDoubleSidedFlagOffset)) != 0u; }
 
     /** Set thin surface flag.
     */
@@ -145,7 +145,7 @@ struct MaterialHeader
 
     /** Get thin surface flag.
     */
-    bool isThinSurface() CONST_FUNCTION { return packedData.x & (1u << kThinSurfaceFlagOffset); }
+    bool isThinSurface() CONST_FUNCTION { return (packedData.x & (1u << kThinSurfaceFlagOffset)) != 0u; }
 
     /** Set emissive flag.
     */
@@ -153,7 +153,7 @@ struct MaterialHeader
 
     /** Get emissive flag.
     */
-    bool isEmissive() CONST_FUNCTION { return packedData.x & (1u << kEmissiveFlagOffset); }
+    bool isEmissive() CONST_FUNCTION { return (packedData.x & (1u << kEmissiveFlagOffset)) != 0u; }
 
     /** Set basic material flag. This flag is an optimization to allow quick type checking.
     */
@@ -161,7 +161,7 @@ struct MaterialHeader
 
     /** Get basic material flag. This flag is an optimization to allow quick type checking.
     */
-    bool isBasicMaterial() CONST_FUNCTION { return packedData.x & (1u << kIsBasicMaterialFlagOffset); }
+    bool isBasicMaterial() CONST_FUNCTION { return (packedData.x & (1u << kIsBasicMaterialFlagOffset)) != 0u; }
 
     /** Set light profile enable flag. // DEMO21
     */
@@ -169,7 +169,7 @@ struct MaterialHeader
 
     /** Get light profile enable flag.
     */
-    bool isLightProfileEnabled() CONST_FUNCTION { return packedData.y & (1u << kEnableLightProfileOffset); }
+    bool isLightProfileEnabled() CONST_FUNCTION { return (packedData.y & (1u << kEnableLightProfileOffset)) != 0u; }
 
     /** Set delta specular flag. This flag is set if the material only has delta specular reflection/transmission (and can skip NEE).
     */
@@ -177,7 +177,7 @@ struct MaterialHeader
 
     /** Get delta specular flag. This flag is set if the material only has delta specular reflection/transmission (and can skip NEE).
     */
-    bool isDeltaSpecular() CONST_FUNCTION { return packedData.y & (1u << kDeltaSpecularFlagOffset); }
+    bool isDeltaSpecular() CONST_FUNCTION { return (packedData.y & (1u << kDeltaSpecularFlagOffset)) != 0u; }
 
     /// Set index of refraction.
     SETTER_DECL void setIoR(float16_t ior) { packedData.z = PACK_BITS_UNSAFE(kIoRBits, kIoROffset, packedData.z, (uint)asuint16(ior)); }

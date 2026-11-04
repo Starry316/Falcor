@@ -1,0 +1,32 @@
+#ifndef NEURAL_MATERIAL_TYPES
+#define NEURAL_MATERIAL_TYPES
+
+// Explicit StructuredBuffer layouts. Inference ABI v1 is shared with CUDA;
+// geometry/UV and linear HDR retain FP32 even though network inference is FP16.
+struct NeuralRay
+{
+    float3 origin;
+    float3 direction;
+    float3 view;
+    float lod;
+    uint valid;
+    uint reserved;
+}; // 48 bytes
+
+struct NeuralFrame
+{
+    float4 tangent; // xyz unit U direction, w UV handedness
+    float4 normal;  // xyz unit shading normal, w validity
+}; // 32 bytes
+
+struct PolygonLight
+{
+    float4 center;
+    float4 fullU;
+    float4 fullV;
+    float4 emission;
+    uint4 params; // vertexCount, textureKind, enabled, UVs contained in [0,1]^2
+    float2 uvVertices[16];
+}; // 208 bytes
+
+#endif

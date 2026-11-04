@@ -72,6 +72,11 @@ public:
     /// Note: This method calls Device::wait().
     void resize(uint32_t width, uint32_t height);
 
+    /// Recreate the swapchain with the requested presentation interval.
+    /// All external references to back buffer images must be released first.
+    /// Note: This method calls Device::wait().
+    void setVSync(bool enabled);
+
     /// Check if the window is occluded.
     bool isOccluded();
 
@@ -81,10 +86,13 @@ public:
     gfx::ISwapchain* getGfxSwapchain() const { return mGfxSwapchain; }
 
 private:
+    void createSwapchain();
     void prepareImages();
 
     ref<Device> mpDevice;
     Desc mDesc;
+    WindowHandle mWindowHandle;
+    bool mFullScreen = false;
     Slang::ComPtr<gfx::ISwapchain> mGfxSwapchain;
     std::vector<ref<Texture>> mImages;
 };

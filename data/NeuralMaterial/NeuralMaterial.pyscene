@@ -1,0 +1,46 @@
+"""Z-up neural receiver; scene, cameras, lights and animation belong to Falcor."""
+import math
+import os
+
+material = StandardMaterial('Neural surface')
+material.baseColor = float4(.5, .5, .5, 1)
+material.roughness = .5
+material.doubleSided = True
+
+mesh = TriangleMesh.createFromFile('plane.obj', smoothNormals=False)
+mesh_id = sceneBuilder.addTriangleMesh(mesh, material)
+node_id = sceneBuilder.addNode('Neural receiver', Transform())
+sceneBuilder.addMeshInstance(node_id, mesh_id)
+
+camera = Camera('Neural comparison')
+camera.position = float3(0, -5.8, 2.7)
+camera.target = float3(0, .3, .75)
+camera.up = float3(0, 0, 1)
+camera.frameHeight = 24.
+camera.focalLength = 12. / math.tan(math.radians(21.))
+sceneBuilder.addCamera(camera)
+
+# These are real Falcor analytic lights. NeuralMaterialPass reads their Li;
+# no standard BRDF or additional receiver cosine is inserted.
+key = DirectionalLight('Key')
+key.direction = float3(-.3, .2, -1.)
+key.intensity = float3(.3, .28, .25)
+sceneBuilder.addLight(key)
+fill = PointLight('Fill')
+fill.position = float3(-1.5, -.5, 2.)
+fill.intensity = float3(.5, .65, 1.)
+sceneBuilder.addLight(fill)
+
+environment = os.environ.get('MPMAT_ENVIRONMENT', '')
+if environment:
+    sceneBuilder.envMap = EnvMap(environment)
+
+# Optional deterministic scene animation for validation. The importer and
+# Falcor's ordinary timeline own it; there is no neural-specific update loop.
+if os.environ.get('MPMAT_ANIMATE', '0') == '1':
+    animation = Animation('Receiver motion', node_id, 4.)
+    for time, angle in ((0., 0.), (1., 12.), (2., 0.), (3., -12.), (4., 0.)):
+        animation.addKeyframe(time, Transform(rotationEulerDeg=float3(angle, 0, 0)))
+    animation.preInfinityBehavior = Animation.Behavior.Cycle
+    animation.postInfinityBehavior = Animation.Behavior.Cycle
+    sceneBuilder.addAnimation(animation)

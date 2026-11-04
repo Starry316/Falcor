@@ -1,0 +1,14 @@
+"""Optional star/rectangle motion driven entirely by Falcor's scene timeline.
+
+Bind a polygon light to sceneLight=2 in NeuralMaterialPass to follow this rig.
+"""
+sceneBuilder.importScene('NeuralMaterial.pyscene')
+rig = RectLight('Animated neural polygon rig')
+rig.intensity = float3(1, 1, 1)
+sceneBuilder.addLight(rig)
+animation = sceneBuilder.createAnimation(rig, 'Polygon light rotation', 8.)
+for time, angle in ((0., 0.), (2., 35.), (4., 0.), (6., -35.), (8., 0.)):
+    animation.addKeyframe(time, Transform(translation=float3(0, .8, 1.4),
+        rotationEulerDeg=float3(90, angle, 0), scaling=float3(.7, .7, 1)))
+animation.preInfinityBehavior = Animation.Behavior.Cycle
+animation.postInfinityBehavior = Animation.Behavior.Cycle

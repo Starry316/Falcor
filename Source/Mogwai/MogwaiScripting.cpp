@@ -158,6 +158,8 @@ namespace Mogwai
         auto getUI = [](Renderer* pRenderer) { return pRenderer->isUiEnabled(); };
         auto setUI = [](Renderer* pRenderer, bool show) { pRenderer->toggleUI(show); };
         renderer.def_property(kUI.c_str(), getUI, setUI);
+        renderer.def_property("vsync", [](Renderer* r) { return r->isVsyncEnabled(); },
+                                      [](Renderer* r, bool enabled) { r->toggleVsync(enabled); });
 
         renderer.def_property(kKeyCallback.c_str(), &Renderer::getKeyCallback, &Renderer::setKeyCallback);
 

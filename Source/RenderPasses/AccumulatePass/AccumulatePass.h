@@ -54,6 +54,7 @@ public:
 
     virtual Properties getProperties() const override;
     virtual RenderPassReflection reflect(const CompileData& compileData) override;
+    void compile(RenderContext* pRenderContext, const CompileData& compileData) override { reset(); }
     virtual void execute(RenderContext* pRenderContext, const RenderData& renderData) override;
     virtual void renderUI(Gui::Widgets& widget) override;
     virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
@@ -135,6 +136,9 @@ protected:
     bool mEnabled = true;
     /// Reset accumulation automatically upon scene changes and refresh flags.
     bool mAutoReset = true;
+    std::string mControlKey;
+    bool mRequestProducerReset = false;
+    bool mOutputValid = false;
 
     Precision mPrecisionMode = Precision::Single;
     /// Maximum number of frames to accumulate before triggering overflow. 0 means infinite accumulation.

@@ -1,0 +1,18 @@
+{
+  "model": "build/neural-assets/fuzzy_mip.mpmat",
+  "scene": "Data/NeuralMaterial/NeuralMaterial.pyscene",
+  "output": "build/neural-validation/inference-benchmark",
+  "width": 3840,
+  "height": 2160,
+  "warmup": 64,
+  "frames": 96,
+  "fullReceiver": false,
+  "options": {
+    "cacheInference": false,
+    "environment": true,
+    "deltaLights": true,
+    "areaLights": true,
+    "areaMode": 0,
+    "environmentBakeSamples": 256
+  }
+}

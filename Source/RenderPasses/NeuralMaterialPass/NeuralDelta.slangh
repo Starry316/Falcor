@@ -1,0 +1,20 @@
+#pragma once
+import Scene.Lights.LightData;
+import Rendering.Lights.LightHelpers;
+
+// Return a value from independent branch-local out parameters. Reusing one out
+// sample across the two helpers can overwrite the point direction when lowered
+// by the Slang version used by this Falcor checkout.
+// The caller filters light types to Point or Directional.
+AnalyticLightSample neuralSampleDelta(float3 position, LightData light)
+{
+    if(light.type == LightType::Point)
+    {
+        AnalyticLightSample pointSample;
+        samplePointLight(position, light, pointSample);
+        return pointSample;
+    }
+    AnalyticLightSample directionalSample;
+    sampleDirectionalLight(position, light, directionalSample);
+    return directionalSample;
+}

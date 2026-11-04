@@ -26,6 +26,7 @@
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
 #include "AccumulatePass.h"
+#include "RenderGraph/AccumulatePassControl.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 
 static void regAccumulatePass(pybind11::module& m)
@@ -57,6 +58,7 @@ const char kAutoReset[] = "autoReset";
 const char kPrecisionMode[] = "precisionMode";
 const char kMaxFrameCount[] = "maxFrameCount";
 const char kOverflowMode[] = "overflowMode";
+const char kControlKey[] = "controlKey";
 } // namespace
 
 AccumulatePass::AccumulatePass(ref<Device> pDevice, const Properties& props) : RenderPass(pDevice)
@@ -80,6 +82,9 @@ AccumulatePass::AccumulatePass(ref<Device> pDevice, const Properties& props) : R
             mMaxFrameCount = value;
         else if (key == kOverflowMode)
             mOverflowMode = value;
+        else if (key == kControlKey)
+            mControlKey = props.get<std::string>(kControlKey);
+        else if (key == "accumulatedFrames") {} // Read-only diagnostic in exported properties.
         else
             logWarning("Unknown property '{}' in AccumulatePass properties.", key);
     }
@@ -107,6 +112,8 @@ Properties AccumulatePass::getProperties() const
     props[kPrecisionMode] = mPrecisionMode;
     props[kMaxFrameCount] = mMaxFrameCount;
     props[kOverflowMode] = mOverflowMode;
+    if (!mControlKey.empty()) props[kControlKey] = mControlKey;
+    props["accumulatedFrames"] = mFrameCount;
     return props;
 }
 
@@ -120,12 +127,34 @@ RenderPassReflection AccumulatePass::reflect(const CompileData& compileData)
     reflector.addOutput(kOutputChannel, "Output data that is temporally accumulated")
         .bindFlags(ResourceBindFlags::RenderTarget | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::ShaderResource)
         .format(fmt)
+        .flags(RenderPassReflection::Field::Flags::Persistent)
         .texture2D(sz.x, sz.y);
     return reflector;
 }
 
 void AccumulatePass::execute(RenderContext* pRenderContext, const RenderData& renderData)
 {
+    bool hold = false;
+    if (!mControlKey.empty())
+    {
+        auto& dict = renderData.getDictionary();
+        const uint32_t flags = dict.getValue(mControlKey, kAccumulateReset | kAccumulateHold);
+        if ((flags & kAccumulateReset) != 0)
+        {
+            mFrameCount = 0;
+            mOutputValid = false;
+            mRequestProducerReset = false;
+        }
+        else if (mRequestProducerReset)
+        {
+            // The producer runs earlier in this graph. Ask it to restart on the
+            // next frame, and do not accept this frame's old-sequence batch.
+            dict[mControlKey + ".restart"] = true;
+            mRequestProducerReset = false;
+            hold = true;
+        }
+        hold |= (flags & kAccumulateHold) != 0;
+    }
     if (mAutoReset)
     {
         // Query refresh flags passed down from the application and other passes.
@@ -183,6 +212,17 @@ void AccumulatePass::execute(RenderContext* pRenderContext, const RenderData& re
     {
         mFrameDim = resolution;
         reset();
+        // The input dimensions and producer's reset already describe this frame.
+        mRequestProducerReset = false;
+    }
+
+    if (hold)
+    {
+        // Persistent graph output prevents resource aliasing from overwriting a
+        // stopped estimate. Initial/reset+hold frames have a defined zero image.
+        if (!mOutputValid) pRenderContext->clearUAV(pDst->getUAV().get(), float4(0.f));
+        mOutputValid = true;
+        return;
     }
 
     // Verify that output is non-integer format. It shouldn't be since reflect() requests a floating-point format.
@@ -205,6 +245,7 @@ void AccumulatePass::execute(RenderContext* pRenderContext, const RenderData& re
     {
         // Only blit mip 0 and array slice 0, because that's what the accumulation uses otherwise.
         pRenderContext->blit(pSrc->getSRV(0, 1, 0, 1), pDst->getRTV(0, 0, 1));
+        mOutputValid = true;
     }
     else if (resolutionMatch)
     {
@@ -260,6 +301,7 @@ void AccumulatePass::accumulate(RenderContext* pRenderContext, const ref<Texture
 
     // Setup accumulation.
     prepareAccumulation(pRenderContext, mFrameDim.x, mFrameDim.y);
+    mRequestProducerReset = false; // Buffer allocation/reset above is not a user restart request.
 
     // Set shader parameters.
     auto var = mpVars->getRootVar();
@@ -289,10 +331,12 @@ void AccumulatePass::accumulate(RenderContext* pRenderContext, const ref<Texture
     uint3 numGroups = div_round_up(uint3(mFrameDim.x, mFrameDim.y, 1u), pProgram->getReflector()->getThreadGroupSize());
     mpState->setProgram(pProgram);
     pRenderContext->dispatch(mpState.get(), mpVars.get(), numGroups);
+    mOutputValid = true;
 }
 
 void AccumulatePass::renderUI(Gui::Widgets& widget)
 {
+    if (!mControlKey.empty()) widget.textWrapped("Producer-controlled reset and sample limit: " + mControlKey);
     // Controls for output size.
     // When output size requirements change, we'll trigger a graph recompile to update the render pass I/O sizes.
     if (widget.dropdown("Output size", mOutputSizeSelection))
@@ -375,6 +419,8 @@ void AccumulatePass::setEnabled(bool enabled)
 void AccumulatePass::reset()
 {
     mFrameCount = 0;
+    mOutputValid = false;
+    mRequestProducerReset = !mControlKey.empty();
 }
 
 void AccumulatePass::prepareAccumulation(RenderContext* pRenderContext, uint32_t width, uint32_t height)

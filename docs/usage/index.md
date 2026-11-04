@@ -9,6 +9,7 @@
 - [Scenes](./scenes.md)
 - [Scene Formats](./scene-formats.md)
 - [Materials](./materials.md)
+- [Neural Materials](./neural-material.md)
 - [Scripting](./scripting.md)
 - [Render Passes](./render-passes.md)
 - [Path Tracer](./path-tracer.md)

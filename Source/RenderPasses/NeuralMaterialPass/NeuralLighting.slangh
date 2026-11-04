@@ -1,0 +1,256 @@
+#pragma once
+#include "NeuralTypes.slangh"
+
+// These are the learned directional-response kernels. No stock DGF/DFG or
+// additional receiver cosine belongs in their evaluation.
+static const float kNeuralPi = 3.14159265358979323846f;
+static const uint kNeuralMaxVertices = 48;
+
+float neuralMass(float s)
+{
+    float x = 1.f - s;
+    if (x < .1f) return .25f + x * (1.f/6.f + x * (11.f/96.f + x * (13.f/160.f + x * 19.f/320.f)));
+    return (x + 2.f*s*log(max(2.f*s/(1.f+s),1e-30f))) / (x*x);
+}
+
+float neuralKernel(float cosine, float roughness)
+{
+    float s = roughness*roughness; s *= s;
+    float c = clamp(cosine, -1.f, 1.f);
+    float d = max(1.f-c, 0.f) + s*(1.f+c);
+    return s*max(c, 0.f) / max(kNeuralPi*neuralMass(s)*d*d, 1e-24f);
+}
+
+float neuralProposal(float cosine, float roughness)
+{
+    float s = roughness*roughness; s *= s;
+    float c = clamp(cosine, -1.f, 1.f);
+    float d = max(1.f-c, 0.f) + s*(1.f+c);
+    return s / max(kNeuralPi*d*d, 1e-24f);
+}
+
+float neuralRadical(uint i, uint salt)
+{
+    return min((float(reversebits(i ^ salt)) + .5f) * 2.3283064365386963e-10f, .99999994f);
+}
+
+float3 neuralCubeDirection(uint face, float2 uv)
+{
+    float3 d;
+    switch (face)
+    {
+    case 0: d=float3(1,-uv.y,-uv.x); break;
+    case 1: d=float3(-1,-uv.y,uv.x); break;
+    case 2: d=float3(uv.x,1,uv.y); break;
+    case 3: d=float3(uv.x,-1,-uv.y); break;
+    case 4: d=float3(uv.x,-uv.y,1); break;
+    default: d=float3(-uv.x,-uv.y,-1); break;
+    }
+    return normalize(d);
+}
+
+void neuralBasis(float3 n, out float3 t, out float3 b)
+{
+    t=normalize(cross(abs(n.z)>.95f?float3(1,0,0):float3(0,0,1),n));
+    b=cross(n,t);
+}
+
+float3 neuralEmission(float2 uv, uint kind)
+{
+    if (kind==1)
+    {
+        float phase=4.f*kNeuralPi*max(abs(uv.x-.5f),abs(uv.y-.5f));
+        return .03f+.97f*(.5f+.5f*cos(phase+float3(0,-2.0944f,2.0944f)));
+    }
+    if (kind==2)
+    {
+        float3 sky=float3(.08f+.45f*(1.f-uv.y),.2f+.4f*uv.y,.4f+.5f*uv.y);
+        float3 sea=float3(.04f,.12f+.1f*uv.x,.2f+.15f*uv.x);
+        float sun=exp(-dot(uv-float2(.63f,.48f),uv-float2(.63f,.48f))/.004f);
+        float2 p=uv-float2(.63f,.35f);
+        float glow=exp(-p.x*p.x/.025f-p.y*p.y/.05f);
+        return (uv.y<.42f?sea:sky)+sun*float3(5,2.8f,.5f)+glow*float3(.8f,.18f,.01f);
+    }
+    return float3(1);
+}
+
+bool neuralInside(float2 uv, uint count, float2 vertices[16])
+{
+    bool inside=false;
+    for(uint i=0;i<count;++i)
+    {
+        float2 a=vertices[i],b=vertices[(i+1)%count];
+        if ((a.y>uv.y)!=(b.y>uv.y))
+        {
+            float x=a.x+(uv.y-a.y)*(b.x-a.x)/(b.y-a.y);
+            if(uv.x<x) inside=!inside;
+        }
+    }
+    return inside;
+}
+
+float neuralPolygonArea(uint count, float2 vertices[16])
+{
+    float twice=0;
+    for(uint i=0;i<count;++i)
+    {
+        float2 a=vertices[i],b=vertices[(i+1)%count];
+        twice += a.x*b.y-a.y*b.x;
+    }
+    return abs(twice)*.5f;
+}
+
+// Concave polygons are retained as oriented closed walks. When clipping creates
+// disconnected pieces, the connecting edges lie on the clipping plane and occur
+// with opposite orientations; their boundary integrals cancel. Never take an
+// absolute value per edge or per disconnected component.
+uint neuralClip(inout float3 vertices[kNeuralMaxVertices], uint count, float3 normal)
+{
+    float3 clipped[kNeuralMaxVertices];
+    uint outputCount=0;
+    for(uint i=0;i<count;++i)
+    {
+        float3 a=vertices[i],b=vertices[(i+1)%count];
+        float za=dot(a,normal),zb=dot(b,normal);
+        if((za>=0)!=(zb>=0) && outputCount<kNeuralMaxVertices)
+            clipped[outputCount++]=lerp(a,b,za/(za-zb));
+        if(zb>=0 && outputCount<kNeuralMaxVertices) clipped[outputCount++]=b;
+    }
+    for(uint j=0;j<outputCount;++j) vertices[j]=clipped[j];
+    return outputCount;
+}
+
+float neuralBoundaryIntegral(float3 vertices[kNeuralMaxVertices],uint count)
+{
+    if(count<3) return 0;
+    float sum=0;
+    for(uint i=0;i<count;++i)
+    {
+        float3 a=vertices[i]*rsqrt(max(dot(vertices[i],vertices[i]),1e-30f));
+        float3 next=vertices[(i+1)%count];
+        float3 b=next*rsqrt(max(dot(next,next),1e-30f));
+        float3 c=cross(a,b);
+        float len=length(c);
+        sum += c.z*atan2(len,clamp(dot(a,b),-1.f,1.f))/max(len,1e-30f);
+    }
+    return abs(sum)/(2.f*kNeuralPi);
+}
+
+// Streaming Sutherland-Hodgman followed by the same exact spherical edge
+// integral. Only the first/previous vertices survive; there are no dynamically
+// indexed 48-vertex scratch arrays per pixel/lobe. The original array version
+// above remains a numerical reference. No edge-angle approximation is used.
+struct NeuralBoundaryWalk
+{
+    float3 first;
+    float3 previous;
+    float sum;
+    uint count;
+};
+
+float neuralEdgeIntegral(float3 a, float3 b)
+{
+    float3 c=cross(a,b);
+    float len=length(c);
+    return c.z*atan2(len,clamp(dot(a,b),-1.f,1.f))/max(len,1e-30f);
+}
+
+NeuralBoundaryWalk neuralAppendBoundary(NeuralBoundaryWalk walk, float3 point)
+{
+    float3 v=point*rsqrt(max(dot(point,point),1e-30f));
+    if(walk.count>0) walk.sum+=neuralEdgeIntegral(walk.previous,v);
+    else walk.first=v;
+    walk.previous=v;
+    walk.count++;
+    return walk;
+}
+
+NeuralBoundaryWalk neuralClipBoundaryEdge(NeuralBoundaryWalk walk, float3 a, float3 b)
+{
+    if((a.z>=0)!=(b.z>=0))
+        walk=neuralAppendBoundary(walk,lerp(a,b,a.z/(a.z-b.z)));
+    if(b.z>=0) walk=neuralAppendBoundary(walk,b);
+    return walk;
+}
+
+struct NeuralClippedWalk
+{
+    float3 first;
+    float3 previous;
+    uint count;
+    NeuralBoundaryWalk boundary;
+};
+
+NeuralClippedWalk neuralAppendClipped(NeuralClippedWalk walk, float3 point)
+{
+    if(walk.count>0) walk.boundary=neuralClipBoundaryEdge(walk.boundary,walk.previous,point);
+    else walk.first=point;
+    walk.previous=point;
+    walk.count++;
+    return walk;
+}
+
+float neuralStreamingIntegral(PolygonLight light, float3 position, float3 materialNormal,
+                             float3 row0, float3 row1, float3 row2)
+{
+    uint count=min(light.params.x,16u);
+    if(count<3) return 0.f;
+    // The CPU certifies that the current rectangle/star UVs are inside [0,1]^2.
+    // Test this enclosing rectangle against both clipping planes. A conservative
+    // margin keeps borderline cases on the original clipping path. This changes
+    // neither the polygon nor the exact atan2 edge formula.
+    if(light.params.w!=0)
+    {
+        float3 center=light.center.xyz-position;
+        float2 height=float2(dot(center,materialNormal),dot(center,row2));
+        float2 radius=.5f*(abs(float2(dot(light.fullU.xyz,materialNormal),dot(light.fullU.xyz,row2)))+
+            abs(float2(dot(light.fullV.xyz,materialNormal),dot(light.fullV.xyz,row2))));
+        float3 magnitude=abs(light.center.xyz)+abs(position)+.5f*(abs(light.fullU.xyz)+abs(light.fullV.xyz));
+        float2 margin=1e-6f*max(float2(dot(magnitude,abs(materialNormal)),dot(magnitude,abs(row2))),1e-20f);
+        if(any(height+radius < -margin)) return 0.f;
+        if(all(height-radius > margin))
+        {
+            float2 uv=light.uvVertices[0]-.5f;
+            float3 p=light.center.xyz+uv.x*light.fullU.xyz+uv.y*light.fullV.xyz-position;
+            float3 first=float3(dot(p,row0),dot(p,row1),dot(p,row2));
+            first*=rsqrt(max(dot(first,first),1e-30f));
+            float3 previous=first;float sum=0.f;
+            for(uint i=1;i<count;++i)
+            {
+                uv=light.uvVertices[i]-.5f;
+                p=light.center.xyz+uv.x*light.fullU.xyz+uv.y*light.fullV.xyz-position;
+                float3 next=float3(dot(p,row0),dot(p,row1),dot(p,row2));
+                next*=rsqrt(max(dot(next,next),1e-30f));
+                sum+=neuralEdgeIntegral(previous,next);previous=next;
+            }
+            return abs(sum+neuralEdgeIntegral(previous,first))/(2.f*kNeuralPi);
+        }
+    }
+    NeuralClippedWalk walk={};
+    float2 uv=light.uvVertices[0]-.5f;
+    float3 first=light.center.xyz+uv.x*light.fullU.xyz+uv.y*light.fullV.xyz-position;
+    float3 a=first;
+    float za=dot(a,materialNormal);
+    for(uint i=0;i<count;++i)
+    {
+        float3 b=first;
+        if(i+1<count)
+        {
+            uv=light.uvVertices[i+1]-.5f;
+            b=light.center.xyz+uv.x*light.fullU.xyz+uv.y*light.fullV.xyz-position;
+        }
+        float zb=dot(b,materialNormal);
+        if((za>=0)!=(zb>=0))
+        {
+            float3 p=lerp(a,b,za/(za-zb));
+            walk=neuralAppendClipped(walk,float3(dot(p,row0),dot(p,row1),dot(p,row2)));
+        }
+        if(zb>=0) walk=neuralAppendClipped(walk,float3(dot(b,row0),dot(b,row1),dot(b,row2)));
+        a=b;za=zb;
+    }
+    if(walk.count<3) return 0.f;
+    walk.boundary=neuralClipBoundaryEdge(walk.boundary,walk.previous,walk.first);
+    if(walk.boundary.count<3) return 0.f;
+    float sum=walk.boundary.sum+neuralEdgeIntegral(walk.boundary.previous,walk.boundary.first);
+    return abs(sum)/(2.f*kNeuralPi);
+}

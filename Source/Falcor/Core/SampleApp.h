@@ -278,7 +278,7 @@ public:
     /**
      * Set VSYNC.
      */
-    void toggleVsync(bool on) { mVsyncOn = on; }
+    void toggleVsync(bool on);
 
     /**
      * Get the VSYNC state.

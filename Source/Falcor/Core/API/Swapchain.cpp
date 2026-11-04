@@ -33,7 +33,8 @@
 namespace Falcor
 {
 
-Swapchain::Swapchain(ref<Device> pDevice, const Desc& desc, WindowHandle windowHandle) : mpDevice(pDevice), mDesc(desc)
+Swapchain::Swapchain(ref<Device> pDevice, const Desc& desc, WindowHandle windowHandle)
+    : mpDevice(pDevice), mDesc(desc), mWindowHandle(windowHandle)
 {
     FALCOR_ASSERT(mpDevice);
 
@@ -41,6 +42,13 @@ Swapchain::Swapchain(ref<Device> pDevice, const Desc& desc, WindowHandle windowH
     FALCOR_CHECK(desc.width > 0, "Invalid width");
     FALCOR_CHECK(desc.height > 0, "Invalid height");
     FALCOR_CHECK(desc.imageCount > 0, "Invalid image count");
+
+    createSwapchain();
+}
+
+void Swapchain::createSwapchain()
+{
+    const auto& desc = mDesc;
 
     gfx::ISwapchain::Desc gfxDesc = {};
     gfxDesc.format = getGFXFormat(desc.format);
@@ -50,13 +58,15 @@ Swapchain::Swapchain(ref<Device> pDevice, const Desc& desc, WindowHandle windowH
     gfxDesc.enableVSync = desc.enableVSync;
     gfxDesc.queue = mpDevice->getGfxCommandQueue();
 #if FALCOR_WINDOWS
-    gfx::WindowHandle gfxWindowHandle = gfx::WindowHandle::FromHwnd(windowHandle);
+    gfx::WindowHandle gfxWindowHandle = gfx::WindowHandle::FromHwnd(mWindowHandle);
 #elif FALCOR_LINUX
-    gfx::WindowHandle gfxWindowHandle = gfx::WindowHandle::FromXWindow(windowHandle.pDisplay, windowHandle.window);
+    gfx::WindowHandle gfxWindowHandle = gfx::WindowHandle::FromXWindow(mWindowHandle.pDisplay, mWindowHandle.window);
 #endif
     FALCOR_GFX_CALL(mpDevice->getGfxDevice()->createSwapchain(gfxDesc, gfxWindowHandle, mGfxSwapchain.writeRef()));
 
     prepareImages();
+    if (mFullScreen)
+        FALCOR_GFX_CALL(mGfxSwapchain->setFullScreenMode(true));
 }
 
 const ref<Texture>& Swapchain::getImage(uint32_t index) const
@@ -83,7 +93,39 @@ void Swapchain::resize(uint32_t width, uint32_t height)
     mImages.clear();
     mpDevice->wait();
     FALCOR_GFX_CALL(mGfxSwapchain->resize(width, height));
+    mDesc.width = width;
+    mDesc.height = height;
     prepareImages();
+}
+
+void Swapchain::setVSync(bool enabled)
+{
+    if (enabled == mDesc.enableVSync)
+        return;
+
+    // GFX exposes the interval only at creation. Release all back buffer views
+    // and drain deferred releases before replacing the native flip swapchain.
+    mImages.clear();
+    mpDevice->wait();
+    if (mFullScreen)
+        FALCOR_GFX_CALL(mGfxSwapchain->setFullScreenMode(false));
+    mGfxSwapchain.setNull();
+    mpDevice->wait();
+    const bool previous = mDesc.enableVSync;
+    mDesc.enableVSync = enabled;
+    try
+    {
+        createSwapchain();
+    }
+    catch (...)
+    {
+        mImages.clear();
+        mpDevice->wait();
+        mGfxSwapchain.setNull();
+        mDesc.enableVSync = previous;
+        createSwapchain();
+        throw;
+    }
 }
 
 bool Swapchain::isOccluded()
@@ -94,6 +136,7 @@ bool Swapchain::isOccluded()
 void Swapchain::setFullScreenMode(bool mode)
 {
     FALCOR_GFX_CALL(mGfxSwapchain->setFullScreenMode(mode));
+    mFullScreen = mode;
 }
 
 void Swapchain::prepareImages()

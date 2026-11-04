@@ -1,0 +1,7 @@
+{
+  "deltaAppearanceReference": true,
+  "environmentAppearanceReference": true,
+  "areaMode": 2,
+  "appearanceSamplesPerFrame": 1,
+  "appearanceMaxSamples": 4096
+}

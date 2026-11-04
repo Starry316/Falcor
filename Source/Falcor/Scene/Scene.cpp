@@ -1588,14 +1588,26 @@ namespace Falcor
         return flags;
     }
 
-    IScene::UpdateFlags Scene::updateLights(bool forceUpdate)
+    IScene::UpdateFlags Scene::updateLights(bool forceUpdate, bool applyAnimation)
     {
         Light::Changes combinedChanges = Light::Changes::None;
+        bool uploadAll = forceUpdate || mAnalyticLightsChanged;
+
+        // Runtime light edits only resize and rebind the analytic-light buffer. They do not
+        // require rebuilding the scene parameter block, geometry, or acceleration structures.
+        if (!mLights.empty() && (!mpLightsBuffer || mpLightsBuffer->getElementCount() < mLights.size()))
+        {
+            auto var = mpSceneBlock->getRootVar();
+            mpLightsBuffer = mpDevice->createStructuredBuffer(var[kLightsBufferName], (uint32_t)mLights.size(), ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, nullptr, false);
+            mpLightsBuffer->setName("Scene::mpLightsBuffer");
+            var[kLightsBufferName] = mpLightsBuffer;
+            uploadAll = true;
+        }
 
         // Animate lights and get list of changes.
         for (const auto& light : mLights)
         {
-            if (light->isActive() || forceUpdate)
+            if (applyAnimation && (light->isActive() || forceUpdate))
             {
                 updateAnimatable(*light, *mpAnimationController, forceUpdate);
             }
@@ -1615,7 +1627,7 @@ namespace Falcor
             mActiveLights.push_back(light);
 
             auto changes = light->getChanges();
-            if (changes != Light::Changes::None || is_set(combinedChanges, Light::Changes::Active) || forceUpdate)
+            if (changes != Light::Changes::None || is_set(combinedChanges, Light::Changes::Active) || uploadAll)
             {
                 // TODO: This is slow since the buffer is not CPU writable. Copy into CPU buffer and upload once instead.
                 mpLightsBuffer->setElement(activeLightIndex, light->getData());
@@ -1624,7 +1636,7 @@ namespace Falcor
             activeLightIndex++;
         }
 
-        if (combinedChanges != Light::Changes::None || forceUpdate)
+        if (combinedChanges != Light::Changes::None || uploadAll)
         {
             mpSceneBlock->getRootVar()["lightCount"] = (uint32_t)mActiveLights.size();
             updateLightStats();
@@ -1635,10 +1647,11 @@ namespace Falcor
         if (is_set(combinedChanges, Light::Changes::Intensity)) flags |= IScene::UpdateFlags::LightIntensityChanged;
         if (is_set(combinedChanges, Light::Changes::Position)) flags |= IScene::UpdateFlags::LightsMoved;
         if (is_set(combinedChanges, Light::Changes::Direction)) flags |= IScene::UpdateFlags::LightsMoved;
-        if (is_set(combinedChanges, Light::Changes::Active)) flags |= IScene::UpdateFlags::LightCountChanged;
+        if (is_set(combinedChanges, Light::Changes::Active) || mAnalyticLightsChanged) flags |= IScene::UpdateFlags::LightCountChanged;
         const Light::Changes otherChanges = ~(Light::Changes::Intensity | Light::Changes::Position | Light::Changes::Direction | Light::Changes::Active);
         if ((combinedChanges & otherChanges) != Light::Changes::None) flags |= IScene::UpdateFlags::LightPropertiesChanged;
 
+        mAnalyticLightsChanged = false;
         return flags;
     }
 
@@ -1839,7 +1852,9 @@ namespace Falcor
 
     IScene::UpdateFlags Scene::update(RenderContext* pRenderContext, double currentTime)
     {
-        mUpdates = IScene::UpdateFlags::None;
+        mTime = currentTime;
+        mUpdates = mPendingLightingUpdates;
+        mPendingLightingUpdates = IScene::UpdateFlags::None;
 
         // Perform updates that may affect the scene defines.
         updateGeometryTypes();
@@ -2664,6 +2679,34 @@ namespace Falcor
         }
 
         return nullptr;
+    }
+
+    uint32_t Scene::addLight(const ref<Light>& pLight)
+    {
+        FALCOR_CHECK(pLight != nullptr, "'pLight' is missing.");
+        FALCOR_CHECK(std::find(mLights.begin(), mLights.end(), pLight) == mLights.end(), "The light is already in this scene.");
+        FALCOR_CHECK(mLights.size() < std::numeric_limits<uint32_t>::max(), "Too many analytic lights.");
+        const uint32_t lightID = (uint32_t)mLights.size();
+        mLights.push_back(pLight);
+        mAnalyticLightsChanged = true;
+        return lightID;
+    }
+
+    void Scene::removeLight(uint32_t lightID)
+    {
+        FALCOR_CHECK(lightID < mLights.size(), "'lightID' ({}) is out of range.", lightID);
+        mLights.erase(mLights.begin() + lightID);
+        mAnalyticLightsChanged = true;
+    }
+
+    IScene::UpdateFlags Scene::refreshLighting()
+    {
+        // Do not reapply scene animation here: callers may have just edited a light's pose.
+        auto flags = updateLights(true, false);
+        flags |= updateEnvMap(true);
+        mUpdates |= flags;
+        mPendingLightingUpdates |= flags;
+        return flags;
     }
 
     ref<Light> Scene::getLightByName(const std::string& name) const
@@ -4324,6 +4367,7 @@ namespace Falcor
         scene.def_property_readonly(kAnimations.c_str(), &Scene::getAnimations);
         scene.def_property_readonly(kCameras.c_str(), &Scene::getCameras);
         scene.def_property_readonly(kLights.c_str(), &Scene::getLights);
+        scene.def_property_readonly("time", &Scene::getTime);
         scene.def_property_readonly(kGridVolumes.c_str(), &Scene::getGridVolumes);
         scene.def_property_readonly("volumes", &Scene::getGridVolumes); // PYTHONDEPRECATED
         scene.def_property(kCameraSpeed.c_str(), &Scene::getCameraSpeed, &Scene::setCameraSpeed);
@@ -4334,6 +4378,9 @@ namespace Falcor
         scene.def(kSetEnvMap.c_str(), &Scene::loadEnvMap, "path"_a);
         scene.def(kGetLight.c_str(), &Scene::getLight, "index"_a);
         scene.def(kGetLight.c_str(), &Scene::getLightByName, "name"_a);
+        scene.def("addLight", &Scene::addLight, "light"_a);
+        scene.def("removeLight", &Scene::removeLight, "lightID"_a);
+        scene.def("refreshLighting", [](Scene& self) { return (uint32_t)self.refreshLighting(); });
         scene.def(kGetGridVolume.c_str(), &Scene::getGridVolume, "index"_a);
         scene.def(kGetGridVolume.c_str(), &Scene::getGridVolumeByName, "name"_a);
         scene.def("getVolume", &Scene::getGridVolume, "index"_a); // PYTHONDEPRECATED

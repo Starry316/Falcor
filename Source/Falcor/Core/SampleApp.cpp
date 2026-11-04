@@ -183,6 +183,17 @@ void SampleApp::handleRenderFrame()
     renderFrame();
 }
 
+void SampleApp::toggleVsync(bool on)
+{
+    if (on == mVsyncOn)
+        return;
+    if (mpSwapchain)
+        mpSwapchain->setVSync(on);
+    mVsyncOn = on;
+    mFrameRate.reset();
+    logInfo("VSync {}", on ? "on" : "off");
+}
+
 void SampleApp::handleKeyboardEvent(const KeyboardEvent& keyEvent)
 {
     if (mShowUI && mpGui->onKeyboardEvent(keyEvent))
@@ -222,10 +233,7 @@ void SampleApp::handleKeyboardEvent(const KeyboardEvent& keyEvent)
                 break;
 #endif
             case Input::Key::V:
-                // TODO(@skallweit) we'd need to recreate the swapchain here
-                mVsyncOn = !mVsyncOn;
-                mFrameRate.reset();
-                mClock.setTime(0);
+                toggleVsync(!mVsyncOn);
                 break;
             case Input::Key::F2:
                 toggleUI(!mShowUI);
@@ -407,6 +415,10 @@ void SampleApp::renderGlobalUI(Gui* pGui)
         );
 
         controlsGroup.separator();
+        bool vsync = mVsyncOn;
+        if (controlsGroup.checkbox("VSync (V)", vsync))
+            toggleVsync(vsync);
+        controlsGroup.tooltip("Synchronize presentation to the display refresh. Off requests uncapped rendering.");
         uint2 screenDims = mpWindow->getClientAreaSize();
         if (screenSizeUI(controlsGroup, screenDims))
             resizeFrameBuffer(screenDims.x, screenDims.y);
@@ -597,6 +609,7 @@ SampleAppConfig SampleApp::getConfig() const
     SampleAppConfig c;
     c.deviceDesc = mpDevice->getDesc();
     c.windowDesc = mpWindow->getDesc();
+    c.windowDesc.enableVSync = mVsyncOn;
     c.timeScale = (float)mClock.getTimeScale();
     c.pauseTime = mClock.isPaused();
     c.showUI = mShowUI;
