@@ -67,13 +67,6 @@ private:
     // A better way would be to upload the data using an upload heap.
     static constexpr uint32_t kVaoCount = 3;
 
-    struct ComboData
-    {
-        uint32_t lastVal = -1;
-        int32_t currentItem = -1;
-    };
-    std::unordered_map<std::string, ComboData> mDropDownValues;
-
     // This struct is used to cache the mouse events
     struct MouseEvents
     {
@@ -634,25 +627,16 @@ bool GuiImpl::addDropdown(const char label[], const Gui::DropdownList& values, u
 
     if (sameLine)
         ImGui::SameLine();
-    // Check if we need to update the currentItem
-    const auto& iter = mDropDownValues.find(label);
+    // Resolve from the current list. Labels are not unique across GUI groups,
+    // and a dynamic list may be reordered or shrink while var stays unchanged.
     int curItem = -1;
-    if ((iter == mDropDownValues.end()) || (iter->second.lastVal != var))
+    for (uint32_t i = 0; i < values.size(); i++)
     {
-        // Search the current val
-        for (uint32_t i = 0; i < values.size(); i++)
+        if (values[i].value == var)
         {
-            if (values[i].value == var)
-            {
-                curItem = i;
-                mDropDownValues[label].currentItem = i;
-                break;
-            }
+            curItem = i;
+            break;
         }
-    }
-    else
-    {
-        curItem = mDropDownValues[label].currentItem;
     }
 
     std::string comboStr;
@@ -661,14 +645,13 @@ bool GuiImpl::addDropdown(const char label[], const Gui::DropdownList& values, u
         comboStr += v.label + '\0';
     }
     comboStr += '\0';
-    auto prevItem = curItem;
-    // This returns true if the combo is interacted with at all
-    bool b = ImGui::Combo(label, &curItem, comboStr.c_str());
-    mDropDownValues[label].currentItem = curItem;
-    mDropDownValues[label].lastVal = values[curItem].value;
-    var = values[curItem].value;
-    // Only return true if value is changed
-    return b && prevItem != curItem;
+    // A missing value is displayed as an empty selection. Merely rendering a
+    // widget must neither change the setting nor index values[-1].
+    if (!ImGui::Combo(label, &curItem, comboStr.c_str()) || curItem < 0 || size_t(curItem) >= values.size()) return false;
+    const uint32_t selected = values[curItem].value;
+    const bool changed = selected != var;
+    var = selected;
+    return changed;
 }
 
 bool GuiImpl::addButton(const char label[], bool sameLine)
@@ -903,6 +886,8 @@ bool addScalarVarHelper(
     if (sameLine)
         ImGui::SameLine();
     bool b = ImGui::DragScalar(label, imguiType, &var, step, &minVal, &maxVal, displayFormat);
+    // Range correction also changes the setting and must invalidate its caches.
+    b |= var < minVal || var > maxVal;
     var = std::clamp(var, T(minVal), T(maxVal));
     ImGui::PopItemWidth();
     return b;
@@ -1013,6 +998,7 @@ bool addVecVarHelper(
     if (sameLine)
         ImGui::SameLine();
     bool b = ImGui::DragScalarN(label, imguiType, &var[0], var.length(), step, &minVal, &maxVal, displayFormat);
+    b |= any(var < T(minVal)) || any(var > T(maxVal));
     var = clamp(var, T(minVal), T(maxVal));
     ImGui::PopItemWidth();
     return b;

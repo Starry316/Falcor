@@ -41,11 +41,13 @@
 #include <shellscalingapi.h>
 #include <ShlObj_core.h>
 #include <winioctl.h>
+#include <wrl/client.h>
 
 #include <string>
 #include <vector>
 #include <filesystem>
 #include <mutex>
+#include <memory>
 
 // Always run in Optimus mode on laptops
 extern "C"
@@ -517,8 +519,8 @@ static bool fileDialogCommon(const FileDialogFilterVec& filters, std::filesystem
 {
     FilterSpec fs(filters, typeid(DialogType) == typeid(IFileOpenDialog));
 
-    DialogType* pDialog;
-    if (FAILED(CoCreateInstance(clsid, NULL, CLSCTX_ALL, IID_PPV_ARGS(&pDialog))))
+    Microsoft::WRL::ComPtr<DialogType> pDialog;
+    if (FAILED(CoCreateInstance(clsid, NULL, CLSCTX_ALL, IID_PPV_ARGS(pDialog.GetAddressOf()))))
         FALCOR_THROW("Failed to create file dialog.");
     pDialog->SetOptions(options | FOS_FORCEFILESYSTEM);
     pDialog->SetFileTypes((uint32_t)fs.size(), fs.data());
@@ -526,15 +528,15 @@ static bool fileDialogCommon(const FileDialogFilterVec& filters, std::filesystem
 
     if (pDialog->Show(nullptr) == S_OK)
     {
-        IShellItem* pItem;
-        if (pDialog->GetResult(&pItem) == S_OK)
+        Microsoft::WRL::ComPtr<IShellItem> pItem;
+        if (pDialog->GetResult(pItem.GetAddressOf()) == S_OK)
         {
             PWSTR pathStr;
             if (pItem->GetDisplayName(SIGDN_FILESYSPATH, &pathStr) == S_OK)
             {
-                path = pathStr;
-                // filename = wstring_2_string(std::wstring(path)); // TODO
-                CoTaskMemFree(pathStr);
+                // Also release the task allocation if constructing the path throws.
+                const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> ownedPath(pathStr, CoTaskMemFree);
+                path = ownedPath.get();
                 return true;
             }
         }

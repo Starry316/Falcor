@@ -242,17 +242,14 @@ GraphicsStateObject::GraphicsStateObject(ref<Device> pDevice, const GraphicsStat
         spDefaultRasterizerState = RasterizerState::create(RasterizerState::Desc());
     }
 
-    // Initialize default objects
-    if (!mDesc.pBlendState)
-        mDesc.pBlendState = spDefaultBlendState;
-    if (!mDesc.pRasterizerState)
-        mDesc.pRasterizerState = spDefaultRasterizerState;
-    if (!mDesc.pDepthStencilState)
-        mDesc.pDepthStencilState = spDefaultDepthStencilState;
+    // Preserve the requested descriptor as the GraphicsState cache key. Replacing
+    // null states here makes it unequal to the descriptor used for cache lookup,
+    // so repeated state transitions create another pipeline on every frame.
+    // Resolve defaults only when constructing the native pipeline below.
 
     gfx::GraphicsPipelineStateDesc gfxDesc = {};
     // Set blend state.
-    const auto& blendState = mDesc.pBlendState;
+    const auto& blendState = mDesc.pBlendState ? mDesc.pBlendState : spDefaultBlendState;
     FALCOR_ASSERT(blendState->getRtCount() <= gfx::kMaxRenderTargetCount);
     auto& targetBlendDescs = gfxDesc.blend.targets;
     {
@@ -285,7 +282,7 @@ GraphicsStateObject::GraphicsStateObject(ref<Device> pDevice, const GraphicsStat
 
     // Set depth stencil state.
     {
-        const auto& depthStencilState = mDesc.pDepthStencilState;
+        const auto& depthStencilState = mDesc.pDepthStencilState ? mDesc.pDepthStencilState : spDefaultDepthStencilState;
         getGFXStencilDesc(gfxDesc.depthStencil.backFace, depthStencilState->getStencilDesc(Falcor::DepthStencilState::Face::Back));
         getGFXStencilDesc(gfxDesc.depthStencil.frontFace, depthStencilState->getStencilDesc(Falcor::DepthStencilState::Face::Front));
         gfxDesc.depthStencil.depthFunc = getGFXComparisonFunc(depthStencilState->getDepthFunc());
@@ -299,7 +296,7 @@ GraphicsStateObject::GraphicsStateObject(ref<Device> pDevice, const GraphicsStat
 
     // Set raterizer state.
     {
-        const auto& rasterState = mDesc.pRasterizerState;
+        const auto& rasterState = mDesc.pRasterizerState ? mDesc.pRasterizerState : spDefaultRasterizerState;
         gfxDesc.rasterizer.antialiasedLineEnable = rasterState->isLineAntiAliasingEnabled();
         gfxDesc.rasterizer.cullMode = getGFXCullMode(rasterState->getCullMode());
         gfxDesc.rasterizer.depthBias = rasterState->getDepthBias();

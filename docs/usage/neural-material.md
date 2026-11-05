@@ -37,7 +37,7 @@ For a build machine without the target GPU, specify an explicit target:
 The runtime still requires a GPU/driver with OptiX cooperative-vector support;
 selecting a CUDA architecture does not add support to unsupported hardware.
 FP16 inference, CUDA texture sampling and the C ABI are unchanged. Initial
-kernel sources are preserved verbatim with hashes in
+kernel provenance and current file hashes are recorded in
 `Source/NeuralInference/UPSTREAM.json`. Standard CMake configurations can disable
 the integration with `FALCOR_ENABLE_NEURAL_MATERIAL=OFF` or set the target via
 `FALCOR_NEURAL_CUDA_ARCHITECTURES`. An old `MPMAT_SDK_DIR` cache entry is ignored
@@ -109,8 +109,11 @@ GPU profiler times measure rendering work independently of presentation waits.
 
 ## Scene and material mapping
 
-The default scene is `Data/NeuralMaterial/NeuralMaterial.pyscene`, a Z-up plane
-with a known world-to-UV scale. `-Scene` selects any compatible Falcor triangle
+The default scene is `Data/NeuralMaterial/NeuralMaterial.pyscene`, a horizontal
+XZ plane at Y=-1 with +Y facing upward, below the default polygon emitter.
+The source mesh retains its original UV scale; the scene rotates it by -90
+degrees around X. The camera uses Y-up and looks down onto the receiver.
+`-Scene` selects any compatible Falcor triangle
 scene. All triangles use the selected neural asset by default. Material-ID
 selection restricts the asset to one scene material; excluded foreground still
 occludes the background and appears black. Mixed stock-PBR/neural shading is not
@@ -172,6 +175,19 @@ approximation. The source mode includes the original material response and is
 also suitable for examining lobe-fitting error. All modes are unoccluded direct
 lighting. Emitters themselves are visible as polygon surfaces; their back sides
 are black.
+
+**Neural > Lighting > Visible light exposure (EV)** adjusts only directly visible
+polygon light surfaces, including emission textures. It defaults to -6 EV to
+keep bright textures readable; 0 restores unscaled emission. This display-only
+gain does not change light intensity on the material, background, inference or
+reference history. Scripts can set `emitterExposure` from -16 to +8 EV.
+
+Disabled polygon lights defer pending emission-texture loads and prefilter
+bakes until enabled. With no active polygon lights (including an empty list
+or inactive bound scene lights), the polygon appearance-reference domain is
+held and excluded from composition, without dispatching full-frame CUDA
+decoding. Re-enabling a light restarts its reference history. The read-only
+`activePolygonLights` property reports the count used by the last frame.
 
 **Original appearance IBL reference** independently enables source-network
 environment integration. The environment estimator uses a 50/50 mixture of
@@ -389,17 +405,48 @@ in `output`, and verifies the measured inference/shading counts. To benchmark
 camera motion cost, leave `cacheInference=false`; a cached static view evaluates
 no MLP and mostly measures lighting. Many-light LTC is still a separate cost.
 
+`Cache inference` caches neural inference, not raster visibility or GUI rendering.
+If FPS degrades while `Diagnostics > Inference frames` stays constant, inspect
+Raster CPU time separately. A graphics pipeline cache bug previously replaced
+null/default states in the stored descriptor, preventing cache matches and causing
+CPU lookup cost to grow with frame count. The fix preserves the requested cache
+key and resolves defaults only for native pipeline creation. Collapsing GUI groups
+or removing lights cannot repair a cache already accumulated in an old process;
+restart with the rebuilt `Falcor.dll`.
+
+For a long-duration check, run Mogwai with `--headless --no-vsync --width 320
+--height 180 --script tests/python_tests/neural_raster_cache_benchmark.py`.
+It records 12,768 frames, verifies that static-scene inference stays cached, and
+writes per-block Raster CPU/GPU timings to `build/neural-raster-cache-benchmark`.
+
+The GUI dropdown wrapper resolves selections from each control's current options
+rather than caching indices by label. Same-named controls in different groups,
+reordered lists and unavailable values must not silently change settings on draw.
+Numeric controls also report automatic range corrections so dependent caches are
+invalidated once. These cases are covered by the native `GuiTests.cpp` tests.
+
+File dialogs now release their COM objects on success, cancel and error paths.
+Polygon bake bindings release temporary texture references after dispatch;
+reference bindings are refreshed even after accumulation stops. Removing a light
+or switching its emission to White therefore releases its old source/prefilter
+after in-flight GPU work completes. Disabled lights intentionally retain their
+textures for fast re-enabling. `neural_polygon_disable_smoke.py` also verifies
+image-to-white-to-image transitions and removing/re-adding a converged image light.
+
 Validation passed all 1162 MPMat tests (including 29 SDK tests), four Falcor
 lighting GPU tests, native CTests and the native/Falcor viewer, lifecycle and
 source-reference energy checks. The SDK and deployed runtime DLL hashes match.
 
-### Material opacity and interactive light controls
+### Diffuse substrate and interactive light controls
 
-**Material opacity** fades the complete neural foreground, including the
-optional substrate, into the current background. It leaves learned coverage,
-cached inference and reference history unchanged. This is a final compositing
-control: the raster pass still records only the nearest surface, so reducing
-opacity does not reveal a second layer of scene geometry.
+**Diffuse substrate** restores the original backing behavior. Zero uses the
+material's learned coverage. A positive value adds a lit diffuse backing only
+in the uncovered fraction and makes the receiver opaque; it does not fade or
+scale the neural material's response. Its value controls backing brightness,
+not transparency. Substrate edits reuse inference but reset affected lighting
+and progressive reference history. The whole-material **Material opacity**
+fade has been removed; saved `materialOpacity` properties no longer affect
+rendering. The raster pass still records only the nearest surface.
 
 **Delta light controls** can add or remove point, spot and directional lights.
 These are ordinary Falcor scene lights; their panels reuse Falcor's color,
@@ -430,7 +477,7 @@ prefilter. Shape or emission-source changes rebuild the polygon prefilter.
 
 Moving a reference light changes the integral and resets the relevant
 progressive history. Pause the timeline or disable automatic motion to let the
-reference converge. Opacity and display exposure changes preserve that history.
+reference converge. Display exposure preserves that history; substrate edits reset it.
 
 Scripts can update supported live controls with
 `graph.getPass("Neural").set_properties({...})`. This edits the existing pass;
@@ -485,7 +532,7 @@ GBufferRaster -> NeuralMaterialPass
 Each sample texture stores `(RGB contribution sum, actual sample count)`.
 Both accumulators use Falcor's unmodified `SingleCompensated` (FP32 Kahan)
 accumulation shader. `NeuralCompositePass` divides accumulated RGB by accumulated
-count, then combines deterministic lighting, material opacity, background and
+count, then combines deterministic lighting, substrate coverage, background and
 emitter/debug overlays. Tone mapping follows this composition. Final scene-linear
 color is **Composite.color**; the factory translates old `Neural.color` capture
 requests to this output. Custom graphs must use the new edges above.
@@ -507,7 +554,7 @@ Resetting either stock node requests a producer restart for the following frame.
 Use the Neural reset button to restart both immediately in the next rendered
 frame. The two reference domains retain their shared sample counter and reset
 lifecycle. Camera, geometry, mapping and relevant lighting changes reset both;
-opacity, display exposure and background exposure preserve them.
+substrate edits also reset them, while display and background exposure preserve them.
 
 Scripts can inspect `appearanceAccumulatedSamples` and `referenceBatchSamples`
 on Neural, and `accumulatedFrames` on each stock node. A frame count differs from
@@ -543,11 +590,12 @@ Its results are written to `captureDirectory/falcor-accumulate/results.json`.
 Verified on 2026-11-04 after a clean Release build: the four numerical lighting
 GPU tests, `NeuralMaterialSmoke.py`, `NeuralAppearanceSmoke.py`,
 `tests/python_tests/scene_lights_smoke.py`, and `NeuralControlsSmoke.py` passed.
-The control smoke checks 2,758 receiver pixels and 49 frames: opacity scales
-premultiplied color/coverage, added delta lights change rendered radiance,
+The current control smoke checks additive substrate lighting, opaque backing,
+restoration of learned coverage when backing is removed, and reference-history
+resets after substrate edits. Added delta lights change rendered radiance,
 per-axis motion replays exactly, failed image/shape edits retain the previous
-emitter, and reference histories survive opacity/display edits. Its inference
-counter stays at the two initial setup/resize evaluations throughout the edits.
+emitter, and display edits preserve reference history. Inference remains cached
+throughout these lighting and display edits.
 The tested logs contain no Slang compilation warnings. The visible UI was also
 checked for point-light creation, automatic environment rotation and loading a
 PNG through the native image chooser.
@@ -561,3 +609,34 @@ For the control smoke, set `MPMAT_CONFIG` to a JSON file containing `model`,
 
 Results and test-only raw readbacks are saved under `captureDirectory`, including
 `controls.json`. This validation changes no trained weights or inference format.
+
+
+## Imported velvet LOD and chainmail jitter materials
+
+`demo_velvet_mip.bat` opens the original K8/C4 velvet with four independently
+trained texture levels and its source-matched three-lobe IBL head. The importer
+accepts native v11/kind10 without converting it to an opaque material. Internally
+its networks use the ordinary angular-D layout; public metadata retains kind10.
+Both source appearance and the raw-feature IBL head sample the same integer or
+fractional LOD before inference. Coverage/validity remain learned; synthesis is
+unavailable for these independent mips. The original head reached its 12k budget,
+which is not a measured-convergence claim.
+
+`demo_chainmail_jitter.bat` opens K10/R512/C4 original jitter appearance with the
+converged, frozen-spatial four-lobe BCE IBL best checkpoint (step19000). Export
+checks the source SHA256, bounds, features, gaps and spatial conventions. It copies
+the trained head with identity normalization, unit RGB scale and roughness floor
+.03. No retraining or runtime jitter is added. Appearance reference controls use
+the original appearance network; fast IBL uses the independent BCE head.
+
+Both choices are in the Neural pass Material menu and accepted by
+`demo_neural.ps1 -Material velvet_mip` / `-Material chainmail_jitter`. Assets live
+in `build/neural-assets`; training checkpoints are not runtime dependencies.
+Import verification (2026-11-04, RTX 5090): both new presets and the existing
+fuzzy_mip preset rendered in fast IBL and original-appearance reference modes.
+GPU/PyTorch checks covered 21 velvet integer/fractional-LOD, periodic/cropped
+cases and three chainmail cases. Maximum lobe-component absolute differences
+were 0.00512 and 0.00143 respectively; source RGB mean absolute error stayed
+below 0.000032. These are FP16 inference parity checks, not training-quality
+or performance measurements. The exporter test and complete MPMat CPU suite
+passed (774 passed, 452 skipped); source/wheel packaging passed.

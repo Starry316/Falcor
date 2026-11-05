@@ -56,7 +56,7 @@ cbuffer gLightingCB
     float gEnvMinR;
     float gSubstrate;
     float gBackgroundGain;
-    float gMaterialOpacity;
+    float gEmitterGain;
 };
 
 float3 localToWorld(NeuralFrame frame,float3 direction)
@@ -296,7 +296,7 @@ void main(uint3 tid:SV_DispatchThreadID)
         if(gDebugView==1) {float lod=gRays[id].lod/max(1.f,float(gMipLevels-1));rgb=float3(lod,1.f-lod,.15f);alpha=1;}
         if(gDebugView==2) {rgb=lobeAxis(base)*.5f+.5f;alpha=1;}
         if(gDebugView==3) {rgb=float3(loadLobe(base+3));alpha=1;}
-        if(gDebugView==4) {rgb=float3((gSubstrate>0?1.f:alpha)*saturate(gMaterialOpacity));alpha=1;}
+        if(gDebugView==4) {rgb=float3(gSubstrate>0?1.f:alpha);alpha=1;}
         if(gDebugView==5) {rgb=normalize(frame.normal.xyz)*.5f+.5f;alpha=1;}
     }
     else if(position.w>0) alpha=1; // Non-neural foreground remains occluding.
@@ -306,7 +306,7 @@ void main(uint3 tid:SV_DispatchThreadID)
     if(gAreaEnabled!=0&&gDebugView==0)
     {
         float3 emitter;
-        if(visibleEmitter(tid.xy,position.xyz,position.w>0,emitter)) display=float4(emitter,-1.f);
+        if(visibleEmitter(tid.xy,position.xyz,position.w>0,emitter)) display=float4(gEmitterGain*emitter,-1.f);
     }
     gForeground[tid.xy]=float4(rgb,alpha);
     gDisplay[tid.xy]=display;

@@ -139,12 +139,15 @@ void* coop_backend_create(const Model& m,const LobeNetwork& l,cudaStream_t strea
         specialize_layout(*b,m,l);module_options.boundValues=b->bound_values.data();
         module_options.numBoundValues=unsigned(b->bound_values.size());
         OptixPipelineCompileOptions compile={};compile.pipelineLaunchParamsVariableName="coop_params";
-        char log[8192]={};size_t log_size=sizeof(log);
-        auto result=optixModuleCreate(b->context,&module_options,&compile,mpmat_coop_ptx.data(),mpmat_coop_ptx.size(),log,&log_size,&b->module);
-        if(result!=OPTIX_SUCCESS)throw std::runtime_error(std::string("Cooperative vector module: ")+log);
         std::string entry=l.latent?("__raygen__mip"+std::to_string(m.w)+"_"+std::to_string(head_width)+"_"+std::to_string(padded)):
             ("__raygen__coop"+std::to_string(width)+"_"+std::to_string(padded));
         if(mode)entry=std::string(mode==1?"__raygen__encode":"__raygen__appearance")+std::to_string(head_width)+"_"+std::to_string(padded);
+        // Specialize only the kernel used by this pipeline. Compiling every
+        // architecture/reference variant here can stall cold loads for minutes.
+        const auto ptx=mpmat_coop_ptx_for_entry(entry);
+        char log[8192]={};size_t log_size=sizeof(log);
+        auto result=optixModuleCreate(b->context,&module_options,&compile,ptx.data(),ptx.size(),log,&log_size,&b->module);
+        if(result!=OPTIX_SUCCESS)throw std::runtime_error(std::string("Cooperative vector module: ")+log);
         OptixProgramGroupOptions group_options={};OptixProgramGroupDesc desc={};
         desc.kind=OPTIX_PROGRAM_GROUP_KIND_RAYGEN;desc.raygen.module=b->module;desc.raygen.entryFunctionName=entry.c_str();
         check(optixProgramGroupCreate(b->context,&desc,1,&group_options,nullptr,nullptr,&b->raygen));

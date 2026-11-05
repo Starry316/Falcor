@@ -56,7 +56,7 @@ $taskHeader = [IO.File]::ReadAllText((Join-Path $taskBuild 'coop_ptx.h'))
 $taskChunks = [regex]::Matches($taskHeader, 'text\.append\(R"MPMATPTX\((.*?)\)MPMATPTX"\);', [Text.RegularExpressions.RegexOptions]::Singleline)
 $taskReconstructed = [Text.StringBuilder]::new()
 foreach ($taskChunk in $taskChunks) { [void]$taskReconstructed.Append($taskChunk.Groups[1].Value) }
-if ($taskReconstructed.ToString() -cne [IO.File]::ReadAllText((Join-Path $taskBuild 'coop_programs.ptx'))) {
+if ($taskReconstructed.ToString() -cne [IO.File]::ReadAllText((Join-Path $taskBuild 'coop_programs.ptx')).Replace("`r`n", "`n")) {
     throw 'Embedded cooperative PTX differs from compiler output.'
 }
 @{ passed = $true; sourceFilesVerified = @($taskManifest.files.PSObject.Properties).Count;

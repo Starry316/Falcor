@@ -8,7 +8,6 @@ cbuffer gCompositeCB
     uint2 gFrameDim;
     uint gEnvironmentEnabled;
     uint gAreaEnabled;
-    float gMaterialOpacity;
     uint gOpaqueSubstrate;
 };
 
@@ -33,7 +32,6 @@ void main(uint3 tid : SV_DispatchThreadID)
         if (gEnvironmentEnabled != 0) foreground.rgb += referenceMean(gEnvironment[tid.xy]);
         if (gAreaEnabled != 0) foreground.rgb += referenceMean(gArea[tid.xy]);
         if (gOpaqueSubstrate != 0) foreground.a = 1.f;
-        foreground *= saturate(gMaterialOpacity);
     }
     foreground.rgb += (1.f - foreground.a) * display.rgb;
     if ((flags & 1u) != 0) foreground.a = 1.f;

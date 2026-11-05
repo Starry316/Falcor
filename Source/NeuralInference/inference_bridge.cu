@@ -83,20 +83,25 @@ void affine_layout(Model& model,const std::vector<float>& weights,const std::vec
 }
 void load(Context& context,const char* path){
     Reader reader(path);auto magic=reader.magic();Model& m=context.model;LobeNetwork& h=context.head;
-    if(magic.size()!=10||magic.substr(0,9)!="MPMATCUDA"||magic[9]<'2'||magic[9]>'9')
+    const bool coverage_mip=magic=="MPMATCUDA11";
+    if(!coverage_mip&&(magic.size()!=10||magic.substr(0,9)!="MPMATCUDA"||magic[9]<'2'||magic[9]>'9'))
         throw std::runtime_error("Expected an MPMat native model with a matched lobe head");
     m.kind=reader.read<int>(1)[0];
-    if(m.kind!=2&&m.kind!=4&&m.kind!=5&&m.kind!=7&&m.kind!=8)
+    const int asset_kind=m.kind;
+    if(m.kind!=2&&m.kind!=4&&m.kind!=5&&m.kind!=7&&m.kind!=8&&!(coverage_mip&&m.kind==10))
         throw std::runtime_error("Inference bridge supports raw-direction angular/compact and learned-mip assets");
-    if(magic[9]-'1'!=m.kind)throw std::runtime_error("Native model magic/kind mismatch");
-    auto dims=reader.read<int>(m.kind==8?12:m.kind==2?13:m.kind==4?10:11);
+    if(coverage_mip?m.kind!=10:magic[9]-'1'!=m.kind)throw std::runtime_error("Native model magic/kind mismatch");
+    auto dims=reader.read<int>(coverage_mip?10:m.kind==8?12:m.kind==2?13:m.kind==4?10:11);
+    // Coverage mips have exactly the ordinary angular-D network layout.
+    // Keep that internal layout while retaining native kind10 in public metadata.
+    if(coverage_mip)m.kind=2;
     m.k=dims[0];m.r=dims[1];m.c=dims[2];m.w=dims[3];m.z=dims[4];m.bands=dims[5];m.angular=3;m.stride=m.z+4;
     m.aw=(m.kind==5||m.kind==7||m.kind==8)?dims[10]:m.w;
     m.depth=(m.kind==4||m.kind==8)?dims[9]:2;m.appearance_inputs=m.z+12;
     if(m.k<1||m.k>32||m.r<2||m.r>16384||(m.c!=2&&m.c!=4)||m.w<1||m.w>128||m.aw<1||m.aw>128||m.z<1||m.z>64||m.bands||
        (m.depth!=1&&m.depth!=2)||dims[6]<1||dims[7]<1||dims[8]!=dims[6])throw std::runtime_error("Invalid inference model dimensions");
-    if(m.kind==2&&(dims[9]!=0||dims[12]!=0))throw std::runtime_error("Inference bridge requires angular D without learned frames");
-    m.mip_levels=m.kind==8?dims[11]:1;
+    if(m.kind==2&&!coverage_mip&&(dims[9]!=0||dims[12]!=0))throw std::runtime_error("Inference bridge requires angular D without learned frames");
+    m.mip_levels=coverage_mip?dims[9]:m.kind==8?dims[11]:1;
     if(m.mip_levels<1||m.mip_levels>11||m.r%(1<<(m.mip_levels-1))||(m.r>>(m.mip_levels-1))<2)
         throw std::runtime_error("Invalid learned mip dimensions");
     auto scalar=reader.read<float>(2),bounds=reader.read<float>(6),heights=reader.read<float>(m.k);
@@ -107,7 +112,7 @@ void load(Context& context,const char* path){
     size_t features_count=0;for(int level=0;level<m.mip_levels;++level){m.mip_offsets[level]=features_count;int r=m.r>>level;features_count+=size_t(m.k)*m.c*r*r;}
     auto features=reader.read<float>(features_count);half_values(features); // reject overflow before hardware upload
     upload(m.heights,heights);upload_mip_texture(m.mip_texture,features.data(),m.k,m.r,m.c,m.mip_levels,m.mip_offsets);
-    if(m.kind!=8)context.source_features=std::move(features);
+    if(m.kind!=8&&!coverage_mip)context.source_features=std::move(features);
     // Preserve raw and latent architecture metadata; one-level texture storage
     // does not remove validity inputs or turn legacy networks into mip networks.
     std::vector<int> inputs={m.kind==8?m.k*m.c+3:m.k*(m.c+1)+3},outputs={m.w};
@@ -146,10 +151,10 @@ void load(Context& context,const char* path){
     context.coop=coop_backend_create(m,h,nullptr); // no generic fallback
     CU(cudaEventCreateWithFlags(&context.completed,cudaEventDisableTiming));
     auto& info=context.info;info.struct_size=sizeof(info);info.abi_version=MPMAT_INFER_ABI_VERSION;info.ray_bytes=sizeof(MpmatInferenceRay);
-    info.output_stride_floats=h.stride;info.model_kind=m.kind;info.planes=m.k;info.channels=m.c;info.base_resolution=m.r;info.mip_levels=m.mip_levels;
+    info.output_stride_floats=h.stride;info.model_kind=asset_kind;info.planes=m.k;info.channels=m.c;info.base_resolution=m.r;info.mip_levels=m.mip_levels;
     for(int i=0;i<m.mip_levels;++i)info.mip_resolutions[i]=m.r>>i;
     info.lobes=h.lobes;info.head_input_kind=h.latent?1:0;info.coverage_kind=h.latent&&!h.learned_alpha?1:0;info.head_parameterization=h.parameterization;
-    std::copy(bounds.begin(),bounds.end(),info.bounds);info.minimum_roughness=h.min_r;info.parallel_epsilon=m.epsilon;info.decode_mu=m.mu;info.capabilities=(m.kind==8?3u:7u)|16u;
+    std::copy(bounds.begin(),bounds.end(),info.bounds);info.minimum_roughness=h.min_r;info.parallel_epsilon=m.epsilon;info.decode_mu=m.mu;info.capabilities=((m.kind==8||coverage_mip)?3u:7u)|16u;
     if(m.z<=31&&m.k*(m.c+(m.kind==8?0:1))+3<=64&&m.appearance_inputs<=64&&m.w<=128&&m.aw<=128&&!m.frames&&!m.angle_mode)
         info.capabilities|=8;
 }
@@ -218,7 +223,7 @@ extern "C" int mpmat_infer_set_synthesis(void* value,int mode,int seed,float sca
     auto& c=checked(value);auto& m=c.model;
     if(mode<0||mode>2||seed<0||!std::isfinite(scale)||scale<.01f||scale>100||!std::isfinite(power)||power<1||power>32||
         !std::isfinite(rotation)||rotation<0||rotation>25||!std::isfinite(border)||border<.01f||border>.99f)throw std::runtime_error("Invalid synthesis settings");
-    if(mode&&m.kind==8)throw std::runtime_error("Synthesis is unavailable for independently trained mip architectures");
+    if(mode&&!(c.info.capabilities&4u))throw std::runtime_error("Synthesis is unavailable for independently trained mip architectures");
     if(m.synthesis_mode==mode&&m.synthesis_seed==uint32_t(seed)&&m.synthesis_scale==scale&&m.synthesis_power==power&&m.synthesis_rotation==rotation&&m.synthesis_border==border)return;
     if(c.submitted)CU(cudaEventSynchronize(c.completed));
     if(mode==2&&!m.gaussian_texture.array){

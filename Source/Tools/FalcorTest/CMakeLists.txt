@@ -172,6 +172,7 @@ target_sources(FalcorTest PRIVATE
     Tests/Utils/SplitBufferTests.cpp
     Tests/Utils/SplitBufferTests.cs.slang
     Tests/Utils/StringUtilsTests.cpp
+    Tests/Utils/GuiTests.cpp
     Tests/Utils/TextureAnalyzerTests.cpp
     Tests/Utils/UnionFindTests.cpp
     Tests/Utils/VectorTests.cpp

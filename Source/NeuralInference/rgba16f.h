@@ -153,6 +153,11 @@ __device__ Half4 synthesis_rgba16f(Model m,const Local& ray,int plane,float crop
 }
 
 __device__ Half4 sample_rgba16f(Model m,const Local& ray,int plane,bool periodic,float crop,bool& valid){
+    if(m.mip_levels>1){
+        float u,v;valid=material_uv(m,ray,plane,periodic,crop,u,v);
+        float lod=fminf(fmaxf(m.feature_lod<0?ray.lod:m.feature_lod,0.f),float(m.mip_levels-1));
+        return valid?sample_mip_texture(m,ray,plane,periodic,crop,lod):Half4{};
+    }
     // Legacy one-level mip assets retain the original UV arithmetic exactly.
     // rgba16f_lookup selects their mip texture without changing coordinates.
     float x,y;valid=sample_uv(m,ray,plane,periodic,crop,x,y);

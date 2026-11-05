@@ -19,6 +19,13 @@ separate from Falcor's optional OptiX denoiser SDK. Generated PTX is embedded in
 the DLL. The DLL uses CUDA's static runtime and the NVIDIA driver installed on
 the target machine; it has no training-runtime dependencies.
 
+The PTX embedder indexes kernel bodies at build time. Each OptiX module receives
+only its selected entry and the shared declarations/functions; unused network
+widths and appearance-reference entries are excluded before specialization.
+This avoids compiling all 52 variants on a cold model load. PTX instructions
+and layout specialization are preserved, with only CRLF newlines normalized.
+Loading is still synchronous, so a short initialization pause can remain.
+
 CUDA architectures default to `native` (CMake detects the build machine's GPUs).
 Set `FALCOR_NEURAL_CUDA_ARCHITECTURES` for offline/cross builds. Compiling for a
 GPU architecture does not add cooperative-vector support to an unsupported GPU.

@@ -37,7 +37,6 @@ void NeuralCompositePass::execute(RenderContext* context, const RenderData& data
     auto cb = root["gCompositeCB"];
     cb["gFrameDim"] = uint2(output->getWidth(), output->getHeight());
     cb["gEnvironmentEnabled"] = uint32_t(environment); cb["gAreaEnabled"] = uint32_t(area);
-    cb["gMaterialOpacity"] = dict.getValue(mControlPrefix + ".opacity", 1.f);
     cb["gOpaqueSubstrate"] = uint32_t(dict.getValue(mControlPrefix + ".substrate", false));
     mpPass->execute(context, output->getWidth(), output->getHeight());
 

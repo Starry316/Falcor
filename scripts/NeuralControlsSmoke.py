@@ -78,11 +78,13 @@ def capture(label, values=None, expected_inference=None):
     return result
 
 
-def scaled_foreground(actual, baseline, scale, label):
+def substrate_response(actual, baseline, backing, scale, label):
     maximum = 0.
     for index in baseline['valid']:
-        for channel in range(4):
-            expected = baseline['color'][index][channel]*scale
+        assert actual['color'][index][3] == 1., (label, 'Substrate is not opaque')
+        for channel in range(3):
+            original = baseline['color'][index][channel]
+            expected = original + scale*(backing['color'][index][channel]-original)
             error = abs(actual['color'][index][channel]-expected)
             maximum = max(maximum, error)
             assert error <= 2e-7 + 3e-6*abs(expected), (label, index, channel, error, expected)
@@ -120,7 +122,7 @@ def check_history_equal(a, b):
     for name in ('referenceDirect', 'referenceEnvironment', 'referenceArea'):
         path = a['directory']/(name+'.bin')
         assert path.exists(), name
-        assert path.read_bytes() == (b['directory']/(name+'.bin')).read_bytes(), ('Opacity changed raw history', name)
+        assert path.read_bytes() == (b['directory']/(name+'.bin')).read_bytes(), ('Display edit changed raw history', name)
 
 
 try:
@@ -132,7 +134,7 @@ try:
                    size=[2., 2.], intensity=1., color=[1., 1., 1.],
                    motion=dict(autoRotate=False, autoOrbit=False))
     options = dict(environment=False, background=False, deltaLights=True, areaLights=False,
-                   environmentBakeSamples=8, materialOpacity=1., substrate=0.,
+                   environmentBakeSamples=8, substrate=0.,
                    lights={'0': polygon}, appearanceSamplesPerFrame=2, appearanceMaxSamples=8)
     graph = factory(c['model'], options)
     m.addGraph(graph)
@@ -144,28 +146,23 @@ try:
     neural = graph.getPass('Neural')
     render('initial', 4)
     cached = int(neural.properties['inferenceFrames'])
-    baseline = capture('opacity-one', expected_inference=cached)
+    baseline = capture('substrate-off', expected_inference=cached)
+    assert 'materialOpacity' not in baseline['props'], 'Removed fade control is still exported'
     assert sum(sum(baseline['color'][i][:3]) for i in baseline['valid']) > 1e-5, 'Initial material is black'
-    zero = capture('opacity-zero', {'materialOpacity': 0.}, cached)
-    scaled_foreground(zero, baseline, 0., 'Opacity zero')
-    partial = capture('opacity-partial', {'materialOpacity': .35}, cached)
-    scaled_foreground(partial, baseline, .35, 'Premultiplied opacity')
-    restored = capture('opacity-restored', {'materialOpacity': 1.}, cached)
-    assert restored['color'] == baseline['color'], 'Restoring opacity changed radiance'
-
     substrate = capture('substrate-opaque', {'substrate': .2}, cached)
     assert all(substrate['color'][i][3] == 1. for i in substrate['valid'])
-    substrate_partial = capture('substrate-partial', {'materialOpacity': .25}, cached)
-    scaled_foreground(substrate_partial, substrate, .25, 'Substrate opacity')
-    bg_zero = capture('background-zero', {'background': True, 'substrate': 0., 'materialOpacity': 0.}, cached)
-    bg_one = capture('background-one', {'materialOpacity': 1.}, cached)
-    bg_partial = capture('background-partial', {'materialOpacity': .35}, cached)
-    for i in bg_one['valid']:
-        assert bg_partial['color'][i][3] == 1.
+    brighter = capture('substrate-brighter', {'substrate': .5}, cached)
+    substrate_response(brighter, baseline, substrate, 2.5, 'Diffuse backing response')
+    for i in baseline['valid']:
         for channel in range(3):
-            expected = .35*bg_one['color'][i][channel]+.65*bg_zero['color'][i][channel]
-            assert abs(bg_partial['color'][i][channel]-expected) < 3e-6, 'Background alpha composition'
-    edit({'background': False, 'materialOpacity': 1.})
+            assert substrate['color'][i][channel] >= baseline['color'][i][channel]-2e-7, 'Backing faded neural radiance'
+    if any(baseline['color'][i][3] < .99 for i in baseline['valid']):
+        assert any(substrate['color'][i][:3] != baseline['color'][i][:3] for i in baseline['valid']), 'Backing did not fill uncovered material'
+    backed_background = capture('substrate-background', {'background': True, 'substrate': .2}, cached)
+    for i in substrate['valid']:
+        assert backed_background['color'][i] == substrate['color'][i], 'Background leaks through substrate'
+    restored = capture('substrate-restored', {'background': False, 'substrate': 0.}, cached)
+    assert restored['color'] == baseline['color'], 'Removing substrate changed neural radiance or coverage'
 
     # Runtime Scene insertion/removal must update the actual analytic-light GPU
     # list without treating the light count as changed material geometry.
@@ -215,7 +212,7 @@ try:
     motion_one = capture('motion-one-second', expected_inference=cached)
     props = motion_one['props']
     close_vector(props['lights']['0']['effectiveCenter'], [2., 0., -1.], 'Polygon orbit')
-    close_vector(props['lights']['0']['effectiveRotation'], [200., 0., -40.], 'Polygon spin')
+    close_vector(props['lights']['0']['effectiveRotation'], [200., 0., 320.], 'Polygon spin')
     close_vector(spot.position, [0., 1., 2.], 'Delta orbit')
     close_vector(spot.direction, [0., 1., 0.], 'Delta spin')
     close_vector(props['effectiveEnvironmentRotation'], [10., 80., 30.], 'Environment spin')
@@ -251,28 +248,31 @@ try:
     assert failed_shape['color'] == image['color'], 'Texture rollback changed the active polygon outline or emission'
     render('image-failure-settled', 2, cached)
 
-    # Reference samples remain in scene-linear radiance. Opacity and display
-    # changes operate after raw history, whereas lighting edits restart it.
+    # Substrate contributes to reference lighting and must reset its history.
+    # Display changes operate after raw history and preserve it.
     # Place this emitter outside the demo camera's view while still above the
     # receiver. Directly visible emitters have their own coverage and correctly
-    # stay opaque when material opacity changes; they must not enter this check.
+    # stay opaque; they must not enter the backing-response check.
     reference_polygon = dict(polygon, center=[8., 0., 2.], size=[1., 1.])
     edit({'lights': {'0': reference_polygon}, 'environment': True, 'environmentAppearanceReference': True,
           'areaMode': 2, 'deltaLights': True, 'deltaAppearanceReference': True,
-          'materialOpacity': 1., 'resetAppearance': True})
+          'substrate': 0., 'resetAppearance': True})
     render('reference-converged', 5, cached)
-    reference = capture('reference-opacity-one', expected_inference=cached)
+    reference = capture('reference-substrate-off', expected_inference=cached)
     assert reference['props']['appearanceAccumulatedSamples'] == 8
-    reference_zero = capture('reference-opacity-zero', {'materialOpacity': 0.}, cached)
-    scaled_foreground(reference_zero, reference, 0., 'Appearance opacity zero / out-of-view emitter')
-    check_history_equal(reference, reference_zero)
-    reference_partial = capture('reference-opacity-partial', {'materialOpacity': .35}, cached)
-    scaled_foreground(reference_partial, reference, .35, 'Appearance opacity')
-    check_history_equal(reference, reference_partial)
+    edit({'substrate': .2})
+    assert render('reference-substrate-reset', expected_inference=cached)['appearanceAccumulatedSamples'] == 2
+    render('reference-substrate-settle', 4, cached)
+    reference_backing = capture('reference-substrate-opaque', expected_inference=cached)
+    edit({'substrate': .5})
+    assert render('reference-substrate-brighter-reset', expected_inference=cached)['appearanceAccumulatedSamples'] == 2
+    render('reference-substrate-brighter-settle', 4, cached)
+    reference_brighter = capture('reference-substrate-brighter', expected_inference=cached)
+    substrate_response(reference_brighter, reference, reference_backing, 2.5, 'Reference diffuse backing')
     graph.getPass('ToneMapper').exposureCompensation = 1.
     display = capture('reference-display-only', expected_inference=cached)
     assert display['props']['appearanceAccumulatedSamples'] == 8
-    check_history_equal(reference, display)
+    check_history_equal(reference_brighter, display)
     edit({'lights': {'0': dict(reference_polygon, intensity=1.5)}})
     assert render('reference-polygon-reset', expected_inference=cached)['appearanceAccumulatedSamples'] == 2
     render('reference-settle', 4, cached)
@@ -284,7 +284,7 @@ try:
     assert final['inferenceFrames'] == cached
     (directory/'controls.json').write_text(json.dumps(dict(passed=True, inferenceFrames=cached,
         checkedPixels=len(baseline['valid']), records=records), indent=2), encoding='utf-8')
-    print('Live opacity, light controls, texture rollback, motion and cache checks passed.', flush=True)
+    print('Live substrate, light controls, texture rollback, motion and cache checks passed.', flush=True)
     exit()
 except Exception:
     error = traceback.format_exc()

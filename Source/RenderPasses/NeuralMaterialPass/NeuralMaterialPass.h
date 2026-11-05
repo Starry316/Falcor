@@ -95,12 +95,12 @@ private:
     bool mAreaEnabled = true;
     bool mBackgroundEnabled = true;
     float mBackgroundExposure = 0.f;
+    float mEmitterExposure = -6.f;
     bool mHorizonOcclusion = false;
     uint32_t mDebugView = 0;
     uint32_t mAreaMode = 0;
     uint32_t mReferenceSamples = 64;
     float mSubstrate = 0.f;
-    float mMaterialOpacity = 1.f;
     std::string mDumpPath;
     uint32_t mCaptureFrame = 0;
     uint64_t mFrameIndex = 0;

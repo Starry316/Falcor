@@ -82,7 +82,21 @@ struct LightMotion
     {
         return autoOrbit ? orbitCenter + rotateXYZ(base - orbitCenter, orbitOffset(time)) : base;
     }
-    float3 rotation(float3 base, double time) const { return base + spin(time); }
+    float3 rotation(float3 base, double time) const
+    {
+        float3 result = base + spin(time);
+        // Wrap the final angle, not just the offset: otherwise the GUI clamps
+        // base + offset at 360 and repeatedly resets the animation origin.
+        for (uint32_t axis = 0; axis < 3; ++axis)
+        {
+            if (!autoRotate || !rotationAxes[axis] || rotationSpeed[axis] == 0.f) continue;
+            double wrapped = std::fmod(double(result[axis]), 360.0);
+            if (wrapped < 0.0) wrapped += 360.0;
+            result[axis] = float(wrapped);
+            if (result[axis] >= 360.f) result[axis] = 0.f;
+        }
+        return result;
+    }
 
     bool renderUI(Gui::Widgets& widget, bool allowOrbit = true)
     {

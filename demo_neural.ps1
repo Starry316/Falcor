@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('fuzzy_mip','fuzzy_silk','shot_silk')][string]$Material = 'fuzzy_mip',
+    [ValidateSet('fuzzy_mip','fuzzy_silk','shot_silk','velvet_mip','chainmail_jitter')][string]$Material = 'fuzzy_mip',
     [string]$Model = '',
     [string]$Scene = 'Data/NeuralMaterial/NeuralMaterial.pyscene',
     [string]$Environment = 'build/neural-assets/studio.hdr',

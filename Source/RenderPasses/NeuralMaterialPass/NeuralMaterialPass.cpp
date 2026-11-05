@@ -173,6 +173,7 @@ struct NeuralMaterialPass::Lighting
     uint32_t envSize = 256, envLevels = 7, envSamples = 2048;
     float envMinimumRoughness = .12f;
     std::array<GpuPolygonLight, kMaxLights> records = {};
+    uint32_t activePolygonLights = 0;
 };
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(PluginRegistry& registry)
@@ -216,6 +217,8 @@ NeuralMaterialPass::NeuralMaterialPass(ref<Device> device, const Properties& pro
     mAreaEnabled = props.get<bool>("areaLights", true);
     mBackgroundEnabled = props.get<bool>("background", true);
     mBackgroundExposure = props.get<float>("backgroundExposure", 0.f);
+    mEmitterExposure = props.get<float>("emitterExposure", -6.f);
+    FALCOR_CHECK(std::isfinite(mEmitterExposure) && mEmitterExposure >= -16.f && mEmitterExposure <= 8.f, "Invalid emitterExposure");
     mHorizonOcclusion = props.get<bool>("horizonOcclusion", false);
     mAreaMode = props.get<uint32_t>("areaMode", 0);
     mEnvironmentReference = props.get<bool>("environmentAppearanceReference", false);
@@ -229,8 +232,6 @@ NeuralMaterialPass::NeuralMaterialPass(ref<Device> device, const Properties& pro
     mCaptureFrame = props.get<uint32_t>("captureFrame", 0);
     mpLighting->envSamples = props.get<uint32_t>("environmentBakeSamples", 2048);
     configureLights(props);
-    mMaterialOpacity = props.get<float>("materialOpacity", 1.f);
-    FALCOR_CHECK(std::isfinite(mMaterialOpacity) && mMaterialOpacity >= 0.f && mMaterialOpacity <= 1.f, "Invalid materialOpacity");
     FALCOR_CHECK(std::isfinite(mUvScale) && mUvScale > 0 && std::isfinite(mSourceCrop) && mSourceCrop >= 0 && mSourceCrop < .5f,
         "Invalid UV scale/source crop");
     FALCOR_CHECK(std::isfinite(mThickness) && mThickness > 0, "Thickness must be finite and positive");
@@ -294,12 +295,6 @@ void NeuralMaterialPass::configureLights(const Properties& props)
 
 void NeuralMaterialPass::setProperties(const Properties& props)
 {
-    if (props.has("materialOpacity"))
-    {
-        const float opacity = props.get<float>("materialOpacity");
-        FALCOR_CHECK(std::isfinite(opacity) && opacity >= 0.f && opacity <= 1.f, "Invalid materialOpacity");
-        mMaterialOpacity = opacity;
-    }
     configureLights(props);
     auto change = [&](const char* key, auto& dst, bool& dirty)
     {
@@ -317,6 +312,12 @@ void NeuralMaterialPass::setProperties(const Properties& props)
     mDeltaDirty |= props.has("substrate");
     mBackgroundEnabled = props.get<bool>("background", mBackgroundEnabled);
     mBackgroundExposure = props.get<float>("backgroundExposure", mBackgroundExposure);
+    if (props.has("emitterExposure"))
+    {
+        const float exposure = props.get<float>("emitterExposure");
+        FALCOR_CHECK(std::isfinite(exposure) && exposure >= -16.f && exposure <= 8.f, "Invalid emitterExposure");
+        mEmitterExposure = exposure;
+    }
     mAppearanceSamplesPerFrame = props.get<uint32_t>("appearanceSamplesPerFrame", mAppearanceSamplesPerFrame);
     mAppearanceMaxSamples = props.get<uint32_t>("appearanceMaxSamples", mAppearanceMaxSamples);
     if (mAppearanceMaxSamples < mAppearanceSamples) mReferenceDirty = true;
@@ -450,8 +451,9 @@ Properties NeuralMaterialPass::getProperties() const
     p["referenceBatchSamples"] = mLastBatchSamples;
     p["areaLights"] = mAreaEnabled; p["background"] = mBackgroundEnabled; p["horizonOcclusion"] = mHorizonOcclusion;
     p["backgroundExposure"] = mBackgroundExposure;
+    p["emitterExposure"] = mEmitterExposure;
+    p["activePolygonLights"] = mpLighting->activePolygonLights;
     p["areaMode"] = mAreaMode; p["referenceSamples"] = mReferenceSamples; p["debugView"] = mDebugView;
-    p["materialOpacity"] = mMaterialOpacity;
     p["substrate"] = mSubstrate; p["environmentBakeSamples"] = mpLighting->envSamples;
     p["dumpPath"] = mDumpPath; p["captureFrame"] = mCaptureFrame;
     p["inferenceFrames"] = mInferenceFrames; p["shadingFrames"] = mShadingFrames;
@@ -682,7 +684,6 @@ void NeuralMaterialPass::execute(RenderContext* context, const RenderData& data)
 {
     auto& dict = data.getDictionary();
     dict[mReferenceControlPrefix + ".dumpPath"] = std::string();
-    dict[mReferenceControlPrefix + ".opacity"] = mMaterialOpacity;
     dict[mReferenceControlPrefix + ".substrate"] = mSubstrate > 0.f;
     auto clearFailedFrame = [&]()
     {
@@ -889,6 +890,7 @@ void NeuralMaterialPass::prepareLighting(RenderContext* context)
                 for (uint32_t level = 0; level < lighting.envLevels; ++level)
                     context->copySubresource(texture.get(), texture->getSubresourceIndex(face, level),
                         bakeTarget.get(), bakeTarget->getSubresourceIndex(face, level));
+            root["gEnvOutput"].setUav(nullptr);
             lighting.envSampler = std::move(sampler); lighting.envPrefilter = texture;
             lighting.envPrefilterSrv = ShaderResourceView::create(mpDevice.get(), texture.get(), 0, lighting.envLevels, 0, 6);
             lighting.envMinimumRoughness = minR;
@@ -902,6 +904,9 @@ void NeuralMaterialPass::prepareLighting(RenderContext* context)
     {
         auto& light = lighting.lights[index];
         auto& gpu = records[index];
+        // Keep pending texture edits for re-enabling, without baking or
+        // animating lights that cannot contribute to this frame.
+        if (!mAreaEnabled || !light.enabled) continue;
         FALCOR_CHECK(light.shape <= 1 && light.textureKind <= 3 && light.size.x > 0 && light.size.y > 0,
             "Invalid polygon light shape/texture/size");
         const double time = mpScene->getTime();
@@ -943,8 +948,10 @@ void NeuralMaterialPass::prepareLighting(RenderContext* context)
             gpu.emission = float4(light.color * light.intensity * source->getIntensity(), 0.f);
             if (!source->isActive()) gpu.params.z = 0;
         }
+        if (gpu.params.z == 0) { gpu = {}; continue; }
         if (light.bakeDirty && light.textureKind == 0)
         {
+            light.source = nullptr; light.prefilter = nullptr;
             light.bakedTextureKind = 0; light.bakedShape = light.shape; light.textureError.clear(); light.bakeDirty = false;
         }
         if (light.bakeDirty && light.textureKind != 0)
@@ -992,8 +999,24 @@ void NeuralMaterialPass::prepareLighting(RenderContext* context)
                 logWarning("Polygon emission image: {}", light.textureError);
             }
             light.bakeDirty = false;
+            // The recorded GPU commands retain in-flight resources. The reusable
+            // bake pass must not retain the last light after it is removed.
+            auto root = lighting.lightBake->getRootVar();
+            root["gBakeSource"].setTexture(nullptr);
+            root["gBakeOutput"].setTexture(nullptr);
         }
         gpu.params.y = light.bakedTextureKind;
+    }
+    lighting.activePolygonLights = uint32_t(std::count_if(records.begin(), records.end(),
+        [](const auto& light) { return light.params.z != 0; }));
+    // Refresh bindings even when reference accumulation is stopped or complete;
+    // otherwise that pass keeps deleted lights' source textures alive indefinitely.
+    if (lighting.referenceGenerate)
+    {
+        auto root = lighting.referenceGenerate->getRootVar();
+        for (uint32_t i = 0; i < kMaxLights; ++i)
+            root["gAreaSources"][i] = i < lighting.lights.size() && records[i].params.z && lighting.lights[i].source ?
+                lighting.lights[i].source : lighting.dummySource;
     }
     if (std::memcmp(records.data(), lighting.records.data(), sizeof(records)) != 0 || mShadingFrames == 0)
     {
@@ -1080,7 +1103,7 @@ void NeuralMaterialPass::prepareDeltaReference(RenderContext* context, const Ren
 void NeuralMaterialPass::prepareAppearanceReference(RenderContext* context, const RenderData& data)
 {
     const bool environment = mEnvironmentReference && mEnvironmentEnabled && bool(mpScene->getEnvMap());
-    const bool area = mAreaMode == 2 && mAreaEnabled;
+    const bool area = mAreaMode == 2 && mAreaEnabled && mpLighting->activePolygonLights > 0;
     auto& lighting = *mpLighting;
     auto& dict = data.getDictionary();
     for (const char* domain : {"environment", "area"})
@@ -1140,7 +1163,8 @@ void NeuralMaterialPass::prepareAppearanceReference(RenderContext* context, cons
                 root["gEnvSampler"]["importanceBaseMip"] = 0u;
             }
             for (uint32_t i = 0; i < kMaxLights; ++i)
-                root["gAreaSources"][i] = i < lighting.lights.size() && lighting.lights[i].source ? lighting.lights[i].source : lighting.dummySource;
+                root["gAreaSources"][i] = i < lighting.lights.size() && lighting.records[i].params.z && lighting.lights[i].source ?
+                    lighting.lights[i].source : lighting.dummySource;
             auto cb = root["gReferenceCB"];
             cb["gFrameDim"] = mFrameDim; cb["gSampleIndex"] = mAppearanceSamples;
             cb["gLightCount"] = uint32_t(lighting.lights.size()); cb["gDomain"] = domain; cb["gSeed"] = 17u;
@@ -1183,8 +1207,9 @@ void NeuralMaterialPass::shade(RenderContext* context, const RenderData& data)
     root["gDisplay"] = data.getTexture("display");
     for (uint32_t i = 0; i < kMaxLights; ++i)
     {
-        const auto source = i < lighting.lights.size() ? lighting.lights[i].source : nullptr;
-        const auto prefilter = i < lighting.lights.size() ? lighting.lights[i].prefilter : nullptr;
+        const bool active = i < lighting.lights.size() && lighting.records[i].params.z != 0;
+        const auto source = active ? lighting.lights[i].source : nullptr;
+        const auto prefilter = active ? lighting.lights[i].prefilter : nullptr;
         root["gAreaSources"][i] = source ? source : lighting.dummySource;
         root["gAreaPrefilters"][i] = prefilter ? prefilter : lighting.dummyPrefilter;
     }
@@ -1192,13 +1217,13 @@ void NeuralMaterialPass::shade(RenderContext* context, const RenderData& data)
     cb["gFrameDim"] = mFrameDim; cb["gLobeCount"] = mpRuntime->info.lobes;
     cb["gLobeStride"] = mpRuntime->lobeStride(); cb["gLightCount"] = uint32_t(lighting.lights.size());
     cb["gEnvironmentEnabled"] = uint32_t(mEnvironmentEnabled); cb["gDeltaEnabled"] = uint32_t(mDeltaEnabled);
-    cb["gAreaEnabled"] = uint32_t(mAreaEnabled); cb["gBackgroundEnabled"] = uint32_t(mBackgroundEnabled);
+    cb["gAreaEnabled"] = uint32_t(mAreaEnabled && lighting.activePolygonLights > 0); cb["gBackgroundEnabled"] = uint32_t(mBackgroundEnabled);
     cb["gBackgroundGain"] = std::exp2(mBackgroundExposure);
+    cb["gEmitterGain"] = std::exp2(mEmitterExposure);
     cb["gHorizonOcclusion"] = uint32_t(mHorizonOcclusion); cb["gAreaMode"] = mAreaMode;
     cb["gReferenceSamples"] = mReferenceSamples; cb["gDebugView"] = mDebugView;
     cb["gEnvMipCount"] = lighting.envLevels; cb["gHasEnvironment"] = uint32_t(bool(mpScene->getEnvMap()));
     cb["gEnvMinR"] = lighting.envMinimumRoughness; cb["gSubstrate"] = mSubstrate;
-    cb["gMaterialOpacity"] = mMaterialOpacity;
     cb["gMipLevels"] = mpRuntime->info.mip_levels; cb["gDeltaReference"] = uint32_t(mDeltaReference);
     cb["gEnvironmentReference"] = uint32_t(mEnvironmentReference);
     mpShadingPass->execute(context, mFrameDim.x, mFrameDim.y);
@@ -1375,11 +1400,11 @@ void NeuralMaterialPass::renderUI(Gui::Widgets& widget)
 {
     widget.text("FP16 cooperative vectors | raster visibility | no shadows");
     if (!mError.empty()) widget.textWrapped(mError);
-    const Gui::DropdownList presets = {{0, "Fuzzy silk learned mips"}, {1, "Fuzzy silk single level"}, {2, "Shot silk single level"}, {3, "Custom asset"}};
-    const std::array<const char*, 3> names = {"fuzzy_mip", "fuzzy_silk", "shot_silk"};
-    uint32_t preset = 3;
-    for (uint32_t i = 0; i < 3; ++i) if (std::filesystem::path(mModelPath).stem() == names[i]) preset = i;
-    if (widget.dropdown("Material", presets, preset) && preset < 3)
+    const Gui::DropdownList presets = {{0, "Fuzzy silk learned mips"}, {1, "Fuzzy silk single level"}, {2, "Shot silk | 4 LOD | BCE IBL"}, {3, "Velvet trained LOD IBL"}, {4, "Chainmail | 4 LOD | BCE IBL"}, {5, "Blue gray pile | full ray | LOD0 | BCE IBL"}, {6, "Custom asset"}};
+    const std::array<const char*, 6> names = {"fuzzy_mip", "fuzzy_silk", "shot_silk", "velvet_mip", "chainmail_jitter", "blue_gray_pile_fullray_lod0"};
+    uint32_t preset = uint32_t(names.size());
+    for (uint32_t i = 0; i < names.size(); ++i) if (std::filesystem::path(mModelPath).stem() == names[i]) preset = i;
+    if (widget.dropdown("Material", presets, preset) && preset < names.size())
     {
         mModelPath = (std::filesystem::path(mModelPath).parent_path() / (std::string(names[preset]) + ".mpmat")).string();
         mReloadModel = true;
@@ -1398,8 +1423,6 @@ void NeuralMaterialPass::renderUI(Gui::Widgets& widget)
         widget.text(fmt::format("{} lobes | {} mip level(s) | {} planes x {} channels", mpRuntime->info.lobes,
             mpRuntime->info.mip_levels, mpRuntime->info.planes, mpRuntime->info.channels));
     }
-    widget.var("Material opacity", mMaterialOpacity, 0.f, 1.f, .01f);
-    widget.tooltip("Scales premultiplied surface RGB and coverage. Fades into the environment; does not trace geometry behind the surface.");
     bool mappingChanged = false;
     if (auto group = widget.group("Neural material mapping"))
     {
@@ -1442,6 +1465,8 @@ void NeuralMaterialPass::renderUI(Gui::Widgets& widget)
         mReferenceDirty |= group.checkbox("Original appearance IBL reference", mEnvironmentReference);
         group.checkbox("Environment background", mBackgroundEnabled);
         group.var("Background exposure (EV)", mBackgroundExposure, -10.f, 10.f, .1f);
+        group.var("Visible light exposure (EV)", mEmitterExposure, -16.f, 8.f, .1f);
+        group.tooltip("Exposure of directly visible polygon light surfaces only. Lower it to reveal emission textures. Does not change illumination, background or reference accumulation. Zero restores unscaled emission.");
         mDeltaDirty |= group.checkbox("Delta lights", mDeltaEnabled);
         uint32_t deltaMode = mDeltaReference ? 1u : 0u;
         if (group.dropdown("Delta response", {{0, "Cached lobes"}, {1, "Original appearance reference (FP16)"}}, deltaMode))
@@ -1452,6 +1477,7 @@ void NeuralMaterialPass::renderUI(Gui::Widgets& widget)
         if (mAreaMode == 1) group.var("Reference samples", mReferenceSamples, 1u, 4096u);
         group.checkbox("Lobe horizon correction", mHorizonOcclusion);
         if (group.var("Diffuse substrate", mSubstrate, 0.f, 1.f, .01f)) { mDeltaDirty = true; mReferenceDirty = true; }
+        group.tooltip("Adds a lit diffuse backing where learned coverage is incomplete. Any positive value makes the surface opaque; zero uses learned coverage.");
         if (group.var("Environment bake samples", mpLighting->envSamples, 32u, 16384u)) mpLighting->envDirty = true;
         if (mEnvironmentReference || mAreaMode == 2)
         {
@@ -1460,7 +1486,7 @@ void NeuralMaterialPass::renderUI(Gui::Widgets& widget)
                 mReferenceDirty = true;
             group.text(fmt::format("Accumulated appearance samples: {}", mAppearanceSamples));
             if (group.button("Reset appearance accumulation")) mReferenceDirty = true;
-            group.textWrapped("Falcor AccumulatePass nodes accumulate frame sample sums and counts. Motion and lighting restart them; opacity, exposure and batch size preserve them.");
+            group.textWrapped("Falcor AccumulatePass nodes accumulate frame sample sums and counts. Motion, lighting and substrate edits restart them; exposure and batch size preserve them.");
         }
         group.textWrapped("Falcor owns scene lights, environment rotation/intensity, camera, animation and tone mapping.");
     }
